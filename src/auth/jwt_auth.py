@@ -1,0 +1,143 @@
+"""
+JWT Authentication and validation
+"""
+import jwt
+from typing import Optional
+from fastapi import HTTPException, Header
+from loguru import logger
+from src.config import settings
+
+
+class CurrentUser:
+    """Current authenticated user"""
+    def __init__(self, user_id: str, payload: dict):
+        self.user_id = user_id
+        self.payload = payload
+
+
+def decode_jwt(token: str) -> dict:
+    """
+    Decode and validate JWT token
+    
+    Args:
+        token: JWT token string
+        
+    Returns:
+        Decoded payload
+        
+    Raises:
+        HTTPException: If token is invalid or expired
+    """
+    try:
+        # Decode JWT
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            issuer=settings.jwt_issuer
+        )
+        
+        # Validate required fields
+        if 'user_id' not in payload:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token: missing user_id"
+            )
+        
+        return payload
+        
+    except jwt.ExpiredSignatureError:
+        logger.warning("JWT token expired")
+        raise HTTPException(
+            status_code=401,
+            detail="Token has expired"
+        )
+    except jwt.InvalidIssuerError:
+        logger.warning("JWT token has invalid issuer")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token issuer"
+        )
+    except jwt.InvalidTokenError as e:
+        logger.warning(f"Invalid JWT token: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+    except Exception as e:
+        logger.error(f"JWT decode error: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication failed"
+        )
+
+
+async def get_current_user(authorization: Optional[str] = Header(None)) -> CurrentUser:
+    """
+    FastAPI dependency to get current authenticated user
+    
+    ⚠️ AUTH DISABLED FOR TESTING - Returns dummy user
+    
+    Args:
+        authorization: Authorization header (Bearer token)
+        
+    Returns:
+        CurrentUser object
+    """
+    # ===== AUTH DISABLED FOR TESTING =====
+    # Always return a test user without checking token
+    return CurrentUser(
+        user_id="test_user_no_auth",
+        payload={"user_id": "test_user_no_auth", "iss": "yral_auth"}
+    )
+    
+    # ===== ORIGINAL AUTH CODE (COMMENTED OUT) =====
+    # if not authorization:
+    #     raise HTTPException(
+    #         status_code=401,
+    #         detail="Missing authorization header"
+    #     )
+    # 
+    # # Extract token from "Bearer <token>"
+    # parts = authorization.split()
+    # if len(parts) != 2 or parts[0].lower() != "bearer":
+    #     raise HTTPException(
+    #         status_code=401,
+    #         detail="Invalid authorization header format. Expected: Bearer <token>"
+    #     )
+    # 
+    # token = parts[1]
+    # payload = decode_jwt(token)
+    # 
+    # return CurrentUser(
+    #     user_id=payload['user_id'],
+    #     payload=payload
+    # )
+
+
+async def get_optional_user(authorization: Optional[str] = Header(None)) -> Optional[CurrentUser]:
+    """
+    Optional authentication - returns None if not authenticated
+    
+    ⚠️ AUTH DISABLED FOR TESTING - Always returns test user
+    
+    Args:
+        authorization: Authorization header (Bearer token)
+        
+    Returns:
+        CurrentUser object or None
+    """
+    # ===== AUTH DISABLED FOR TESTING =====
+    return CurrentUser(
+        user_id="test_user_no_auth",
+        payload={"user_id": "test_user_no_auth", "iss": "yral_auth"}
+    )
+    
+    # ===== ORIGINAL AUTH CODE (COMMENTED OUT) =====
+    # if not authorization:
+    #     return None
+    # 
+    # try:
+    #     return await get_current_user(authorization)
+    # except HTTPException:
+    #     return None
