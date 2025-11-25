@@ -206,38 +206,18 @@ chmod +x scripts/setup_db.sh
 
 4. Run database migrations:
 ```bash
-PGPASSWORD=yral_password_2024 psql -U yral_chat_user -h localhost -d yral_chat -f migrations/001_init_schema.sql
-PGPASSWORD=yral_password_2024 psql -U yral_chat_user -h localhost -d yral_chat -f migrations/002_seed_influencers.sql
+source .env 
+PGPASSWORD=$(grep DATABASE_URL .env | cut -d':' -f3 | cut -d'@' -f1) psql -U yral_chat_user -h localhost -d yral_chat -f migrations/001_init_schema.sql
+PGPASSWORD=$(grep DATABASE_URL .env | cut -d':' -f3 | cut -d'@' -f1) psql -U yral_chat_user -h localhost -d yral_chat -f migrations/002_seed_influencers.sql
 ```
 
-5. Create `.env` file:
+5. Create `.env` file from `.env.example`:
 ```bash
-# Application
-APP_NAME=Yral AI Chat API
-APP_VERSION=1.0.0
-ENVIRONMENT=development
-DEBUG=True
-HOST=0.0.0.0
-PORT=8000
-
-# Database
-DATABASE_URL=postgresql://yral_chat_user:yral_password_2024@localhost:5432/yral_chat
-
-# JWT Authentication
-JWT_SECRET_KEY=yral-jwt-secret-key-change-in-production-2024
-JWT_ALGORITHM=HS256
-
-# Google Gemini API
-GEMINI_API_KEY=your-api-key-here
-GEMINI_MODEL=gemini-1.5-pro
-
-# Media Storage
-MEDIA_UPLOAD_DIR=/root/yral-ai-chat/uploads
-MEDIA_BASE_URL=http://localhost:8000/media
-
-# CORS
-CORS_ORIGINS=*
+cp .env.example .env
+# Edit .env with your actual configuration values
 ```
+
+**Note:** Never commit `.env` to version control. The `.env` file is already in `.gitignore`.
 
 6. Run the server:
 ```bash
