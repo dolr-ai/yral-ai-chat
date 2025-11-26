@@ -32,6 +32,7 @@ class AIInfluencer(BaseModel):
     category: Optional[str] = None
     system_instructions: str
     personality_traits: Dict[str, Any] = Field(default_factory=dict)
+    initial_greeting: Optional[str] = None
     is_active: bool = True
     created_at: datetime
     updated_at: datetime

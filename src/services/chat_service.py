@@ -52,6 +52,16 @@ class ChatService:
         conversation = await self.conversation_repo.create(user_id, influencer_id)
         logger.info(f"Created new conversation: {conversation.id}")
         
+        # Create initial greeting message if configured
+        if influencer.initial_greeting:
+            await self.message_repo.create(
+                conversation_id=conversation.id,
+                role=MessageRole.ASSISTANT,
+                content=influencer.initial_greeting,
+                message_type=MessageType.TEXT
+            )
+            logger.info(f"Created initial greeting message for conversation: {conversation.id}")
+        
         # Attach influencer info
         conversation.influencer = influencer
         

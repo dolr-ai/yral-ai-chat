@@ -17,7 +17,7 @@ class InfluencerRepository:
             SELECT 
                 id, name, display_name, avatar_url, description, 
                 category, system_instructions, personality_traits,
-                is_active, created_at, updated_at, metadata
+                initial_greeting, is_active, created_at, updated_at, metadata
             FROM ai_influencers
             WHERE is_active = true
             ORDER BY created_at DESC
@@ -33,7 +33,7 @@ class InfluencerRepository:
             SELECT 
                 id, name, display_name, avatar_url, description, 
                 category, system_instructions, personality_traits,
-                is_active, created_at, updated_at, metadata
+                initial_greeting, is_active, created_at, updated_at, metadata
             FROM ai_influencers
             WHERE id = $1 AND is_active = true
         """
@@ -47,7 +47,7 @@ class InfluencerRepository:
             SELECT 
                 id, name, display_name, avatar_url, description, 
                 category, system_instructions, personality_traits,
-                is_active, created_at, updated_at, metadata
+                initial_greeting, is_active, created_at, updated_at, metadata
             FROM ai_influencers
             WHERE name = $1 AND is_active = true
         """
@@ -66,7 +66,7 @@ class InfluencerRepository:
             SELECT 
                 i.id, i.name, i.display_name, i.avatar_url, i.description, 
                 i.category, i.system_instructions, i.personality_traits,
-                i.is_active, i.created_at, i.updated_at, i.metadata,
+                i.initial_greeting, i.is_active, i.created_at, i.updated_at, i.metadata,
                 COUNT(c.id) as conversation_count
             FROM ai_influencers i
             LEFT JOIN conversations c ON i.id = c.influencer_id
@@ -103,6 +103,7 @@ class InfluencerRepository:
             category=row['category'],
             system_instructions=row['system_instructions'],
             personality_traits=personality_traits,
+            initial_greeting=row.get('initial_greeting'),
             is_active=row['is_active'],
             created_at=row['created_at'],
             updated_at=row['updated_at'],
