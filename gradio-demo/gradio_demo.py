@@ -40,7 +40,7 @@ def get_influencers() -> Tuple[str, str]:
         
         return "\n".join(influencers_list), format_json(data)
     except Exception as e:
-        return f"Error: {str(e)}", None
+        return f"Error: {str(e)}", "{}"
 
 
 def create_conversation(influencer_id: str) -> Tuple[str, str, str]:
@@ -72,7 +72,7 @@ def create_conversation(influencer_id: str) -> Tuple[str, str, str]:
         
         return status, format_json(data), data['id']
     except Exception as e:
-        return f"Error: {str(e)}", None, ""
+        return f"Error: {str(e)}", "{}", ""
 
 
 def send_text_message(conversation_id: str, message: str) -> Tuple[str, str, List]:
@@ -110,7 +110,7 @@ def send_text_message(conversation_id: str, message: str) -> Tuple[str, str, Lis
         
         return status, format_json(data), chat_history
     except Exception as e:
-        return f"Error: {str(e)}", "", []
+        return f"Error: {str(e)}", "{}", []
 
 
 def upload_media(file, media_type: str) -> Tuple[str, str]:
@@ -141,7 +141,7 @@ def upload_media(file, media_type: str) -> Tuple[str, str]:
         
         return status, result['url']
     except Exception as e:
-        return f"Error: {str(e)}", None
+        return f"Error: {str(e)}", ""
 
 
 def send_image_message(conversation_id: str, image_url: str, caption: str) -> Tuple[str, str]:
@@ -173,7 +173,7 @@ def send_image_message(conversation_id: str, image_url: str, caption: str) -> Tu
         
         return status, format_json(data)
     except Exception as e:
-        return f"Error: {str(e)}", None
+        return f"Error: {str(e)}", "{}"
 
 
 def send_audio_message(conversation_id: str, audio_url: str, duration: int) -> Tuple[str, str]:
@@ -206,7 +206,7 @@ def send_audio_message(conversation_id: str, audio_url: str, duration: int) -> T
         
         return status, format_json(data)
     except Exception as e:
-        return f"Error: {str(e)}", None
+        return f"Error: {str(e)}", "{}"
 
 
 def get_message_history(conversation_id: str, limit: int) -> Tuple[str, str, List]:
@@ -234,7 +234,7 @@ def get_message_history(conversation_id: str, limit: int) -> Tuple[str, str, Lis
         
         return status, format_json(data), chat_history
     except Exception as e:
-        return f"Error: {str(e)}", None, []
+        return f"Error: {str(e)}", "{}", []
 
 
 def list_conversations(limit: int) -> Tuple[str, str]:
@@ -263,7 +263,7 @@ def list_conversations(limit: int) -> Tuple[str, str]:
         
         return status + "\n\n" + "\n".join(conv_list), format_json(data)
     except Exception as e:
-        return f"Error: {str(e)}", None
+        return f"Error: {str(e)}", "{}"
 
 
 def delete_conversation(conversation_id: str) -> Tuple[str, str]:
@@ -285,7 +285,7 @@ def delete_conversation(conversation_id: str) -> Tuple[str, str]:
         
         return status, format_json(data)
     except Exception as e:
-        return f"Error: {str(e)}", None
+        return f"Error: {str(e)}", "{}"
 
 
 def check_health() -> Tuple[str, str]:
@@ -303,7 +303,7 @@ def check_health() -> Tuple[str, str]:
         
         return status, format_json(data)
     except Exception as e:
-        return f"Error: {str(e)}", None
+        return f"Error: {str(e)}", "{}"
 
 
 # Create Gradio Interface
@@ -343,6 +343,24 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
             create_conversation, 
             inputs=[inf_id_input],
             outputs=[conv_status, conv_json, conv_id_output]
+        )
+    
+    # Step 2.5: View Initial Greeting
+    with gr.Accordion("2️⃣ 🎉 View Initial Greeting", open=True):
+        gr.Markdown("""
+        After creating a conversation, the AI influencer may send an automatic greeting message.
+        Use this section to view it!
+        """)
+        with gr.Row():
+            conv_id_greeting = gr.Textbox(label="Conversation ID", placeholder="paste-conversation-id")
+            load_greeting_btn = gr.Button("Load Message History", variant="primary")
+        greeting_status = gr.Textbox(label="Status", lines=2)
+        greeting_chat = gr.Chatbot(label="Initial Greeting Preview", height=250)
+        greeting_json = gr.JSON(label="Full Response")
+        load_greeting_btn.click(
+            get_message_history,
+            inputs=[conv_id_greeting, gr.State(10)],
+            outputs=[greeting_status, greeting_json, greeting_chat]
         )
     
     # Step 3: Send Text Messages
