@@ -5,8 +5,7 @@ Tests all endpoints in a user-friendly interface
 import gradio as gr
 import requests
 import json
-from datetime import datetime
-from typing import Optional, List, Tuple
+from typing import List, Tuple
 
 # Configuration
 API_BASE_URL = "http://localhost:8000"

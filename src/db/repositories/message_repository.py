@@ -5,7 +5,6 @@ from typing import List, Optional
 from uuid import UUID
 from src.db.base import db
 from src.models.entities import Message, MessageType, MessageRole
-from loguru import logger
 
 
 class MessageRepository:

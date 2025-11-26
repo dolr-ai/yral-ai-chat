@@ -5,7 +5,6 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 from src.db.base import db
 from src.models.entities import Conversation, AIInfluencer
-from loguru import logger
 
 
 class ConversationRepository:

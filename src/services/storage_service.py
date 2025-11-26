@@ -1,12 +1,10 @@
 """
 File storage service for media uploads
 """
-import os
 import aiofiles
 from pathlib import Path
 from typing import Tuple
 from uuid import uuid4
-from datetime import datetime
 from loguru import logger
 from src.config import settings
 from src.core.exceptions import BadRequestException

@@ -1,8 +1,8 @@
 """
 Chat endpoints
 """
-from fastapi import APIRouter, Depends, Query, Security
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, Query
+from fastapi.security import HTTPBearer
 from uuid import UUID
 from typing import Optional
 from src.models.requests import CreateConversationRequest, SendMessageRequest

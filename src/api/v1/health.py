@@ -7,7 +7,7 @@ import time
 from src.models.responses import HealthResponse, StatusResponse, ServiceHealth, DatabaseStats, SystemStatistics
 from src.db.base import db
 from src.services.gemini_client import gemini_client
-from src.db.repositories import ConversationRepository, MessageRepository, InfluencerRepository
+from src.db.repositories import MessageRepository, InfluencerRepository
 from src.config import settings
 
 router = APIRouter(tags=["Health"])
@@ -60,7 +60,6 @@ async def system_status():
     )
     
     # Get system statistics
-    conversation_repo = ConversationRepository()
     message_repo = MessageRepository()
     influencer_repo = InfluencerRepository()
     
@@ -68,7 +67,7 @@ async def system_status():
         total_conversations = await db.fetchval("SELECT COUNT(*) FROM conversations")
         total_messages = await message_repo.count_all()
         active_influencers = await influencer_repo.count_all()
-    except:
+    except Exception:
         total_conversations = 0
         total_messages = 0
         active_influencers = 0

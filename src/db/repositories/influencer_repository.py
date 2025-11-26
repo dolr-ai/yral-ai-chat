@@ -6,7 +6,6 @@ from uuid import UUID
 import json
 from src.db.base import db
 from src.models.entities import AIInfluencer
-from loguru import logger
 
 
 class InfluencerRepository:
@@ -85,7 +84,6 @@ class InfluencerRepository:
     
     def _row_to_influencer(self, row) -> AIInfluencer:
         """Convert database row to AIInfluencer model"""
-        import json
         
         # Parse JSONB fields if they're strings
         personality_traits = row['personality_traits']

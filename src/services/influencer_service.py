@@ -1,7 +1,7 @@
 """
 Influencer service - Business logic for AI influencers
 """
-from typing import List, Optional
+from typing import List
 from uuid import UUID
 from src.db.repositories import InfluencerRepository
 from src.models.entities import AIInfluencer

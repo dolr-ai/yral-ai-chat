@@ -2,8 +2,7 @@
 Google Gemini AI Client
 """
 import google.generativeai as genai
-from typing import List, Optional, Dict, Any
-import base64
+from typing import List, Dict, Any
 import httpx
 from loguru import logger
 from src.config import settings
@@ -196,7 +195,7 @@ class GeminiClient:
             start = time.time()
             
             # Simple test request
-            response = self.model.generate_content("Hi")
+            self.model.generate_content("Hi")
             
             latency_ms = int((time.time() - start) * 1000)
             

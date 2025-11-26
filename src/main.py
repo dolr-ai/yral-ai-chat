@@ -1,16 +1,18 @@
 """
 Yral AI Chat API - Main Application
 """
+import os
+import time
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.openapi.utils import get_openapi
 from loguru import logger
-import time
 
 from src.config import settings
-from src.core.logging import setup_logging
 from src.db.base import db
 from src.services.gemini_client import gemini_client
 
@@ -56,8 +58,6 @@ app = FastAPI(
 )
 
 # Add security scheme for Swagger UI
-from fastapi.openapi.utils import get_openapi
-
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -129,7 +129,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Mount static files for media
-import os
 os.makedirs(settings.media_upload_dir, exist_ok=True)
 app.mount("/media", StaticFiles(directory=settings.media_upload_dir), name="media")
 
