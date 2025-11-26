@@ -2,7 +2,7 @@
 Request models for API endpoints
 """
 from typing import Optional, List
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, root_validator
 from uuid import UUID
 from src.models.entities import MessageType
 
@@ -14,12 +14,12 @@ class CreateConversationRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation"""
+    message_type: MessageType = Field(..., description="Type of message")
     content: Optional[str] = Field(
         default="",
         max_length=4000,
         description="Message text content (optional for image/audio-only messages)"
     )
-    message_type: MessageType = Field(..., description="Type of message")
     media_urls: Optional[List[str]] = Field(
         default=None,
         max_items=10,
@@ -36,16 +36,29 @@ class SendMessageRequest(BaseModel):
         description="Audio duration in seconds (max 300)"
     )
     
+    @validator('message_type')
+    def validate_message_type(cls, v):
+        """Validate message type is valid"""
+        if v not in [MessageType.TEXT, MessageType.IMAGE, MessageType.MULTIMODAL, MessageType.AUDIO]:
+            raise ValueError("Invalid message type")
+        return v
+    
     @validator('content')
     def validate_content(cls, v):
         """Validate content length"""
         if v and len(v) > 4000:
             raise ValueError("content exceeds 4000 characters")
-        return v
+        return v or ""
     
-    @validator('media_urls')
+    @validator('media_urls', pre=True, always=True)
     def validate_media_urls(cls, v, values):
         """Validate media URLs based on message type"""
+        # Ensure v is always a list or empty list
+        if v is None:
+            v = []
+        elif not isinstance(v, list):
+            v = [v] if v else []
+        
         message_type = values.get('message_type')
         
         if message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
@@ -54,7 +67,7 @@ class SendMessageRequest(BaseModel):
             if len(v) > 10:
                 raise ValueError("Too many media URLs (max 10)")
         
-        return v or []
+        return v
     
     @validator('audio_url')
     def validate_audio_url(cls, v, values):
@@ -66,18 +79,39 @@ class SendMessageRequest(BaseModel):
         
         return v
     
-    @validator('message_type', always=True)
-    def validate_message_has_content(cls, v, values):
-        """Ensure message has at least some content"""
-        content = values.get('content', '')
-        media_urls = values.get('media_urls', [])
-        audio_url = values.get('audio_url')
+    @validator('audio_duration_seconds')
+    def validate_audio_duration(cls, v, values):
+        """Validate audio duration based on message type"""
+        message_type = values.get('message_type')
         
-        has_content = bool(content) or bool(media_urls) or bool(audio_url)
-        
-        if not has_content:
-            raise ValueError("At least content, media_urls, or audio_url must be provided")
+        if message_type == MessageType.AUDIO and v is not None:
+            if v < 0 or v > 300:
+                raise ValueError("audio_duration_seconds must be between 0 and 300")
         
         return v
+    
+    @root_validator(skip_on_failure=True)
+    def validate_message_content(cls, values):
+        """Ensure message has at least some content based on message type"""
+        content = values.get('content') or ''
+        media_urls = values.get('media_urls') or []
+        audio_url = values.get('audio_url')
+        message_type = values.get('message_type')
+        
+        # Check content based on type
+        if message_type == MessageType.TEXT:
+            if not content.strip():
+                raise ValueError("content is required for text messages")
+        elif message_type == MessageType.IMAGE:
+            if not media_urls:
+                raise ValueError("media_urls is required for image messages")
+        elif message_type == MessageType.MULTIMODAL:
+            if not media_urls:
+                raise ValueError("media_urls is required for multimodal messages")
+        elif message_type == MessageType.AUDIO:
+            if not audio_url:
+                raise ValueError("audio_url is required for audio messages")
+        
+        return values
 
 

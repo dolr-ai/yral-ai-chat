@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     
     # Google Gemini API
     gemini_api_key: str = Field(..., alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-1.5-pro", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     gemini_max_tokens: int = Field(default=2048, alias="GEMINI_MAX_TOKENS")
     gemini_temperature: float = Field(default=0.7, alias="GEMINI_TEMPERATURE")
     
