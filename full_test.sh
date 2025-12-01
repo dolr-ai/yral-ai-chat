@@ -46,15 +46,23 @@ echo ""
 echo -e "${BLUE}4. Generate JWT Token${NC}"
 cd /root/yral-ai-chat
 source venv/bin/activate
+
+# Load JWT secret from .env file
+source .env 2>/dev/null || {
+    echo -e "${RED}Error: .env file not found. Please create it first.${NC}"
+    exit 1
+}
+
 TOKEN=$(python3 -c "
 import jwt
+import os
 from datetime import datetime, timedelta
 payload = {
     'user_id': 'test_user_' + datetime.now().strftime('%Y%m%d%H%M%S'),
     'exp': datetime.utcnow() + timedelta(days=1),
     'iss': 'yral_auth'
 }
-print(jwt.encode(payload, 'yral-jwt-secret-key-change-in-production-2024', algorithm='HS256'))
+print(jwt.encode(payload, os.environ.get('JWT_SECRET_KEY', 'test-key'), algorithm='HS256'))
 ")
 echo -e "${GREEN}✓ Generated token for test user${NC}"
 echo ""

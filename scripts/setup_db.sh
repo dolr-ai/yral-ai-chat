@@ -8,7 +8,8 @@ echo "Setting up PostgreSQL database for Yral AI Chat..."
 # Database credentials
 DB_NAME="yral_chat"
 DB_USER="yral_chat_user"
-DB_PASSWORD="yral_password_2024"
+# Generate a random password or prompt for it
+DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -base64 32)}"
 
 # Check if PostgreSQL is installed
 if ! command -v psql &> /dev/null; then
