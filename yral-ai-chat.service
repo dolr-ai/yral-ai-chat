@@ -1,0 +1,23 @@
+[Unit]
+Description=Yral AI Chat API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/yral-ai-chat
+Environment="PATH=/root/yral-ai-chat/venv/bin"
+ExecStart=/root/yral-ai-chat/venv/bin/uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
+Restart=always
+RestartSec=10
+StandardOutput=append:/root/yral-ai-chat/logs/uvicorn.log
+StandardError=append:/root/yral-ai-chat/logs/uvicorn-error.log
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

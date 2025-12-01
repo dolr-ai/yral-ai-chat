@@ -305,6 +305,8 @@ Key settings:
 
 ## Production Deployment
 
+### Basic Setup
+
 1. Set `DEBUG=False` and `ENVIRONMENT=production`
 2. Change `JWT_SECRET_KEY` to strong random value
 3. Configure proper CORS origins
@@ -312,6 +314,31 @@ Key settings:
 5. Run with multiple workers:
 ```bash
 uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+### Reverse Proxy Setup (Nginx + HTTPS)
+
+To route HTTPS traffic (port 443) to your FastAPI app on port 8000:
+
+**Quick Setup:**
+```bash
+sudo ./scripts/setup_nginx.sh
+```
+
+**Manual Setup:**
+1. Copy nginx config: `sudo cp nginx/yral-ai-chat.conf /etc/nginx/sites-available/yral-ai-chat.conf`
+2. Edit the config and replace `your-domain.com` with your actual domain
+3. Enable the site: `sudo ln -s /etc/nginx/sites-available/yral-ai-chat.conf /etc/nginx/sites-enabled/`
+4. Test config: `sudo nginx -t`
+5. Restart nginx: `sudo systemctl restart nginx`
+6. Set up SSL: `sudo certbot --nginx -d your-domain.com -d www.your-domain.com`
+
+See `nginx/README.md` for detailed instructions and troubleshooting.
+
+**After setup, update your `.env` file:**
+```
+CORS_ORIGINS=https://your-domain.com,https://www.your-domain.com
+MEDIA_BASE_URL=https://your-domain.com/media
 ```
 
 ## Error Handling

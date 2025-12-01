@@ -46,7 +46,7 @@ class GeminiClient:
             # Add system instructions as first message
             contents.append({
                 "role": "user",
-                "parts": [{"text": f"System Instructions: {system_instructions}"}]
+                "parts": [{"text": f"""System Instructions: {system_instructions}. Lastly, always answer in the same language as the user's message."""}]
             })
             contents.append({
                 "role": "model",
