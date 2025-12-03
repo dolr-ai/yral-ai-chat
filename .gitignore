@@ -54,6 +54,11 @@ logs/
 # Database
 *.db
 *.sqlite
+*.sql
+data/
+
+# Litestream config (contains S3 credentials)
+config/litestream.yml
 
 # Uploads
 uploads/*

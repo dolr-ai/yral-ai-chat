@@ -3,6 +3,7 @@ Repository for Conversation operations
 """
 from typing import List, Optional, Dict, Any
 from uuid import UUID
+import uuid
 from src.db.base import db
 from src.models.entities import Conversation, AIInfluencer
 
@@ -12,14 +13,18 @@ class ConversationRepository:
     
     async def create(self, user_id: str, influencer_id: UUID) -> Conversation:
         """Create a new conversation"""
+        # Generate UUID for SQLite (no uuid-ossp extension)
+        conversation_id = str(uuid.uuid4())
+        
         query = """
-            INSERT INTO conversations (user_id, influencer_id)
-            VALUES ($1, $2)
-            RETURNING id, user_id, influencer_id, created_at, updated_at, metadata
+            INSERT INTO conversations (id, user_id, influencer_id)
+            VALUES ($1, $2, $3)
         """
         
-        row = await db.fetchone(query, user_id, influencer_id)
-        return self._row_to_conversation(row)
+        await db.execute(query, conversation_id, user_id, str(influencer_id))
+        
+        # Fetch the created conversation
+        return await self.get_by_id(UUID(conversation_id))
     
     async def get_by_id(self, conversation_id: UUID) -> Optional[Conversation]:
         """Get conversation by ID"""

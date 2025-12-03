@@ -3,6 +3,7 @@ Repository for Message operations
 """
 from typing import List, Optional
 from uuid import UUID
+import uuid
 from src.db.base import db
 from src.models.entities import Message, MessageType, MessageRole
 
@@ -24,23 +25,22 @@ class MessageRepository:
         """Create a new message"""
         import json
         
-        query = """
-            INSERT INTO messages (
-                conversation_id, role, content, message_type, 
-                media_urls, audio_url, audio_duration_seconds, token_count
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING 
-                id, conversation_id, role, content, message_type,
-                media_urls, audio_url, audio_duration_seconds, 
-                token_count, created_at, metadata
-        """
-        
+        # Generate UUID for SQLite (no uuid-ossp extension)
+        message_id = str(uuid.uuid4())
         media_urls_json = json.dumps(media_urls or [])
         
-        row = await db.fetchone(
+        query = """
+            INSERT INTO messages (
+                id, conversation_id, role, content, message_type, 
+                media_urls, audio_url, audio_duration_seconds, token_count
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        """
+        
+        await db.execute(
             query,
-            conversation_id,
+            message_id,
+            str(conversation_id),
             role.value,
             content,
             message_type.value,
@@ -50,7 +50,8 @@ class MessageRepository:
             token_count
         )
         
-        return self._row_to_message(row)
+        # Fetch the created message
+        return await self.get_by_id(UUID(message_id))
     
     async def get_by_id(self, message_id: UUID) -> Optional[Message]:
         """Get message by ID"""

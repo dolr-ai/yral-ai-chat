@@ -17,11 +17,8 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8000, alias="PORT")
     
-    # Database
-    database_url: str = Field(..., alias="DATABASE_URL")
-    db_pool_min_size: int = Field(default=5, alias="DB_POOL_MIN_SIZE")
-    db_pool_max_size: int = Field(default=20, alias="DB_POOL_MAX_SIZE")
-    db_pool_timeout: int = Field(default=30, alias="DB_POOL_TIMEOUT")
+    # Database (SQLite with Litestream)
+    database_path: str = Field(default="/root/yral-ai-chat/data/yral_chat.db", alias="DATABASE_PATH")
     
     # JWT Authentication
     jwt_secret_key: str = Field(..., alias="JWT_SECRET_KEY")

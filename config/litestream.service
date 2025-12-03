@@ -1,0 +1,28 @@
+[Unit]
+Description=Litestream SQLite Replication
+Documentation=https://litestream.io
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/yral-ai-chat
+
+# Litestream replication command
+ExecStart=/usr/bin/litestream replicate -config /root/yral-ai-chat/config/litestream.yml
+
+# Restart policy
+Restart=always
+RestartSec=5
+
+# Logging
+StandardOutput=append:/root/yral-ai-chat/logs/litestream.log
+StandardError=append:/root/yral-ai-chat/logs/litestream-error.log
+
+# Security
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+
