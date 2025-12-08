@@ -59,20 +59,20 @@ fi
 # Build Docker image if not skipping
 if [ "$SKIP_BUILD" = false ]; then
     echo "📦 Building Docker image..."
-    docker-compose build
+    docker compose build
     echo "✅ Build complete"
     echo ""
 fi
 
 # Stop existing containers
 echo "🛑 Stopping existing containers..."
-docker-compose down
+docker compose down
 echo "✅ Containers stopped"
 echo ""
 
 # Start containers with environment variables
 echo "🚀 Starting containers..."
-docker-compose up -d
+docker compose up -d
 echo "✅ Containers started"
 echo ""
 
@@ -86,10 +86,10 @@ if [ -f "migrations/sqlite/001_init_schema.sql" ]; then
     # Check if database exists
     if [ ! -f "data/yral_chat.db" ]; then
         echo "   Creating database and running migrations..."
-        docker-compose exec -T yral-ai-chat python scripts/run_migrations.py || echo "   ⚠️  Migration may have already been applied"
+        docker compose exec -T yral-ai-chat python scripts/run_migrations.py || echo "   ⚠️  Migration may have already been applied"
     else
         echo "   ✅ Database already exists"
-        echo "   ℹ️  To run migrations on existing database, use: docker-compose exec yral-ai-chat python /app/scripts/run_migrations.py"
+        echo "   ℹ️  To run migrations on existing database, use: docker compose exec yral-ai-chat python /app/scripts/run_migrations.py"
     fi
 else
     echo "   ⚠️  Migration files not found, skipping"
@@ -109,7 +109,7 @@ if [ "$HEALTH_CHECK" = true ]; then
         else
             if [ $attempt -eq $max_attempts ]; then
                 echo "   ❌ Health check failed after $max_attempts attempts"
-                echo "   Check logs with: docker-compose logs yral-ai-chat"
+                echo "   Check logs with: docker compose logs yral-ai-chat"
                 exit 1
             else
                 echo "   ⏳ Waiting for service... (attempt $attempt/$max_attempts)"
@@ -123,12 +123,12 @@ fi
 
 # Show container status
 echo "📊 Container status:"
-docker-compose ps
+docker compose ps
 echo ""
 
 # Show logs
 echo "📋 Recent logs:"
-docker-compose logs --tail=20 yral-ai-chat
+docker compose logs --tail=20 yral-ai-chat
 echo ""
 
 echo "=========================================="
@@ -140,8 +140,8 @@ echo "API docs: http://localhost:8000/docs"
 echo "Health check: http://localhost:8000/health"
 echo ""
 echo "Useful commands:"
-echo "  View logs:    docker-compose logs -f yral-ai-chat"
-echo "  Stop service: docker-compose down"
-echo "  Restart:      docker-compose restart yral-ai-chat"
+echo "  View logs:    docker compose logs -f yral-ai-chat"
+echo "  Stop service: docker compose down"
+echo "  Restart:      docker compose restart yral-ai-chat"
 echo ""
 
