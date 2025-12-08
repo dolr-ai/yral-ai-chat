@@ -341,6 +341,154 @@ CORS_ORIGINS=https://your-domain.com,https://www.your-domain.com
 MEDIA_BASE_URL=https://your-domain.com/media
 ```
 
+### Docker Deployment
+
+The application can be deployed using Docker and Docker Compose. This is the recommended approach for production deployments.
+
+#### Prerequisites
+
+- Docker 20.10+
+- Docker Compose 2.0+
+
+#### Manual Deployment
+
+1. **Set required environment variables:**
+
+   The following environment variables are **required**:
+   - `JWT_SECRET_KEY`: Secret for JWT signing
+   - `GEMINI_API_KEY`: Google Gemini API key
+
+   Optional variables can be set as needed (see `env.example` for full list).
+
+2. **Deploy using docker-compose:**
+
+   ```bash
+   # Set required secrets and deploy
+   JWT_SECRET_KEY="your-secret-key" \
+   GEMINI_API_KEY="your-gemini-api-key" \
+   docker-compose up -d --build
+   ```
+
+   For multiple secrets:
+   ```bash
+   JWT_SECRET_KEY="secret1" \
+   GEMINI_API_KEY="secret2" \
+   CORS_ORIGINS="https://your-domain.com" \
+   MEDIA_BASE_URL="https://your-domain.com/media" \
+   docker-compose up -d --build
+   ```
+
+3. **Using the deployment script:**
+
+   ```bash
+   # Set environment variables
+   export JWT_SECRET_KEY="your-secret-key"
+   export GEMINI_API_KEY="your-gemini-api-key"
+   
+   # Run deployment script
+   ./scripts/deploy.sh
+   ```
+
+   The script will:
+   - Build the Docker image
+   - Stop existing containers
+   - Start new containers with health checks
+   - Run database migrations if needed
+   - Verify the service is healthy
+
+4. **Check service status:**
+
+   ```bash
+   docker-compose ps
+   docker-compose logs -f yral-ai-chat
+   ```
+
+5. **Stop the service:**
+
+   ```bash
+   docker-compose down
+   ```
+
+#### CI/CD Deployment
+
+The repository includes a GitHub Actions workflow that automatically deploys on every push to the `main` branch.
+
+**Setup GitHub Secrets:**
+
+Configure the following secrets in your GitHub repository (Settings → Secrets and variables → Actions):
+
+**Required:**
+- `DEPLOY_HOST`: Server IP address or hostname
+- `DEPLOY_USER`: SSH username for deployment
+- `DEPLOY_SSH_KEY`: Private SSH key for server access
+- `JWT_SECRET_KEY`: JWT signing secret
+- `GEMINI_API_KEY`: Google Gemini API key
+
+**Optional (with defaults):**
+- `APP_NAME`, `APP_VERSION`, `ENVIRONMENT`, `DEBUG`
+- `DATABASE_PATH`, `JWT_ALGORITHM`, `JWT_ISSUER`
+- `GEMINI_MODEL`, `GEMINI_MAX_TOKENS`, `GEMINI_TEMPERATURE`
+- `MEDIA_UPLOAD_DIR`, `MEDIA_BASE_URL`
+- `CORS_ORIGINS`, `CORS_ALLOW_CREDENTIALS`
+- `USE_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `AWS_REGION`, `S3_ENDPOINT`
+- `USE_WHISPER`, `WHISPER_API_KEY`
+- `RATE_LIMIT_PER_MINUTE`, `RATE_LIMIT_PER_HOUR`
+- `LOG_LEVEL`, `LOG_FORMAT`
+
+**How it works:**
+
+1. On push to `main`, GitHub Actions:
+   - Checks out the code
+   - SSH into the deployment server
+   - Pulls the latest code
+   - Builds and deploys using `docker-compose` with secrets from GitHub Secrets
+   - Runs health checks to verify deployment
+
+2. Secrets are passed as environment variables to `docker-compose up -d`, ensuring they are never stored in files on the server.
+
+#### Docker Volumes
+
+The following directories are persisted as Docker volumes:
+- `./data`: SQLite database files
+- `./uploads`: Uploaded media files
+- `./logs`: Application logs
+
+These directories are created automatically if they don't exist.
+
+#### Database Migrations
+
+Database migrations are handled automatically on first startup. The SQLite schema is created from `migrations/sqlite/001_init_schema.sql` if the database doesn't exist.
+
+#### Health Checks
+
+The Docker container includes a health check that verifies the `/health` endpoint. You can check container health with:
+
+```bash
+docker-compose ps
+```
+
+#### Troubleshooting
+
+**View logs:**
+```bash
+docker-compose logs -f yral-ai-chat
+```
+
+**Restart service:**
+```bash
+docker-compose restart yral-ai-chat
+```
+
+**Rebuild and redeploy:**
+```bash
+docker-compose up -d --build
+```
+
+**Check health endpoint:**
+```bash
+curl http://localhost:8000/health
+```
+
 ## Error Handling
 
 All errors follow consistent format:

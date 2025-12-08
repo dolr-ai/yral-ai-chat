@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  yral-ai-chat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yral-ai-chat
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist SQLite database
+      - ./data:/app/data
+      # Persist uploaded media files
+      - ./uploads:/app/uploads
+      # Persist logs
+      - ./logs:/app/logs
+    environment:
+      # Application Settings
+      - APP_NAME=${APP_NAME:-Yral AI Chat API}
+      - APP_VERSION=${APP_VERSION:-1.0.0}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DEBUG=${DEBUG:-False}
+      - HOST=0.0.0.0
+      - PORT=8000
+      
+      # Database (SQLite)
+      - DATABASE_PATH=${DATABASE_PATH:-/app/data/yral_chat.db}
+      
+      # JWT Authentication (REQUIRED)
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - JWT_ISSUER=${JWT_ISSUER:-yral_auth}
+      
+      # Google Gemini API (REQUIRED)
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - GEMINI_MAX_TOKENS=${GEMINI_MAX_TOKENS:-2048}
+      - GEMINI_TEMPERATURE=${GEMINI_TEMPERATURE:-0.7}
+      
+      # Media Storage
+      - MEDIA_UPLOAD_DIR=${MEDIA_UPLOAD_DIR:-/app/uploads}
+      - MEDIA_BASE_URL=${MEDIA_BASE_URL:-http://localhost:8000/media}
+      - MAX_IMAGE_SIZE_MB=${MAX_IMAGE_SIZE_MB:-10}
+      - MAX_AUDIO_SIZE_MB=${MAX_AUDIO_SIZE_MB:-20}
+      - MAX_AUDIO_DURATION_SECONDS=${MAX_AUDIO_DURATION_SECONDS:-300}
+      
+      # Optional: AWS S3
+      - USE_S3=${USE_S3:-false}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET:-}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      
+      # Optional: Whisper API
+      - USE_WHISPER=${USE_WHISPER:-false}
+      - WHISPER_API_KEY=${WHISPER_API_KEY:-}
+      
+      # CORS Configuration
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS:-true}
+      
+      # Rate Limiting
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
+      - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-1000}
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
