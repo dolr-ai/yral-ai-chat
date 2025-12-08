@@ -68,8 +68,17 @@ jobs:
             echo "📥 Pulling latest code..."
             git pull origin main
             
+            # Stop systemd service if running (migrating to Docker)
+            echo "🛑 Stopping systemd service (if running)..."
+            if systemctl is-active --quiet yral-ai-chat.service; then
+              systemctl stop yral-ai-chat.service
+              echo "   ✅ Systemd service stopped"
+            else
+              echo "   ℹ️  Systemd service not running"
+            fi
+            
             # Build and deploy with secrets
-            echo "🚀 Building and deploying..."
+            echo "🚀 Building and deploying with Docker..."
             JWT_SECRET_KEY="$JWT_SECRET_KEY" \
             GEMINI_API_KEY="$GEMINI_API_KEY" \
             APP_NAME="${APP_NAME:-Yral AI Chat API}" \
