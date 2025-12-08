@@ -59,7 +59,7 @@ jobs:
           LOG_LEVEL: ${{ secrets.LOG_LEVEL }}
           LOG_FORMAT: ${{ secrets.LOG_FORMAT }}
         run: |
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << ENDSSH
             set -e
             
             cd /root/yral-ai-chat
