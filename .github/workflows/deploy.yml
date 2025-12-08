@@ -70,12 +70,8 @@ jobs:
             
             # Stop systemd service if running (migrating to Docker)
             echo "🛑 Stopping systemd service (if running)..."
-            if systemctl is-active --quiet yral-ai-chat.service; then
-              systemctl stop yral-ai-chat.service
-              echo "   ✅ Systemd service stopped"
-            else
-              echo "   ℹ️  Systemd service not running"
-            fi
+            systemctl stop yral-ai-chat.service 2>/dev/null || true
+            systemctl disable yral-ai-chat.service 2>/dev/null || true
             
             # Build and deploy with secrets
             echo "🚀 Building and deploying with Docker..."
@@ -110,11 +106,27 @@ jobs:
             RATE_LIMIT_PER_HOUR="${RATE_LIMIT_PER_HOUR:-1000}" \
             LOG_LEVEL="${LOG_LEVEL:-INFO}" \
             LOG_FORMAT="${LOG_FORMAT:-json}" \
-            docker compose up -d --build
+            docker-compose up -d --build
             
             # Wait for service to be ready
             echo "⏳ Waiting for service to start..."
             sleep 10
+            
+            # Run database migrations if needed
+            echo "🗄️  Checking database migrations..."
+            if [ -f "migrations/sqlite/001_init_schema.sql" ]; then
+              # Check if database exists
+              if [ ! -f "data/yral_chat.db" ]; then
+                echo "   Creating database and running migrations..."
+                docker-compose exec -T yral-ai-chat python scripts/run_migrations.py || echo "   ⚠️  Migration may have already been applied"
+              else
+                echo "   ✅ Database already exists"
+                echo "   ℹ️  To run migrations on existing database, use: docker-compose exec yral-ai-chat python scripts/run_migrations.py"
+              fi
+            else
+              echo "   ⚠️  Migration files not found, skipping"
+            fi
+            echo ""
             
             # Health check
             echo "🏥 Running health check..."
@@ -128,7 +140,7 @@ jobs:
               else
                 if [ $attempt -eq $max_attempts ]; then
                   echo "❌ Health check failed after $max_attempts attempts"
-                  docker compose logs --tail=50 yral-ai-chat
+                  docker-compose logs --tail=50 yral-ai-chat
                   exit 1
                 else
                   echo "   Attempt $attempt/$max_attempts..."
@@ -139,6 +151,5 @@ jobs:
             done
             
             echo "✅ Deployment complete!"
-            docker compose ps
+            docker-compose ps
           ENDSSH
-
