@@ -1,24 +1,41 @@
-.PHONY: help install install-dev test test-unit test-integration lint format clean run migrate export-openapi
+.PHONY: help install install-dev test test-unit test-integration lint format clean run migrate export-openapi docker-build docker-test docker-up docker-down docker-logs
 
 # Default target
 help:
 	@echo "Available commands:"
+	@echo ""
+	@echo "Development:"
 	@echo "  make install          - Install production dependencies"
 	@echo "  make install-dev      - Install development dependencies"
+	@echo "  make run              - Run development server"
+	@echo "  make migrate          - Run database migrations"
+	@echo ""
+	@echo "Docker:"
+	@echo "  make docker-build     - Build Docker image"
+	@echo "  make docker-test      - Test Docker build and deployment"
+	@echo "  make docker-gh-test   - Simulate GitHub Actions deployment locally"
+	@echo "  make docker-up        - Start Docker containers"
+	@echo "  make docker-down      - Stop Docker containers"
+	@echo "  make docker-logs      - View Docker container logs"
+	@echo "  make docker-shell     - Open shell in running container"
+	@echo ""
+	@echo "Testing:"
 	@echo "  make test             - Run all tests"
 	@echo "  make test-unit        - Run unit tests only"
 	@echo "  make test-integration - Run integration tests only"
 	@echo "  make test-cov         - Run tests with coverage report"
+	@echo ""
+	@echo "Code Quality:"
 	@echo "  make lint             - Run code linting (ruff)"
 	@echo "  make format           - Format code (black + isort)"
 	@echo "  make format-check     - Check code formatting without changes"
 	@echo "  make type-check       - Run type checking (mypy)"
+	@echo "  make all-checks       - Run all quality checks (format, lint, type, test)"
+	@echo ""
+	@echo "Other:"
 	@echo "  make clean            - Remove cache and temporary files"
-	@echo "  make run              - Run development server"
-	@echo "  make migrate          - Run database migrations"
 	@echo "  make export-openapi   - Export OpenAPI specification"
 	@echo "  make pre-commit       - Install pre-commit hooks"
-	@echo "  make all-checks       - Run all quality checks (format, lint, type, test)"
 
 # Install dependencies
 install:
@@ -110,3 +127,54 @@ check: format lint test-unit
 setup: install-dev migrate
 	@echo "\n✅ Development environment setup complete!"
 	@echo "Run 'make run' to start the server"
+
+# Docker commands
+docker-build:
+	@echo "🏗️  Building Docker image..."
+	docker compose build
+
+docker-build-no-cache:
+	@echo "🏗️  Building Docker image (no cache)..."
+	docker compose build --no-cache
+
+docker-test:
+	@echo "🧪 Testing Docker build and deployment..."
+	./scripts/test_docker_build.sh
+
+docker-gh-test:
+	@echo "🧪 Simulating GitHub Actions deployment locally..."
+	./scripts/test_github_actions_locally.sh
+
+docker-up:
+	@echo "🚀 Starting Docker containers..."
+	docker compose up -d
+	@echo "✅ Containers started!"
+	@echo "📊 Status:"
+	@docker compose ps
+	@echo ""
+	@echo "View logs with: make docker-logs"
+
+docker-down:
+	@echo "🛑 Stopping Docker containers..."
+	docker compose down
+	@echo "✅ Containers stopped"
+
+docker-logs:
+	docker compose logs -f yral-ai-chat
+
+docker-shell:
+	docker compose exec yral-ai-chat /bin/bash
+
+docker-restart:
+	@echo "🔄 Restarting Docker containers..."
+	docker compose restart
+	@echo "✅ Containers restarted"
+
+docker-ps:
+	docker compose ps
+
+docker-clean:
+	@echo "🧹 Cleaning up Docker resources..."
+	docker compose down -v --remove-orphans
+	docker system prune -f
+	@echo "✅ Docker cleanup complete"

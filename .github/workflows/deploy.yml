@@ -21,135 +21,123 @@ jobs:
       
       - name: Add server to known hosts
         run: |
+          mkdir -p ~/.ssh
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
       
-      - name: Deploy to server
-        env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          APP_NAME: ${{ secrets.APP_NAME }}
-          APP_VERSION: ${{ secrets.APP_VERSION }}
-          ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
-          DEBUG: ${{ secrets.DEBUG }}
-          DATABASE_PATH: ${{ secrets.DATABASE_PATH }}
-          JWT_ALGORITHM: ${{ secrets.JWT_ALGORITHM }}
-          JWT_ISSUER: ${{ secrets.JWT_ISSUER }}
-          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
-          GEMINI_MAX_TOKENS: ${{ secrets.GEMINI_MAX_TOKENS }}
-          GEMINI_TEMPERATURE: ${{ secrets.GEMINI_TEMPERATURE }}
-          MEDIA_UPLOAD_DIR: ${{ secrets.MEDIA_UPLOAD_DIR }}
-          MEDIA_BASE_URL: ${{ secrets.MEDIA_BASE_URL }}
-          MAX_IMAGE_SIZE_MB: ${{ secrets.MAX_IMAGE_SIZE_MB }}
-          MAX_AUDIO_SIZE_MB: ${{ secrets.MAX_AUDIO_SIZE_MB }}
-          MAX_AUDIO_DURATION_SECONDS: ${{ secrets.MAX_AUDIO_DURATION_SECONDS }}
-          USE_S3: ${{ secrets.USE_S3 }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
-          USE_WHISPER: ${{ secrets.USE_WHISPER }}
-          WHISPER_API_KEY: ${{ secrets.WHISPER_API_KEY }}
-          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
-          CORS_ALLOW_CREDENTIALS: ${{ secrets.CORS_ALLOW_CREDENTIALS }}
-          RATE_LIMIT_PER_MINUTE: ${{ secrets.RATE_LIMIT_PER_MINUTE }}
-          RATE_LIMIT_PER_HOUR: ${{ secrets.RATE_LIMIT_PER_HOUR }}
-          LOG_LEVEL: ${{ secrets.LOG_LEVEL }}
-          LOG_FORMAT: ${{ secrets.LOG_FORMAT }}
+      - name: Create .env file
         run: |
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << ENDSSH
+          cat > .env << 'EOF'
+          # Application Settings
+          APP_NAME=${{ secrets.APP_NAME || 'Yral AI Chat API' }}
+          APP_VERSION=${{ secrets.APP_VERSION || '1.0.0' }}
+          ENVIRONMENT=${{ secrets.ENVIRONMENT || 'production' }}
+          DEBUG=${{ secrets.DEBUG || 'False' }}
+          
+          # Database
+          DATABASE_PATH=${{ secrets.DATABASE_PATH || '/app/data/yral_chat.db' }}
+          
+          # JWT Authentication
+          JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}
+          JWT_ALGORITHM=${{ secrets.JWT_ALGORITHM || 'HS256' }}
+          JWT_ISSUER=${{ secrets.JWT_ISSUER || 'yral_auth' }}
+          
+          # Google Gemini API
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL=${{ secrets.GEMINI_MODEL || 'gemini-2.5-flash' }}
+          GEMINI_MAX_TOKENS=${{ secrets.GEMINI_MAX_TOKENS || '2048' }}
+          GEMINI_TEMPERATURE=${{ secrets.GEMINI_TEMPERATURE || '0.7' }}
+          
+          # Media Storage
+          MAX_IMAGE_SIZE_MB=${{ secrets.MAX_IMAGE_SIZE_MB || '10' }}
+          MAX_AUDIO_SIZE_MB=${{ secrets.MAX_AUDIO_SIZE_MB || '20' }}
+          MAX_AUDIO_DURATION_SECONDS=${{ secrets.MAX_AUDIO_DURATION_SECONDS || '300' }}
+          
+          # S3 Configuration
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET=${{ secrets.AWS_S3_BUCKET }}
+          AWS_REGION=${{ secrets.AWS_REGION || 'us-east-1' }}
+          S3_ENDPOINT_URL=${{ secrets.S3_ENDPOINT_URL }}
+          S3_PUBLIC_URL_BASE=${{ secrets.S3_PUBLIC_URL_BASE }}
+          
+          # Whisper API (Optional)
+          USE_WHISPER=${{ secrets.USE_WHISPER || 'false' }}
+          WHISPER_API_KEY=${{ secrets.WHISPER_API_KEY || '' }}
+          
+          # CORS Configuration
+          CORS_ORIGINS=${{ secrets.CORS_ORIGINS || '*' }}
+          CORS_ALLOW_CREDENTIALS=${{ secrets.CORS_ALLOW_CREDENTIALS || 'true' }}
+          
+          # Rate Limiting
+          RATE_LIMIT_PER_MINUTE=${{ secrets.RATE_LIMIT_PER_MINUTE || '60' }}
+          RATE_LIMIT_PER_HOUR=${{ secrets.RATE_LIMIT_PER_HOUR || '1000' }}
+          
+          # Logging
+          LOG_LEVEL=${{ secrets.LOG_LEVEL || 'INFO' }}
+          LOG_FORMAT=${{ secrets.LOG_FORMAT || 'json' }}
+          EOF
+      
+      - name: Copy .env file to server
+        run: |
+          scp .env ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/root/yral-ai-chat/.env
+          rm .env
+      
+      - name: Deploy to server via Docker
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
             set -e
             
             cd /root/yral-ai-chat
             
-            # Pull latest code
             echo "📥 Pulling latest code..."
             git pull origin main
             
-            # Stop systemd service if running (migrating to Docker)
-            echo "🛑 Stopping systemd service (if running)..."
+            echo "🛑 Stopping old services..."
+            # Stop systemd service if running (migration from systemd to Docker)
             systemctl stop yral-ai-chat.service 2>/dev/null || true
             systemctl disable yral-ai-chat.service 2>/dev/null || true
             
-            # Build and deploy with secrets
-            echo "🚀 Building and deploying with Docker..."
-            JWT_SECRET_KEY="$JWT_SECRET_KEY" \
-            GEMINI_API_KEY="$GEMINI_API_KEY" \
-            APP_NAME="${APP_NAME:-Yral AI Chat API}" \
-            APP_VERSION="${APP_VERSION:-1.0.0}" \
-            ENVIRONMENT="${ENVIRONMENT:-production}" \
-            DEBUG="${DEBUG:-False}" \
-            DATABASE_PATH="${DATABASE_PATH:-/app/data/yral_chat.db}" \
-            JWT_ALGORITHM="${JWT_ALGORITHM:-HS256}" \
-            JWT_ISSUER="${JWT_ISSUER:-yral_auth}" \
-            GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}" \
-            GEMINI_MAX_TOKENS="${GEMINI_MAX_TOKENS:-2048}" \
-            GEMINI_TEMPERATURE="${GEMINI_TEMPERATURE:-0.7}" \
-            MEDIA_UPLOAD_DIR="${MEDIA_UPLOAD_DIR:-/app/uploads}" \
-            MEDIA_BASE_URL="${MEDIA_BASE_URL:-http://localhost:8000/media}" \
-            MAX_IMAGE_SIZE_MB="${MAX_IMAGE_SIZE_MB:-10}" \
-            MAX_AUDIO_SIZE_MB="${MAX_AUDIO_SIZE_MB:-20}" \
-            MAX_AUDIO_DURATION_SECONDS="${MAX_AUDIO_DURATION_SECONDS:-300}" \
-            USE_S3="${USE_S3:-false}" \
-            AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}" \
-            AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-}" \
-            AWS_S3_BUCKET="${AWS_S3_BUCKET:-}" \
-            AWS_REGION="${AWS_REGION:-us-east-1}" \
-            S3_ENDPOINT="${S3_ENDPOINT:-}" \
-            USE_WHISPER="${USE_WHISPER:-false}" \
-            WHISPER_API_KEY="${WHISPER_API_KEY:-}" \
-            CORS_ORIGINS="${CORS_ORIGINS:-*}" \
-            CORS_ALLOW_CREDENTIALS="${CORS_ALLOW_CREDENTIALS:-true}" \
-            RATE_LIMIT_PER_MINUTE="${RATE_LIMIT_PER_MINUTE:-60}" \
-            RATE_LIMIT_PER_HOUR="${RATE_LIMIT_PER_HOUR:-1000}" \
-            LOG_LEVEL="${LOG_LEVEL:-INFO}" \
-            LOG_FORMAT="${LOG_FORMAT:-json}" \
-            docker compose up -d --build
+            # Stop existing Docker containers
+            docker compose down || true
             
-            # Wait for service to be ready
+            echo "🏗️  Building Docker image..."
+            docker compose build --no-cache
+            
+            echo "🚀 Starting services..."
+            docker compose up -d
+            
             echo "⏳ Waiting for service to start..."
-            sleep 10
+            sleep 15
             
-            # Run database migrations if needed
-            echo "🗄️  Checking database migrations..."
-            if [ -f "migrations/sqlite/001_init_schema.sql" ]; then
-              # Check if database exists
-              if [ ! -f "data/yral_chat.db" ]; then
-                echo "   Creating database and running migrations..."
-                docker compose exec -T yral-ai-chat python scripts/run_migrations.py || echo "   ⚠️  Migration may have already been applied"
-              else
-                echo "   ✅ Database already exists"
-                echo "   ℹ️  To run migrations on existing database, use: docker compose exec yral-ai-chat python scripts/run_migrations.py"
-              fi
-            else
-              echo "   ⚠️  Migration files not found, skipping"
-            fi
-            echo ""
+            echo "🗄️  Running database migrations..."
+            docker compose exec -T yral-ai-chat python scripts/run_migrations.py || echo "⚠️  Migrations already applied or failed"
             
-            # Health check
-            echo "🏥 Running health check..."
-            max_attempts=10
+            echo "🏥 Running health checks..."
+            max_attempts=15
             attempt=1
             
             while [ $attempt -le $max_attempts ]; do
-              if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
-                echo "✅ Health check passed"
+              if docker compose exec -T yral-ai-chat python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" 2>/dev/null; then
+                echo "✅ Health check passed!"
                 break
               else
                 if [ $attempt -eq $max_attempts ]; then
                   echo "❌ Health check failed after $max_attempts attempts"
-                  docker compose logs --tail=50 yral-ai-chat
+                  echo "📋 Container logs:"
+                  docker compose logs --tail=100 yral-ai-chat
                   exit 1
-                else
-                  echo "   Attempt $attempt/$max_attempts..."
-                  sleep 3
-                  attempt=$((attempt + 1))
                 fi
+                echo "   Attempt $attempt/$max_attempts... retrying in 3s"
+                sleep 3
+                attempt=$((attempt + 1))
               fi
             done
             
+            echo ""
             echo "✅ Deployment complete!"
+            echo "📊 Service status:"
             docker compose ps
-          ENDSSH
+            echo ""
+            echo "📋 Recent logs:"
+            docker compose logs --tail=20 yral-ai-chat
+          EOF
