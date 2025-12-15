@@ -17,12 +17,16 @@ jobs:
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          ssh-private-key: ${{ secrets.HETZNER_BARE_METAL_GITHUB_ACTIONS_SSH_PRIVATE_KEY }}
       
       - name: Add server to known hosts
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: Test SSH Connection
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "echo 'SSH connection test successful'"
       
       - name: Create .env file
         run: |
@@ -79,12 +83,12 @@ jobs:
       
       - name: Copy .env file to server
         run: |
-          scp .env ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/root/yral-ai-chat/.env
+          scp -o StrictHostKeyChecking=no .env ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/root/yral-ai-chat/.env
           rm .env
       
       - name: Deploy to server via Docker
         run: |
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
             set -e
             
             cd /root/yral-ai-chat
