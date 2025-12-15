@@ -31,7 +31,10 @@ ENV/
 .env
 .env.local
 .env.production
+.env.deploy
+.secrets
 !.env.example
+!env.example
 
 # IDE
 .vscode/
