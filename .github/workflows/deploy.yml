@@ -79,6 +79,14 @@ jobs:
           # Logging
           LOG_LEVEL=${{ secrets.LOG_LEVEL || 'INFO' }}
           LOG_FORMAT=${{ secrets.LOG_FORMAT || 'json' }}
+          
+          # Litestream Configuration
+          ENABLE_LITESTREAM=${{ secrets.ENABLE_LITESTREAM || 'true' }}
+          LITESTREAM_ACCESS_KEY_ID=${{ secrets.LITESTREAM_ACCESS_KEY_ID }}
+          LITESTREAM_SECRET_ACCESS_KEY=${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
+          LITESTREAM_BUCKET=${{ secrets.LITESTREAM_BUCKET }}
+          LITESTREAM_ENDPOINT=${{ secrets.LITESTREAM_ENDPOINT }}
+          LITESTREAM_REGION=${{ secrets.LITESTREAM_REGION }}
           EOF
       
       - name: Copy .env file to server
