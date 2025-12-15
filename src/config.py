@@ -2,7 +2,7 @@
 Configuration management for Yral AI Chat API
 """
 from typing import List
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     gemini_max_tokens: int = Field(default=2048, alias="GEMINI_MAX_TOKENS")
     gemini_temperature: float = Field(default=0.7, alias="GEMINI_TEMPERATURE")
     
-    # Media Storage - S3 Only
+    # Media Storage
     max_image_size_mb: int = Field(default=10, alias="MAX_IMAGE_SIZE_MB")
     max_audio_size_mb: int = Field(default=20, alias="MAX_AUDIO_SIZE_MB")
     max_audio_duration_seconds: int = Field(default=300, alias="MAX_AUDIO_DURATION_SECONDS")
@@ -77,9 +77,11 @@ class Settings(BaseSettings):
         """Convert MB to bytes"""
         return self.max_audio_size_mb * 1024 * 1024
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"  # Allow extra fields like Litestream configs that aren't used by the app
+    )
 
 
 # Global settings instance
