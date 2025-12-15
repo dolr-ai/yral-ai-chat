@@ -78,9 +78,9 @@ class InfluencerResponse(BaseModel):
     avatar_url: Optional[str] = None
     description: Optional[str] = None
     category: Optional[str] = None
+    is_active: bool
     created_at: datetime
     conversation_count: Optional[int] = None
-
 
 class ListInfluencersResponse(BaseModel):
     """Response for listing influencers"""

@@ -64,7 +64,7 @@ class MessageRepository:
             WHERE id = $1
         """
         
-        row = await db.fetchone(query, message_id)
+        row = await db.fetchone(query, str(message_id))
         return self._row_to_message(row) if row else None
     
     async def list_by_conversation(
@@ -88,7 +88,7 @@ class MessageRepository:
             LIMIT $2 OFFSET $3
         """
         
-        rows = await db.fetch(query, conversation_id, limit, offset)
+        rows = await db.fetch(query, str(conversation_id), limit, offset)
         return [self._row_to_message(row) for row in rows]
     
     async def get_recent_for_context(
@@ -108,14 +108,14 @@ class MessageRepository:
             LIMIT $2
         """
         
-        rows = await db.fetch(query, conversation_id, limit)
+        rows = await db.fetch(query, str(conversation_id), limit)
         # Reverse to get oldest to newest for AI context
         return [self._row_to_message(row) for row in reversed(rows)]
     
     async def count_by_conversation(self, conversation_id: UUID) -> int:
         """Count messages in a conversation"""
         query = "SELECT COUNT(*) FROM messages WHERE conversation_id = $1"
-        return await db.fetchval(query, conversation_id)
+        return await db.fetchval(query, str(conversation_id))
     
     async def count_all(self) -> int:
         """Count all messages"""

@@ -31,19 +31,18 @@ class Settings(BaseSettings):
     gemini_max_tokens: int = Field(default=2048, alias="GEMINI_MAX_TOKENS")
     gemini_temperature: float = Field(default=0.7, alias="GEMINI_TEMPERATURE")
     
-    # Media Storage
-    media_upload_dir: str = Field(default="/root/yral-ai-chat/uploads", alias="MEDIA_UPLOAD_DIR")
-    media_base_url: str = Field(default="http://localhost:8000/media", alias="MEDIA_BASE_URL")
+    # Media Storage - S3 Only
     max_image_size_mb: int = Field(default=10, alias="MAX_IMAGE_SIZE_MB")
     max_audio_size_mb: int = Field(default=20, alias="MAX_AUDIO_SIZE_MB")
     max_audio_duration_seconds: int = Field(default=300, alias="MAX_AUDIO_DURATION_SECONDS")
     
-    # Optional: AWS S3
-    use_s3: bool = Field(default=False, alias="USE_S3")
-    aws_access_key_id: str = Field(default="", alias="AWS_ACCESS_KEY_ID")
-    aws_secret_access_key: str = Field(default="", alias="AWS_SECRET_ACCESS_KEY")
-    aws_s3_bucket: str = Field(default="", alias="AWS_S3_BUCKET")
-    aws_region: str = Field(default="us-east-1", alias="AWS_REGION")
+    # S3 Storage (Required)
+    aws_access_key_id: str = Field(..., alias="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(..., alias="AWS_SECRET_ACCESS_KEY")
+    aws_s3_bucket: str = Field(..., alias="AWS_S3_BUCKET")
+    aws_region: str = Field(..., alias="AWS_REGION")
+    s3_endpoint_url: str = Field(..., alias="S3_ENDPOINT_URL")
+    s3_public_url_base: str = Field(..., alias="S3_PUBLIC_URL_BASE")
     
     # Optional: Whisper API
     use_whisper: bool = Field(default=False, alias="USE_WHISPER")

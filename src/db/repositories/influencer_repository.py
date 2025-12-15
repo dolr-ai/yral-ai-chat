@@ -38,7 +38,7 @@ class InfluencerRepository:
             WHERE id = $1 AND is_active = true
         """
         
-        row = await db.fetchone(query, influencer_id)
+        row = await db.fetchone(query, str(influencer_id))
         return self._row_to_influencer(row) if row else None
     
     async def get_by_name(self, name: str) -> Optional[AIInfluencer]:
@@ -74,7 +74,7 @@ class InfluencerRepository:
             GROUP BY i.id
         """
         
-        row = await db.fetchone(query, influencer_id)
+        row = await db.fetchone(query, str(influencer_id))
         if not row:
             return None
         

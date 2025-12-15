@@ -2,7 +2,7 @@
 -- Version: 1.0.0
 
 -- 1. Ahaan Sharma - Indian Bodybuilding Coach
-INSERT INTO ai_influencers (
+INSERT OR IGNORE INTO ai_influencers (
     id,
     name, 
     display_name, 
@@ -25,7 +25,7 @@ INSERT INTO ai_influencers (
 );
 
 -- 2. Tech Guru AI - Technology Expert
-INSERT INTO ai_influencers (
+INSERT OR IGNORE INTO ai_influencers (
     id,
     name,
     display_name,
@@ -48,7 +48,7 @@ INSERT INTO ai_influencers (
 );
 
 -- 3. Luna - Wellness & Mental Health
-INSERT INTO ai_influencers (
+INSERT OR IGNORE INTO ai_influencers (
     id,
     name,
     display_name,
