@@ -77,7 +77,7 @@ INSERT OR IGNORE INTO ai_influencers (
 );
 
 -- 4. Chef Marco - Culinary Expert
-INSERT INTO ai_influencers (
+INSERT OR IGNORE INTO ai_influencers (
     id,
     name,
     display_name,
@@ -102,7 +102,7 @@ INSERT INTO ai_influencers (
 );
 
 -- 5. Nova - Creative Arts & Design
-INSERT INTO ai_influencers (
+INSERT OR IGNORE INTO ai_influencers (
     id,
     name,
     display_name,

@@ -1,25 +1,28 @@
 """
 Google Gemini AI Client
 """
-import google.generativeai as genai
+import time
 from typing import Any
+
+import google.generativeai as genai
 import httpx
 from loguru import logger
+
 from src.config import settings
-from src.models.entities import Message, MessageRole, MessageType
 from src.core.exceptions import AIServiceException, TranscriptionException
+from src.models.entities import Message, MessageRole, MessageType
 
 
 class GeminiClient:
     """Google Gemini AI client wrapper"""
-    
+
     def __init__(self):
         """Initialize Gemini client"""
         genai.configure(api_key=settings.gemini_api_key)
         self.model = genai.GenerativeModel(settings.gemini_model)
         self.http_client = httpx.AsyncClient(timeout=30.0)
         logger.info(f"Gemini client initialized with model: {settings.gemini_model}")
-    
+
     async def generate_response(
         self,
         user_message: str,
@@ -41,86 +44,117 @@ class GeminiClient:
         """
         try:
             # Build conversation context
-            contents = []
-            
-            # Add system instructions as first message
-            contents.append({
-                "role": "user",
-                "parts": [{"text": f"""System Instructions: {system_instructions}. Lastly, always answer in the same language as the user's message."""}]
-            })
-            contents.append({
-                "role": "model",
-                "parts": [{"text": "Understood. I will follow these instructions."}]
-            })
+            contents = self._build_system_instructions(system_instructions)
             
             # Add conversation history
             if conversation_history:
-                for msg in conversation_history[-10:]:  # Last 10 messages for context
-                    role = "user" if msg.role == MessageRole.USER else "model"
-                    
-                    parts = []
-                    
-                    # Add text content
-                    if msg.content:
-                        parts.append({"text": msg.content})
-                    
-                    # Add images from history if available
-                    if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
-                        for url in msg.media_urls[:3]:  # Max 3 images from history
-                            try:
-                                image_data = await self._download_image(url)
-                                parts.append({"inline_data": image_data})
-                            except Exception as e:
-                                logger.warning(f"Failed to load image from history: {e}")
-                    
-                    if parts:
-                        contents.append({"role": role, "parts": parts})
+                history_contents = await self._build_history_contents(conversation_history)
+                contents.extend(history_contents)
             
-            # Add current user message with optional images
-            current_parts = []
-            
-            if user_message:
-                current_parts.append({"text": user_message})
-            
-            # Add current images
-            if media_urls:
-                for url in media_urls[:5]:  # Max 5 images in current message
-                    try:
-                        image_data = await self._download_image(url)
-                        current_parts.append({"inline_data": image_data})
-                    except Exception as e:
-                        logger.error(f"Failed to download image {url}: {e}")
-                        raise AIServiceException(f"Failed to process image: {e}")
-            
-            contents.append({"role": "user", "parts": current_parts})
-            
+            # Add current message
+            current_message = await self._build_current_message(user_message, media_urls)
+            contents.append(current_message)
+
             # Generate response
-            logger.info(f"Generating Gemini response with {len(contents)} messages")
-            
-            generation_config = genai.types.GenerationConfig(
-                max_output_tokens=settings.gemini_max_tokens,
-                temperature=settings.gemini_temperature
-            )
-            
-            response = self.model.generate_content(
-                contents,
-                generation_config=generation_config
-            )
-            
-            # Extract response text
-            response_text = response.text
-            
-            # Estimate token count (rough estimate)
-            token_count = len(response_text.split()) * 1.3  # Approximate
-            
-            logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens")
+            response_text, token_count = await self._generate_content(contents)
             
             return response_text, int(token_count)
-            
+
+        except AIServiceException:
+            raise
         except Exception as e:
             logger.error(f"Gemini API error: {e}")
-            raise AIServiceException(f"Failed to generate AI response: {str(e)}")
-    
+            raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
+
+    def _build_system_instructions(self, system_instructions: str) -> list[dict]:
+        """Build system instruction messages"""
+        return [
+            {
+                "role": "user",
+                "parts": [{"text": f"""System Instructions: {system_instructions}. Lastly, always answer in the same language as the user's message."""}]
+            },
+            {
+                "role": "model",
+                "parts": [{"text": "Understood. I will follow these instructions."}]
+            }
+        ]
+
+    async def _build_history_contents(self, conversation_history: list[Message]) -> list[dict]:
+        """Build conversation history contents"""
+        contents = []
+        
+        for msg in conversation_history[-10:]:  # Last 10 messages for context
+            role = "user" if msg.role == MessageRole.USER else "model"
+            parts = []
+
+            # Add text content
+            if msg.content:
+                parts.append({"text": msg.content})
+
+            # Add images from history if available
+            if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
+                await self._add_images_to_parts(msg.media_urls[:3], parts, warn_on_error=True)
+
+            if parts:
+                contents.append({"role": role, "parts": parts})
+        
+        return contents
+
+    async def _build_current_message(self, user_message: str, media_urls: list[str] | None) -> dict:
+        """Build current user message with optional images"""
+        current_parts = []
+
+        if user_message:
+            current_parts.append({"text": user_message})
+
+        # Add current images
+        if media_urls:
+            await self._add_images_to_parts(media_urls[:5], current_parts, warn_on_error=False)
+
+        return {"role": "user", "parts": current_parts}
+
+    async def _add_images_to_parts(
+        self,
+        image_urls: list[str],
+        parts: list[dict],
+        warn_on_error: bool = False
+    ) -> None:
+        """Add images to message parts"""
+        for url in image_urls:
+            try:
+                image_data = await self._download_image(url)
+                parts.append({"inline_data": image_data})
+            except Exception as e:
+                if warn_on_error:
+                    logger.warning(f"Failed to load image from history: {e}")
+                else:
+                    logger.error(f"Failed to download image {url}: {e}")
+                    raise AIServiceException(f"Failed to process image: {e}") from e
+
+    async def _generate_content(self, contents: list[dict]) -> tuple[str, float]:
+        """Generate content using Gemini API"""
+        logger.info(f"Generating Gemini response with {len(contents)} messages")
+
+        generation_config = genai.types.GenerationConfig(
+            max_output_tokens=settings.gemini_max_tokens,
+            temperature=settings.gemini_temperature
+        )
+
+        response = self.model.generate_content(
+            contents,
+            generation_config=generation_config
+        )
+
+        # Extract response text
+        response_text = response.text
+
+        # Estimate token count (rough estimate)
+        token_count = len(response_text.split()) * 1.3  # Approximate
+
+        logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens")
+
+        return response_text, token_count
+
     async def transcribe_audio(self, audio_url: str) -> str:
         """
         Transcribe audio file using Gemini
@@ -133,83 +167,81 @@ class GeminiClient:
         """
         try:
             logger.info(f"Transcribing audio from {audio_url}")
-            
+
             # Download audio file
             audio_data = await self._download_audio(audio_url)
-            
+
             # Use Gemini to transcribe
             prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
-            
+
             response = self.model.generate_content([
                 prompt,
                 {"inline_data": audio_data}
             ])
-            
+
             transcription = response.text.strip()
             logger.info(f"Audio transcribed: {len(transcription)} characters")
-            
-            return transcription
-            
         except Exception as e:
             logger.error(f"Audio transcription error: {e}")
-            raise TranscriptionException(f"Failed to transcribe audio: {str(e)}")
-    
+            raise TranscriptionException(f"Failed to transcribe audio: {e!s}") from e
+        else:
+            return transcription
+
     async def _download_image(self, url: str) -> dict[str, Any]:
         """Download and encode image for Gemini"""
         try:
             response = await self.http_client.get(url)
             response.raise_for_status()
-            
+
             image_data = response.content
-            mime_type = response.headers.get('content-type', 'image/jpeg')
-            
+            mime_type = response.headers.get("content-type", "image/jpeg")
+        except Exception as e:
+            logger.error(f"Failed to download image {url}: {e}")
+            raise
+        else:
             return {
                 "mime_type": mime_type,
                 "data": image_data
             }
-        except Exception as e:
-            logger.error(f"Failed to download image {url}: {e}")
-            raise
-    
+
     async def _download_audio(self, url: str) -> dict[str, Any]:
         """Download and encode audio for Gemini"""
         try:
             response = await self.http_client.get(url)
             response.raise_for_status()
-            
+
             audio_data = response.content
-            mime_type = response.headers.get('content-type', 'audio/mpeg')
-            
+            mime_type = response.headers.get("content-type", "audio/mpeg")
+        except Exception as e:
+            logger.error(f"Failed to download audio {url}: {e}")
+            raise
+        else:
             return {
                 "mime_type": mime_type,
                 "data": audio_data
             }
-        except Exception as e:
-            logger.error(f"Failed to download audio {url}: {e}")
-            raise
-    
+
     async def health_check(self) -> dict:
         """Check Gemini API health"""
         try:
-            import time
             start = time.time()
-            
+
             # Simple test request
             self.model.generate_content("Hi")
-            
+
             latency_ms = int((time.time() - start) * 1000)
-            
-            return {
-                "status": "up",
-                "latency_ms": latency_ms
-            }
         except Exception as e:
             logger.error(f"Gemini health check failed: {e}")
             return {
                 "status": "down",
                 "error": str(e)
             }
-    
+        else:
+            return {
+                "status": "up",
+                "latency_ms": latency_ms
+            }
+
     async def close(self):
         """Close HTTP client"""
         await self.http_client.aclose()

@@ -58,9 +58,9 @@ def clean_conversation_id(client, test_influencer_id):
     )
     assert response.status_code == 201
     conversation_id = response.json()["id"]
-    
+
     yield conversation_id
-    
+
     # Cleanup: Delete the conversation
     try:
         client.delete(f"/api/v1/chat/conversations/{conversation_id}")

@@ -1,15 +1,16 @@
 """
 Repository for AI Influencer operations
 """
-from uuid import UUID
 import json
+from uuid import UUID
+
 from src.db.base import db
 from src.models.entities import AIInfluencer
 
 
 class InfluencerRepository:
     """Repository for AI influencer database operations"""
-    
+
     async def list_all(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
         """List all active influencers"""
         query = """
@@ -22,10 +23,10 @@ class InfluencerRepository:
             ORDER BY created_at DESC
             LIMIT $1 OFFSET $2
         """
-        
+
         rows = await db.fetch(query, limit, offset)
         return [self._row_to_influencer(row) for row in rows]
-    
+
     async def get_by_id(self, influencer_id: UUID) -> AIInfluencer | None:
         """Get influencer by ID"""
         query = """
@@ -36,10 +37,10 @@ class InfluencerRepository:
             FROM ai_influencers
             WHERE id = $1 AND is_active = true
         """
-        
+
         row = await db.fetchone(query, str(influencer_id))
         return self._row_to_influencer(row) if row else None
-    
+
     async def get_by_name(self, name: str) -> AIInfluencer | None:
         """Get influencer by name"""
         query = """
@@ -50,15 +51,15 @@ class InfluencerRepository:
             FROM ai_influencers
             WHERE name = $1 AND is_active = true
         """
-        
+
         row = await db.fetchone(query, name)
         return self._row_to_influencer(row) if row else None
-    
+
     async def count_all(self) -> int:
         """Count all active influencers"""
         query = "SELECT COUNT(*) FROM ai_influencers WHERE is_active = true"
         return await db.fetchval(query)
-    
+
     async def get_with_conversation_count(self, influencer_id: UUID) -> AIInfluencer | None:
         """Get influencer with conversation count"""
         query = """
@@ -72,40 +73,40 @@ class InfluencerRepository:
             WHERE i.id = $1 AND i.is_active = true
             GROUP BY i.id
         """
-        
+
         row = await db.fetchone(query, str(influencer_id))
         if not row:
             return None
-        
+
         influencer = self._row_to_influencer(row)
-        influencer.conversation_count = row['conversation_count']
+        influencer.conversation_count = row["conversation_count"]
         return influencer
-    
+
     def _row_to_influencer(self, row) -> AIInfluencer:
         """Convert database row to AIInfluencer model"""
-        
+
         # Parse JSONB fields if they're strings
-        personality_traits = row['personality_traits']
+        personality_traits = row["personality_traits"]
         if isinstance(personality_traits, str):
             personality_traits = json.loads(personality_traits)
-        
-        metadata = row['metadata']
+
+        metadata = row["metadata"]
         if isinstance(metadata, str):
             metadata = json.loads(metadata)
-        
+
         return AIInfluencer(
-            id=row['id'],
-            name=row['name'],
-            display_name=row['display_name'],
-            avatar_url=row['avatar_url'],
-            description=row['description'],
-            category=row['category'],
-            system_instructions=row['system_instructions'],
+            id=row["id"],
+            name=row["name"],
+            display_name=row["display_name"],
+            avatar_url=row["avatar_url"],
+            description=row["description"],
+            category=row["category"],
+            system_instructions=row["system_instructions"],
             personality_traits=personality_traits,
-            initial_greeting=row.get('initial_greeting'),
-            is_active=row['is_active'],
-            created_at=row['created_at'],
-            updated_at=row['updated_at'],
+            initial_greeting=row.get("initial_greeting"),
+            is_active=row["is_active"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
             metadata=metadata
         )
 

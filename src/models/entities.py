@@ -1,11 +1,12 @@
 """
 Domain entity models
 """
-from enum import Enum
 from datetime import datetime
+from enum import Enum
 from typing import Any
-from pydantic import BaseModel, Field
 from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MessageType(str, Enum):
@@ -24,6 +25,8 @@ class MessageRole(str, Enum):
 
 class AIInfluencer(BaseModel):
     """AI Influencer entity"""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: UUID
     name: str
     display_name: str
@@ -37,34 +40,32 @@ class AIInfluencer(BaseModel):
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
-    
+
     # Optional field for conversation count
     conversation_count: int | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class Conversation(BaseModel):
     """Conversation entity"""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: UUID
     user_id: str
     influencer_id: UUID
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
-    
+
     # Optional nested fields
     influencer: AIInfluencer | None = None
     message_count: int | None = None
     last_message: dict[str, Any] | None = None
 
-    class Config:
-        from_attributes = True
-
 
 class Message(BaseModel):
     """Message entity"""
+    model_config = ConfigDict(from_attributes=True)
+    
     id: UUID
     conversation_id: UUID
     role: MessageRole
@@ -76,8 +77,5 @@ class Message(BaseModel):
     token_count: int | None = None
     created_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
-
-    class Config:
-        from_attributes = True
 
 
