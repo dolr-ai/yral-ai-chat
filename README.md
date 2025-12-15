@@ -91,6 +91,37 @@ yral-ai-chat/
 ai_influencers (1) ──< (N) conversations (1) ──< (N) messages
 ```
 
+## API Documentation
+
+### Interactive Documentation
+
+When the server is running, access the interactive API documentation:
+
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+
+### OpenAPI Specification
+
+The complete OpenAPI specification is available in:
+- `docs/api/openapi.yaml` (YAML format)
+- `docs/api/openapi.json` (JSON format)
+
+**Regenerate OpenAPI spec after API changes:**
+```bash
+python scripts/export_openapi_spec.py
+```
+
+This updates both YAML and JSON files with the latest API schema, including operation IDs, request/response models, and examples.
+
+### Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+- **[API Documentation](docs/api/)** - OpenAPI specs and guides
+- **[System Architecture](docs/architecture/system-design.md)** - High-level design
+- **[Database Schema](docs/architecture/database.md)** - Database structure
+- **[Development Guide](docs/development/development-guide.md)** - Development workflow
+- **[Testing Guide](docs/development/testing-guide.md)** - Testing strategies
+
 ## API Endpoints
 
 ### Authentication
@@ -327,18 +358,18 @@ sudo ./scripts/setup_nginx.sh
 
 **Manual Setup:**
 1. Copy nginx config: `sudo cp nginx/yral-ai-chat.conf /etc/nginx/sites-available/yral-ai-chat.conf`
-2. Edit the config and replace `your-domain.com` with your actual domain
+2. Edit the config and replace `chat.yral.com` with your actual domain
 3. Enable the site: `sudo ln -s /etc/nginx/sites-available/yral-ai-chat.conf /etc/nginx/sites-enabled/`
 4. Test config: `sudo nginx -t`
 5. Restart nginx: `sudo systemctl restart nginx`
-6. Set up SSL: `sudo certbot --nginx -d your-domain.com -d www.your-domain.com`
+6. Set up SSL: `sudo certbot --nginx -d chat.yral.com -d www.chat.yral.com`
 
 See `nginx/README.md` for detailed instructions and troubleshooting.
 
 **After setup, update your `.env` file:**
 ```
-CORS_ORIGINS=https://your-domain.com,https://www.your-domain.com
-MEDIA_BASE_URL=https://your-domain.com/media
+CORS_ORIGINS=https://chat.yral.com,https://www.chat.yral.com
+MEDIA_BASE_URL=https://chat.yral.com/media
 ```
 
 ### Docker Deployment
@@ -373,8 +404,8 @@ The application can be deployed using Docker and Docker Compose. This is the rec
    ```bash
    JWT_SECRET_KEY="secret1" \
    GEMINI_API_KEY="secret2" \
-   CORS_ORIGINS="https://your-domain.com" \
-   MEDIA_BASE_URL="https://your-domain.com/media" \
+   CORS_ORIGINS="https://chat.yral.com" \
+   MEDIA_BASE_URL="https://chat.yral.com/media" \
    docker-compose up -d --build
    ```
 

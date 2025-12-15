@@ -57,8 +57,8 @@ CONFIG_FILE="/etc/nginx/sites-available/yral-ai-chat.conf"
 cp /root/yral-ai-chat/nginx/yral-ai-chat.conf "$CONFIG_FILE"
 
 # Replace domain name in config
-sed -i "s/your-domain.com/$DOMAIN_NAME/g" "$CONFIG_FILE"
-sed -i "s/www.your-domain.com/www.$DOMAIN_NAME/g" "$CONFIG_FILE"
+sed -i "s/chat.yral.com/$DOMAIN_NAME/g" "$CONFIG_FILE"
+sed -i "s/www.chat.yral.com/www.$DOMAIN_NAME/g" "$CONFIG_FILE"
 
 # Create symlink
 if [ -f "/etc/nginx/sites-enabled/yral-ai-chat.conf" ]; then

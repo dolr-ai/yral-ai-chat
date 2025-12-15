@@ -1,0 +1,217 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yral-ai-chat"
+version = "1.0.0"
+description = "AI Chat API for Yral with multimodal support"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+authors = [
+    {name = "Yral Team"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+]
+
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "pydantic==2.5.2",
+    "aiosqlite==0.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==7.4.3",
+    "pytest-asyncio==0.21.1",
+    "pytest-cov==4.1.0",
+    "black==24.1.1",
+    "ruff==0.1.14",
+    "mypy==1.8.0",
+    "pre-commit==3.6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yral/yral-ai-chat"
+Documentation = "https://github.com/yral/yral-ai-chat/blob/main/docs"
+Repository = "https://github.com/yral/yral-ai-chat"
+
+# Black configuration
+[tool.black]
+line-length = 100
+target-version = ['py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # Directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | migrations
+)/
+'''
+
+# isort configuration
+[tool.isort]
+profile = "black"
+line_length = 100
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+skip_glob = ["*/migrations/*", "venv/*", ".venv/*"]
+
+# Ruff configuration
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "migrations",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "C",   # flake8-comprehensions
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+    "S",   # bandit (security)
+    "A",   # flake8-builtins
+    "COM", # flake8-commas
+    "DTZ", # flake8-datetimez
+    "EM",  # flake8-errmsg
+    "G",   # flake8-logging-format
+    "PIE", # flake8-pie
+    "T20", # flake8-print
+    "PT",  # flake8-pytest-style
+    "Q",   # flake8-quotes
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+    "TID", # flake8-tidy-imports
+    "TCH", # flake8-type-checking
+    "ARG", # flake8-unused-arguments
+    "PTH", # flake8-use-pathlib
+    "ERA", # eradicate
+    "PL",  # pylint
+    "TRY", # tryceratops
+    "RUF", # ruff-specific rules
+]
+
+ignore = [
+    "S101",    # Use of assert detected (needed for tests)
+    "TRY003",  # Avoid specifying long messages outside exception class
+    "EM101",   # Exception must not use string literal
+    "EM102",   # Exception must not use f-string literal
+    "G004",    # Logging statement uses f-string
+    "PLR0913", # Too many arguments to function call
+    "S104",    # Possible binding to all interfaces
+    "DTZ005",  # datetime.now() without tzinfo
+    "COM812",  # Missing trailing comma (conflicts with formatter)
+    "PLR2004", # Magic value used in comparison (common in tests)
+    "W293",    # Blank line contains whitespace
+    "PT003",   # Pytest scope is implied
+    "ARG001",  # Unused function argument (pytest fixtures)
+    "ARG002",  # Unused method argument
+    "TRY300",  # Consider moving to else block
+    "B904",    # Use raise from for exception chaining
+    "PLC0415", # Import should be at top-level (intentional for circular import avoidance)
+    "SIM105",  # Use contextlib.suppress
+    "S110",    # try-except-pass detected
+    "C901",    # Function is too complex (can address in refactoring)
+    "RUF013",  # PEP 484 prohibits implicit Optional
+    "E501",    # Line too long (black handles this)
+]
+
+# Mypy configuration
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # Can enable gradually
+ignore_missing_imports = true
+exclude = [
+    "venv/",
+    ".venv/",
+    "migrations/",
+]
+
+# Pytest configuration
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+# Coverage configuration
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/venv/*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]

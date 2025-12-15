@@ -1,11 +1,12 @@
 """
 Domain entity models
 """
-from enum import Enum
 from datetime import datetime
+from enum import Enum
 from typing import Any
-from pydantic import BaseModel, Field
 from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 
 class MessageType(str, Enum):
@@ -37,7 +38,7 @@ class AIInfluencer(BaseModel):
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
-    
+
     # Optional field for conversation count
     conversation_count: int | None = None
 
@@ -53,7 +54,7 @@ class Conversation(BaseModel):
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
-    
+
     # Optional nested fields
     influencer: AIInfluencer | None = None
     message_count: int | None = None

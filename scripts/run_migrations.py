@@ -3,9 +3,9 @@
 Database migration runner for SQLite
 Runs migration SQL files in order
 """
+import os
 import sqlite3
 import sys
-import os
 from pathlib import Path
 
 # Get paths - works both in Docker and locally
@@ -27,46 +27,46 @@ def run_migrations():
     """Run all migration files in order"""
     # Ensure data directory exists
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Connect to database
     conn = sqlite3.connect(str(DB_PATH))
-    
+
     try:
         # Enable foreign keys
         conn.execute("PRAGMA foreign_keys = ON")
-        
+
         # Get list of migration files
         migration_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
-        
+
         if not migration_files:
             print(f"⚠️  No migration files found in {MIGRATIONS_DIR}")
             return
-        
+
         print(f"📦 Found {len(migration_files)} migration file(s)")
-        
+
         for migration_file in migration_files:
             print(f"\n🔄 Running {migration_file.name}...")
-            
-            with open(migration_file, 'r', encoding='utf-8') as f:
+
+            with open(migration_file, encoding="utf-8") as f:
                 sql = f.read()
-            
+
             # Execute migration
             conn.executescript(sql)
             conn.commit()
-            
+
             print(f"   ✅ {migration_file.name} completed")
-        
+
         # Enable WAL mode for better concurrency
         conn.execute("PRAGMA journal_mode = WAL")
         conn.commit()
-        
+
         print("\n✅ All migrations completed successfully")
-        
+
         # Show database info
         cursor = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
         table_count = cursor.fetchone()[0]
         print(f"📊 Database has {table_count} table(s)")
-        
+
     except Exception as e:
         print(f"❌ Migration failed: {e}")
         conn.rollback()
@@ -82,6 +82,6 @@ if __name__ == "__main__":
     print(f"Database: {DB_PATH}")
     print(f"Migrations: {MIGRATIONS_DIR}")
     print()
-    
+
     run_migrations()
 

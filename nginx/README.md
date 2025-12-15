@@ -30,13 +30,13 @@ sudo apt-get install certbot python3-certbot-nginx -y
 sudo cp nginx/yral-ai-chat.conf /etc/nginx/sites-available/yral-ai-chat.conf
 ```
 
-2. Edit the configuration file to replace `your-domain.com` with your actual domain:
+2. Edit the configuration file to replace `chat.yral.com` with your actual domain:
 ```bash
 sudo nano /etc/nginx/sites-available/yral-ai-chat.conf
 ```
 
 Replace all instances of:
-- `your-domain.com` with your actual domain (e.g., `api.yral.com`)
+- `chat.yral.com` with your actual domain (e.g., `api.yral.com`)
 - Update SSL certificate paths if using a different certificate provider
 
 3. Create a symlink to enable the site:
@@ -54,7 +54,7 @@ sudo rm /etc/nginx/sites-enabled/default
 Run certbot to automatically obtain and configure SSL certificates:
 
 ```bash
-sudo certbot --nginx -d your-domain.com -d www.your-domain.com
+sudo certbot --nginx -d chat.yral.com -d www.chat.yral.com
 ```
 
 Certbot will:
@@ -90,7 +90,7 @@ sudo systemctl status nginx
 
 2. Test HTTPS access:
 ```bash
-curl https://your-domain.com/health
+curl https://chat.yral.com/health
 ```
 
 3. Check nginx logs if there are issues:
@@ -140,8 +140,8 @@ If you're not using Let's Encrypt, you can manually configure SSL certificates:
 
 ### SSL certificate errors
 - Verify certificate paths are correct
-- Check certificate permissions: `sudo ls -la /etc/letsencrypt/live/your-domain.com/`
-- Ensure certificate is valid: `sudo openssl x509 -in /etc/letsencrypt/live/your-domain.com/fullchain.pem -text -noout`
+- Check certificate permissions: `sudo ls -la /etc/letsencrypt/live/chat.yral.com/`
+- Ensure certificate is valid: `sudo openssl x509 -in /etc/letsencrypt/live/chat.yral.com/fullchain.pem -text -noout`
 
 ### 502 Bad Gateway
 - Ensure FastAPI app is running on port 8000: `curl http://localhost:8000/health`
@@ -157,12 +157,12 @@ If you're not using Let's Encrypt, you can manually configure SSL certificates:
 
 1. **Update CORS settings**: Update `CORS_ORIGINS` in your `.env` file to include your domain:
    ```
-   CORS_ORIGINS=https://your-domain.com,https://www.your-domain.com
+   CORS_ORIGINS=https://chat.yral.com,https://www.chat.yral.com
    ```
 
 2. **Update MEDIA_BASE_URL**: Update the media base URL in your `.env` file:
    ```
-   MEDIA_BASE_URL=https://your-domain.com/media
+   MEDIA_BASE_URL=https://chat.yral.com/media
    ```
 
 3. **Run FastAPI with multiple workers**:

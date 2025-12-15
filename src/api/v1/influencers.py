@@ -1,18 +1,33 @@
 """
 AI Influencer endpoints
 """
-from fastapi import APIRouter, Query
 from uuid import UUID
+
+from fastapi import APIRouter, Query
+
+from src.core.dependencies import InfluencerServiceDep
 from src.models.responses import InfluencerResponse, ListInfluencersResponse
-from src.services.influencer_service import influencer_service
 
 router = APIRouter(prefix="/api/v1/influencers", tags=["Influencers"])
 
 
-@router.get("", response_model=ListInfluencersResponse)
+@router.get(
+    "",
+    response_model=ListInfluencersResponse,
+    operation_id="listInfluencers",
+    summary="List AI influencers",
+    description="Retrieve paginated list of available AI influencers. No authentication required.",
+    responses={
+        200: {"description": "List of influencers retrieved successfully"},
+        422: {"description": "Validation error - Invalid query parameters"},
+        429: {"description": "Rate limit exceeded"},
+        500: {"description": "Internal server error"}
+    }
+)
 async def list_influencers(
-    limit: int = Query(default=50, ge=1, le=100),
-    offset: int = Query(default=0, ge=0)
+    limit: int = Query(default=50, ge=1, le=100, description="Number of influencers to return"),
+    offset: int = Query(default=0, ge=0, description="Number of influencers to skip"),
+    influencer_service: InfluencerServiceDep = None
 ):
     """
     List all active AI influencers
@@ -23,7 +38,7 @@ async def list_influencers(
         limit=limit,
         offset=offset
     )
-    
+
     # Convert to response models
     influencer_responses = [
         InfluencerResponse(
@@ -38,7 +53,7 @@ async def list_influencers(
         )
         for inf in influencers
     ]
-    
+
     return ListInfluencersResponse(
         influencers=influencer_responses,
         total=total,
@@ -47,15 +62,31 @@ async def list_influencers(
     )
 
 
-@router.get("/{influencer_id}", response_model=InfluencerResponse)
-async def get_influencer(influencer_id: UUID):
+@router.get(
+    "/{influencer_id}",
+    response_model=InfluencerResponse,
+    operation_id="getInfluencer",
+    summary="Get influencer details",
+    description="Retrieve detailed information about a specific AI influencer. No authentication required.",
+    responses={
+        200: {"description": "Influencer details retrieved successfully"},
+        404: {"description": "Influencer not found"},
+        422: {"description": "Validation error - Invalid influencer ID format"},
+        429: {"description": "Rate limit exceeded"},
+        500: {"description": "Internal server error"}
+    }
+)
+async def get_influencer(
+    influencer_id: UUID,
+    influencer_service: InfluencerServiceDep = None
+):
     """
     Get specific AI influencer details
     
     No authentication required
     """
     influencer = await influencer_service.get_influencer(influencer_id)
-    
+
     return InfluencerResponse(
         id=influencer.id,
         name=influencer.name,
