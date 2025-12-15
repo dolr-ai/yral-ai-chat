@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for Yral AI Chat API
+# Multi-stage Dockerfile for Yral AI Chat API with Litestream
 
 # Stage 1: Build dependencies
 FROM python:3.12-slim as builder
@@ -22,11 +22,18 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install runtime system dependencies
+# Install runtime system dependencies + wget for Litestream
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 \
     libsqlite3-0 \
+    wget \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Litestream
+ARG LITESTREAM_VERSION=v0.3.13
+RUN wget -qO- https://github.com/benbjohnson/litestream/releases/download/${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-arm64.tar.gz | \
+    tar xvz -C /usr/local/bin
 
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /root/.local
@@ -38,6 +45,11 @@ ENV PATH=/root/.local/bin:$PATH
 COPY src/ ./src/
 COPY migrations/ ./migrations/
 COPY scripts/run_migrations.py ./scripts/run_migrations.py
+
+# Copy Litestream config and entrypoint
+COPY config/litestream.yml /etc/litestream.yml
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create necessary directories
 RUN mkdir -p /app/data /app/uploads /app/logs
@@ -52,6 +64,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-# Run the application
+# Use entrypoint script to start both Litestream and the app
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
-

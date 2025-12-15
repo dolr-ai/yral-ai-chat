@@ -1,0 +1,20 @@
+# Litestream Configuration for SQLite Replication
+# This file is used inside the Docker container
+
+dbs:
+  - path: /app/data/yral_chat.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: yral-ai-chat/yral_chat.db
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        # Sync settings
+        sync-interval: 10s
+        # Retention settings
+        retention: 24h
+        retention-check-interval: 1h
+        # Snapshot settings
+        snapshot-interval: 1h

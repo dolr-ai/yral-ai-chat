@@ -53,9 +53,10 @@ Dockerfile*
 docker-compose*.yml
 .dockerignore
 
-# Scripts (exclude most, but keep migration runner)
+# Scripts (exclude most, but keep migration runner and docker entrypoint)
 scripts/
 !scripts/run_migrations.py
+!scripts/docker-entrypoint.sh
 !migrations/
 
 # Other
