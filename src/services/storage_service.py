@@ -1,6 +1,7 @@
 """
 S3 storage service for media uploads
 """
+import asyncio
 from pathlib import Path
 from uuid import uuid4
 
@@ -16,17 +17,28 @@ class StorageService:
     """Service for handling file uploads to S3"""
 
     def __init__(self):
-        """Initialize S3 storage service"""
-        self.s3_client = boto3.client(
-            "s3",
-            aws_access_key_id=settings.aws_access_key_id,
-            aws_secret_access_key=settings.aws_secret_access_key,
-            endpoint_url=settings.s3_endpoint_url,
-            region_name=settings.aws_region,
-            config=Config(signature_version="s3v4")
-        )
+        """Initialize S3 storage service (lazy initialization)"""
+        self._s3_client = None
         self.bucket = settings.aws_s3_bucket
-        logger.info(f"S3 Storage service initialized: bucket={self.bucket}, endpoint={settings.s3_endpoint_url}")
+
+    @property
+    def s3_client(self):
+        """Lazy initialization of S3 client to avoid startup failures"""
+        if self._s3_client is None:
+            try:
+                self._s3_client = boto3.client(
+                    "s3",
+                    aws_access_key_id=settings.aws_access_key_id,
+                    aws_secret_access_key=settings.aws_secret_access_key,
+                    endpoint_url=settings.s3_endpoint_url,
+                    region_name=settings.aws_region,
+                    config=Config(signature_version="s3v4")
+                )
+                logger.info(f"S3 Storage service initialized: bucket={self.bucket}, endpoint={settings.s3_endpoint_url}")
+            except Exception as e:
+                logger.error(f"Failed to initialize S3 client: {e}")
+                raise
+        return self._s3_client
 
     async def save_file(
         self,
@@ -56,8 +68,9 @@ class StorageService:
         # Determine mime type
         mime_type = self._get_mime_type(file_ext)
 
-        # Upload to S3 with public-read ACL
-        self.s3_client.put_object(
+        # Upload to S3 with public-read ACL (run in thread pool to avoid blocking)
+        await asyncio.to_thread(
+            self.s3_client.put_object,
             Bucket=self.bucket,
             Key=s3_key,
             Body=file_content,
