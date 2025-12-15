@@ -1,7 +1,6 @@
 """
 Chat service - Business logic for conversations and messages
 """
-from typing import Optional, List
 from uuid import UUID
 from loguru import logger
 from src.db.repositories import (
@@ -71,11 +70,11 @@ class ChatService:
         self,
         conversation_id: UUID,
         user_id: str,
-        content: Optional[str],
+        content: str | None,
         message_type: MessageType,
-        media_urls: List[str] = None,
-        audio_url: Optional[str] = None,
-        audio_duration_seconds: Optional[int] = None
+        media_urls: list[str] = None,
+        audio_url: str | None = None,
+        audio_duration_seconds: int | None = None
     ) -> tuple[Message, Message]:
         """
         Send a message and get AI response
@@ -183,10 +182,10 @@ class ChatService:
     async def list_conversations(
         self,
         user_id: str,
-        influencer_id: Optional[UUID] = None,
+        influencer_id: UUID | None = None,
         limit: int = 20,
         offset: int = 0
-    ) -> tuple[List[Conversation], int]:
+    ) -> tuple[list[Conversation], int]:
         """List user's conversations"""
         conversations = await self.conversation_repo.list_by_user(
             user_id=user_id,
@@ -209,7 +208,7 @@ class ChatService:
         limit: int = 50,
         offset: int = 0,
         order: str = "desc"
-    ) -> tuple[List[Message], int]:
+    ) -> tuple[list[Message], int]:
         """List messages in a conversation"""
         # Verify ownership
         await self.get_conversation(conversation_id, user_id)

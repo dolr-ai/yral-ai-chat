@@ -8,18 +8,18 @@ A FastAPI-based REST API for multimodal AI chat with personalized influencer per
 - Multimodal support (text, images, audio)
 - Conversation history and context awareness
 - JWT-based authentication
-- PostgreSQL database with async operations
-- Media upload and storage
+- SQLite database with async operations and Litestream replication
+- S3-compatible media storage
 - RESTful API design
 
 ## Tech Stack
 
 - **Framework**: FastAPI 0.104.1
-- **Database**: PostgreSQL with asyncpg
-- **AI Model**: Google Gemini 1.5 Pro
+- **Database**: SQLite with aiosqlite + Litestream for real-time S3 backups
+- **AI Model**: Google Gemini 2.5 Flash
 - **Authentication**: JWT (PyJWT)
 - **Server**: Uvicorn with async support
-- **ORM**: SQLAlchemy 2.0 (async)
+- **Storage**: S3-compatible object storage (Hetzner)
 
 ## Project Structure
 
@@ -56,16 +56,16 @@ yral-ai-chat/
 │   ├── config.py                 # Configuration management
 │   └── main.py                   # Application entry point
 ├── migrations/
-│   ├── 001_init_schema.sql       # Database schema
-│   └── 002_seed_influencers.sql  # Initial data
+│   └── sqlite/
+│       ├── 001_init_schema.sql       # SQLite schema
+│       └── 002_seed_influencers.sql  # Initial data
 ├── scripts/
-│   └── setup_db.sh               # Database setup script
+│   └── run_migrations.py         # Database migration script
 ├── tests/                        # Test files
-├── uploads/                      # Media storage
+├── data/                         # SQLite database storage
 ├── logs/                         # Application logs
 ├── requirements.txt              # Python dependencies
-├── .env                          # Environment variables
-└── full_test.sh                  # Integration test script
+└── env.example                   # Environment variables template
 ```
 
 ## Database Schema

@@ -1,7 +1,7 @@
 """
 Repository for Conversation operations
 """
-from typing import List, Optional, Dict, Any
+from typing import Any
 from uuid import UUID
 import uuid
 from src.db.base import db
@@ -26,7 +26,7 @@ class ConversationRepository:
         # Fetch the created conversation
         return await self.get_by_id(UUID(conversation_id))
     
-    async def get_by_id(self, conversation_id: UUID) -> Optional[Conversation]:
+    async def get_by_id(self, conversation_id: UUID) -> Conversation | None:
         """Get conversation by ID"""
         query = """
             SELECT 
@@ -37,10 +37,10 @@ class ConversationRepository:
             WHERE c.id = $1
         """
         
-        row = await db.fetchone(query, conversation_id)
+        row = await db.fetchone(query, str(conversation_id))
         return self._row_to_conversation_with_influencer(row) if row else None
     
-    async def get_existing(self, user_id: str, influencer_id: UUID) -> Optional[Conversation]:
+    async def get_existing(self, user_id: str, influencer_id: UUID) -> Conversation | None:
         """Check if conversation already exists between user and influencer"""
         query = """
             SELECT 
@@ -51,16 +51,16 @@ class ConversationRepository:
             WHERE c.user_id = $1 AND c.influencer_id = $2
         """
         
-        row = await db.fetchone(query, user_id, influencer_id)
+        row = await db.fetchone(query, user_id, str(influencer_id))
         return self._row_to_conversation_with_influencer(row) if row else None
     
     async def list_by_user(
         self, 
         user_id: str, 
-        influencer_id: Optional[UUID] = None,
+        influencer_id: UUID | None = None,
         limit: int = 20, 
         offset: int = 0
-    ) -> List[Conversation]:
+    ) -> list[Conversation]:
         """List conversations for a user"""
         if influencer_id:
             query = """
@@ -76,7 +76,7 @@ class ConversationRepository:
                 ORDER BY c.updated_at DESC
                 LIMIT $3 OFFSET $4
             """
-            rows = await db.fetch(query, user_id, influencer_id, limit, offset)
+            rows = await db.fetch(query, user_id, str(influencer_id), limit, offset)
         else:
             query = """
                 SELECT 
@@ -106,11 +106,11 @@ class ConversationRepository:
         
         return conversations
     
-    async def count_by_user(self, user_id: str, influencer_id: Optional[UUID] = None) -> int:
+    async def count_by_user(self, user_id: str, influencer_id: UUID | None = None) -> int:
         """Count conversations for a user"""
         if influencer_id:
             query = "SELECT COUNT(*) FROM conversations WHERE user_id = $1 AND influencer_id = $2"
-            return await db.fetchval(query, user_id, influencer_id)
+            return await db.fetchval(query, user_id, str(influencer_id))
         else:
             query = "SELECT COUNT(*) FROM conversations WHERE user_id = $1"
             return await db.fetchval(query, user_id)
@@ -119,15 +119,15 @@ class ConversationRepository:
         """Delete conversation and return count of deleted messages"""
         # Count messages first
         count_query = "SELECT COUNT(*) FROM messages WHERE conversation_id = $1"
-        message_count = await db.fetchval(count_query, conversation_id)
+        message_count = await db.fetchval(count_query, str(conversation_id))
         
         # Delete conversation (messages will cascade)
         delete_query = "DELETE FROM conversations WHERE id = $1"
-        await db.execute(delete_query, conversation_id)
+        await db.execute(delete_query, str(conversation_id))
         
         return message_count
     
-    async def _get_last_message(self, conversation_id: UUID) -> Optional[Dict[str, Any]]:
+    async def _get_last_message(self, conversation_id: UUID) -> dict[str, Any] | None:
         """Get last message in conversation"""
         query = """
             SELECT content, role, created_at
@@ -137,7 +137,7 @@ class ConversationRepository:
             LIMIT 1
         """
         
-        row = await db.fetchone(query, conversation_id)
+        row = await db.fetchone(query, str(conversation_id))
         if row:
             return {
                 "content": row['content'],

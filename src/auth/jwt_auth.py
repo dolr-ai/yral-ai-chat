@@ -2,7 +2,6 @@
 JWT Authentication and validation
 """
 import jwt
-from typing import Optional
 from fastapi import HTTPException, Header
 from loguru import logger
 from src.config import settings
@@ -72,7 +71,7 @@ def decode_jwt(token: str) -> dict:
         )
 
 
-async def get_current_user(authorization: Optional[str] = Header(None)) -> CurrentUser:
+async def get_current_user(authorization: str | None = Header(None)) -> CurrentUser:
     """
     FastAPI dependency to get current authenticated user
     
@@ -115,7 +114,7 @@ async def get_current_user(authorization: Optional[str] = Header(None)) -> Curre
     # )
 
 
-async def get_optional_user(authorization: Optional[str] = Header(None)) -> Optional[CurrentUser]:
+async def get_optional_user(authorization: str | None = Header(None)) -> CurrentUser | None:
     """
     Optional authentication - returns None if not authenticated
     

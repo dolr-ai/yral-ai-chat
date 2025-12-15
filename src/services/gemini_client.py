@@ -2,7 +2,7 @@
 Google Gemini AI Client
 """
 import google.generativeai as genai
-from typing import List, Dict, Any
+from typing import Any
 import httpx
 from loguru import logger
 from src.config import settings
@@ -24,8 +24,8 @@ class GeminiClient:
         self,
         user_message: str,
         system_instructions: str,
-        conversation_history: List[Message] = None,
-        media_urls: List[str] = None
+        conversation_history: list[Message] = None,
+        media_urls: list[str] = None
     ) -> tuple[str, int]:
         """
         Generate AI response
@@ -154,7 +154,7 @@ class GeminiClient:
             logger.error(f"Audio transcription error: {e}")
             raise TranscriptionException(f"Failed to transcribe audio: {str(e)}")
     
-    async def _download_image(self, url: str) -> Dict[str, Any]:
+    async def _download_image(self, url: str) -> dict[str, Any]:
         """Download and encode image for Gemini"""
         try:
             response = await self.http_client.get(url)
@@ -171,7 +171,7 @@ class GeminiClient:
             logger.error(f"Failed to download image {url}: {e}")
             raise
     
-    async def _download_audio(self, url: str) -> Dict[str, Any]:
+    async def _download_audio(self, url: str) -> dict[str, Any]:
         """Download and encode audio for Gemini"""
         try:
             response = await self.http_client.get(url)

@@ -1,7 +1,6 @@
 """
 Request models for API endpoints
 """
-from typing import Optional, List
 from pydantic import BaseModel, Field, validator, root_validator
 from uuid import UUID
 from src.models.entities import MessageType
@@ -15,21 +14,21 @@ class CreateConversationRequest(BaseModel):
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation"""
     message_type: MessageType = Field(..., description="Type of message")
-    content: Optional[str] = Field(
+    content: str | None = Field(
         default="",
         max_length=4000,
         description="Message text content (optional for image/audio-only messages)"
     )
-    media_urls: Optional[List[str]] = Field(
+    media_urls: list[str] | None = Field(
         default=None,
         max_items=10,
         description="Array of image URLs (max 10)"
     )
-    audio_url: Optional[str] = Field(
+    audio_url: str | None = Field(
         default=None,
         description="URL to audio file"
     )
-    audio_duration_seconds: Optional[int] = Field(
+    audio_duration_seconds: int | None = Field(
         default=None,
         ge=0,
         le=300,

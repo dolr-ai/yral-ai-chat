@@ -4,7 +4,6 @@ Chat endpoints
 from fastapi import APIRouter, Depends, Query
 from fastapi.security import HTTPBearer
 from uuid import UUID
-from typing import Optional
 from src.models.requests import CreateConversationRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,
@@ -62,7 +61,7 @@ async def create_conversation(
 async def list_conversations(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-    influencer_id: Optional[UUID] = Query(default=None),
+    influencer_id: UUID | None = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user)
 ):
     """

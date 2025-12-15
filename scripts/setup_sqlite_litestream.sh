@@ -1,6 +1,6 @@
 #!/bin/bash
-# Setup script for SQLite + Litestream on new server
-# Run this on the new server (138.201.194.117)
+# Setup script for SQLite + Litestream on production server
+# Run this on your production server
 
 set -e
 
@@ -62,16 +62,9 @@ echo ""
 echo "🗄️ Step 4: Creating SQLite database..."
 echo "---------------------------------------"
 
-# Check if PostgreSQL dump exists
-if [ -f "/root/yral-ai-chat/yral_chat_backup_20251203.sql" ]; then
-    echo "Found PostgreSQL dump, running migration..."
-    python scripts/migrate_pg_to_sqlite.py
-else
-    echo "No PostgreSQL dump found, creating fresh database with schema..."
-    sqlite3 /root/yral-ai-chat/data/yral_chat.db < migrations/sqlite/001_init_schema.sql
-    echo "Running seed data..."
-    sqlite3 /root/yral-ai-chat/data/yral_chat.db < migrations/sqlite/002_seed_influencers.sql
-fi
+# Create fresh database with schema
+echo "Creating fresh database with schema..."
+python scripts/run_migrations.py
 
 # Enable WAL mode
 sqlite3 /root/yral-ai-chat/data/yral_chat.db "PRAGMA journal_mode=WAL;"

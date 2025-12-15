@@ -1,7 +1,6 @@
 """
 Repository for Message operations
 """
-from typing import List, Optional
 from uuid import UUID
 import uuid
 from src.db.base import db
@@ -15,12 +14,12 @@ class MessageRepository:
         self,
         conversation_id: UUID,
         role: MessageRole,
-        content: Optional[str],
+        content: str | None,
         message_type: MessageType,
-        media_urls: List[str] = None,
-        audio_url: Optional[str] = None,
-        audio_duration_seconds: Optional[int] = None,
-        token_count: Optional[int] = None
+        media_urls: list[str] = None,
+        audio_url: str | None = None,
+        audio_duration_seconds: int | None = None,
+        token_count: int | None = None
     ) -> Message:
         """Create a new message"""
         import json
@@ -53,7 +52,7 @@ class MessageRepository:
         # Fetch the created message
         return await self.get_by_id(UUID(message_id))
     
-    async def get_by_id(self, message_id: UUID) -> Optional[Message]:
+    async def get_by_id(self, message_id: UUID) -> Message | None:
         """Get message by ID"""
         query = """
             SELECT 
@@ -64,7 +63,7 @@ class MessageRepository:
             WHERE id = $1
         """
         
-        row = await db.fetchone(query, message_id)
+        row = await db.fetchone(query, str(message_id))
         return self._row_to_message(row) if row else None
     
     async def list_by_conversation(
@@ -73,7 +72,7 @@ class MessageRepository:
         limit: int = 50,
         offset: int = 0,
         order: str = "desc"
-    ) -> List[Message]:
+    ) -> list[Message]:
         """List messages in a conversation"""
         order_clause = "DESC" if order.lower() == "desc" else "ASC"
         
@@ -88,14 +87,14 @@ class MessageRepository:
             LIMIT $2 OFFSET $3
         """
         
-        rows = await db.fetch(query, conversation_id, limit, offset)
+        rows = await db.fetch(query, str(conversation_id), limit, offset)
         return [self._row_to_message(row) for row in rows]
     
     async def get_recent_for_context(
         self,
         conversation_id: UUID,
         limit: int = 10
-    ) -> List[Message]:
+    ) -> list[Message]:
         """Get recent messages for AI context (ordered oldest to newest)"""
         query = """
             SELECT 
@@ -108,14 +107,14 @@ class MessageRepository:
             LIMIT $2
         """
         
-        rows = await db.fetch(query, conversation_id, limit)
+        rows = await db.fetch(query, str(conversation_id), limit)
         # Reverse to get oldest to newest for AI context
         return [self._row_to_message(row) for row in reversed(rows)]
     
     async def count_by_conversation(self, conversation_id: UUID) -> int:
         """Count messages in a conversation"""
         query = "SELECT COUNT(*) FROM messages WHERE conversation_id = $1"
-        return await db.fetchval(query, conversation_id)
+        return await db.fetchval(query, str(conversation_id))
     
     async def count_all(self) -> int:
         """Count all messages"""

@@ -1,9 +1,9 @@
 """
-File storage service for media uploads
+S3 storage service for media uploads
 """
-import aiofiles
+import boto3
+from botocore.config import Config
 from pathlib import Path
-from typing import Tuple
 from uuid import uuid4
 from loguru import logger
 from src.config import settings
@@ -11,22 +11,29 @@ from src.core.exceptions import BadRequestException
 
 
 class StorageService:
-    """Service for handling file uploads and storage"""
+    """Service for handling file uploads to S3"""
     
     def __init__(self):
-        """Initialize storage service"""
-        self.upload_dir = Path(settings.media_upload_dir)
-        self.upload_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Storage service initialized: {self.upload_dir}")
+        """Initialize S3 storage service"""
+        self.s3_client = boto3.client(
+            's3',
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+            endpoint_url=settings.s3_endpoint_url,
+            region_name=settings.aws_region,
+            config=Config(signature_version='s3v4')
+        )
+        self.bucket = settings.aws_s3_bucket
+        logger.info(f"S3 Storage service initialized: bucket={self.bucket}, endpoint={settings.s3_endpoint_url}")
     
     async def save_file(
         self,
         file_content: bytes,
         filename: str,
         user_id: str
-    ) -> Tuple[str, str, int]:
+    ) -> tuple[str, str, int]:
         """
-        Save uploaded file
+        Save uploaded file to S3
         
         Args:
             file_content: File binary content
@@ -36,14 +43,10 @@ class StorageService:
         Returns:
             Tuple of (file_url, mime_type, file_size)
         """
-        # Create user directory
-        user_dir = self.upload_dir / user_id
-        user_dir.mkdir(exist_ok=True)
-        
         # Generate unique filename
         file_ext = Path(filename).suffix.lower()
         unique_filename = f"{uuid4()}{file_ext}"
-        file_path = user_dir / unique_filename
+        s3_key = f"{user_id}/{unique_filename}"
         
         # Get file size
         file_size = len(file_content)
@@ -51,14 +54,19 @@ class StorageService:
         # Determine mime type
         mime_type = self._get_mime_type(file_ext)
         
-        # Save file
-        async with aiofiles.open(file_path, 'wb') as f:
-            await f.write(file_content)
+        # Upload to S3 with public-read ACL
+        self.s3_client.put_object(
+            Bucket=self.bucket,
+            Key=s3_key,
+            Body=file_content,
+            ContentType=mime_type,
+            ACL='public-read'  # Make the object publicly accessible
+        )
         
-        # Generate URL
-        file_url = f"{settings.media_base_url}/{user_id}/{unique_filename}"
+        # Generate public URL
+        file_url = f"{settings.s3_public_url_base}/{s3_key}"
         
-        logger.info(f"File saved: {file_path} ({file_size} bytes)")
+        logger.info(f"File uploaded to S3: {s3_key} ({file_size} bytes)")
         
         return file_url, mime_type, file_size
     
@@ -109,10 +117,11 @@ class StorageService:
                 f"Audio too large. Max size: {settings.max_audio_size_mb}MB"
             )
     
-    async def get_audio_duration(self, file_path: Path) -> int:
+    async def get_audio_duration(self, s3_key: str) -> int:
         """
         Get audio file duration in seconds
         Note: This is a placeholder. In production, use a library like mutagen or ffprobe
+        For S3 storage, you would need to download the file temporarily or use a streaming approach
         """
         # TODO: Implement actual audio duration detection
         # For now, return 0 and let the client provide duration

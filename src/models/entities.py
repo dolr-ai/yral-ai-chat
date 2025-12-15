@@ -2,8 +2,8 @@
 Domain entity models
 """
 from enum import Enum
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any
 from pydantic import BaseModel, Field
 from uuid import UUID
 
@@ -27,19 +27,19 @@ class AIInfluencer(BaseModel):
     id: UUID
     name: str
     display_name: str
-    avatar_url: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
+    avatar_url: str | None = None
+    description: str | None = None
+    category: str | None = None
     system_instructions: str
-    personality_traits: Dict[str, Any] = Field(default_factory=dict)
-    initial_greeting: Optional[str] = None
+    personality_traits: dict[str, Any] = Field(default_factory=dict)
+    initial_greeting: str | None = None
     is_active: bool = True
     created_at: datetime
     updated_at: datetime
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     
     # Optional field for conversation count
-    conversation_count: Optional[int] = None
+    conversation_count: int | None = None
 
     class Config:
         from_attributes = True
@@ -52,12 +52,12 @@ class Conversation(BaseModel):
     influencer_id: UUID
     created_at: datetime
     updated_at: datetime
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     
     # Optional nested fields
-    influencer: Optional[AIInfluencer] = None
-    message_count: Optional[int] = None
-    last_message: Optional[Dict[str, Any]] = None
+    influencer: AIInfluencer | None = None
+    message_count: int | None = None
+    last_message: dict[str, Any] | None = None
 
     class Config:
         from_attributes = True
@@ -68,14 +68,14 @@ class Message(BaseModel):
     id: UUID
     conversation_id: UUID
     role: MessageRole
-    content: Optional[str] = None
+    content: str | None = None
     message_type: MessageType
-    media_urls: List[str] = Field(default_factory=list)
-    audio_url: Optional[str] = None
-    audio_duration_seconds: Optional[int] = None
-    token_count: Optional[int] = None
+    media_urls: list[str] = Field(default_factory=list)
+    audio_url: str | None = None
+    audio_duration_seconds: int | None = None
+    token_count: int | None = None
     created_at: datetime
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         from_attributes = True

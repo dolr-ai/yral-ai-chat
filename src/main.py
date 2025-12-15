@@ -1,14 +1,12 @@
 """
 Yral AI Chat API - Main Application
 """
-import os
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.utils import get_openapi
 from loguru import logger
 
@@ -128,9 +126,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Mount static files for media
-os.makedirs(settings.media_upload_dir, exist_ok=True)
-app.mount("/media", StaticFiles(directory=settings.media_upload_dir), name="media")
+# Media files are served directly from S3 - no local mount needed
 
 
 # Register routers

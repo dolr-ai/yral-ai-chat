@@ -28,9 +28,6 @@ def run_migrations():
     # Ensure data directory exists
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     
-    # Check if database already exists
-    db_exists = DB_PATH.exists()
-    
     # Connect to database
     conn = sqlite3.connect(str(DB_PATH))
     

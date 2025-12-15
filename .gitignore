@@ -59,6 +59,7 @@ data/
 
 # Litestream config (contains S3 credentials)
 config/litestream.yml
+config/litestream-local.yml
 
 # Uploads
 uploads/*
@@ -70,4 +71,8 @@ alembic.ini
 # OS
 Thumbs.db
 
+# Local binaries
+bin/
 
+# Gradio cache
+gradio-demo/.gradio/

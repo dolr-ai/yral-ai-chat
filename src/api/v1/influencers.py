@@ -33,6 +33,7 @@ async def list_influencers(
             avatar_url=inf.avatar_url,
             description=inf.description,
             category=inf.category,
+            is_active=inf.is_active,
             created_at=inf.created_at
         )
         for inf in influencers
@@ -62,6 +63,7 @@ async def get_influencer(influencer_id: UUID):
         avatar_url=influencer.avatar_url,
         description=influencer.description,
         category=influencer.category,
+        is_active=influencer.is_active,
         created_at=influencer.created_at,
         conversation_count=influencer.conversation_count
     )
