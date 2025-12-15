@@ -1,7 +1,6 @@
 """
 Tests for health check and status endpoints
 """
-import pytest
 from datetime import datetime
 
 

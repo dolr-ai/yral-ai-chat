@@ -1,7 +1,6 @@
 """
 Repository for AI Influencer operations
 """
-from typing import List, Optional
 from uuid import UUID
 import json
 from src.db.base import db
@@ -11,7 +10,7 @@ from src.models.entities import AIInfluencer
 class InfluencerRepository:
     """Repository for AI influencer database operations"""
     
-    async def list_all(self, limit: int = 50, offset: int = 0) -> List[AIInfluencer]:
+    async def list_all(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
         """List all active influencers"""
         query = """
             SELECT 
@@ -27,7 +26,7 @@ class InfluencerRepository:
         rows = await db.fetch(query, limit, offset)
         return [self._row_to_influencer(row) for row in rows]
     
-    async def get_by_id(self, influencer_id: UUID) -> Optional[AIInfluencer]:
+    async def get_by_id(self, influencer_id: UUID) -> AIInfluencer | None:
         """Get influencer by ID"""
         query = """
             SELECT 
@@ -41,7 +40,7 @@ class InfluencerRepository:
         row = await db.fetchone(query, str(influencer_id))
         return self._row_to_influencer(row) if row else None
     
-    async def get_by_name(self, name: str) -> Optional[AIInfluencer]:
+    async def get_by_name(self, name: str) -> AIInfluencer | None:
         """Get influencer by name"""
         query = """
             SELECT 
@@ -60,7 +59,7 @@ class InfluencerRepository:
         query = "SELECT COUNT(*) FROM ai_influencers WHERE is_active = true"
         return await db.fetchval(query)
     
-    async def get_with_conversation_count(self, influencer_id: UUID) -> Optional[AIInfluencer]:
+    async def get_with_conversation_count(self, influencer_id: UUID) -> AIInfluencer | None:
         """Get influencer with conversation count"""
         query = """
             SELECT 

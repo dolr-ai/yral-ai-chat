@@ -5,7 +5,6 @@ Tests all endpoints in a user-friendly interface
 import gradio as gr
 import requests
 import json
-from typing import List, Tuple
 
 # Configuration
 API_BASE_URL = "http://localhost:8000"
@@ -21,7 +20,7 @@ def format_json(data):
     return json.dumps(data, indent=2)
 
 
-def get_influencers() -> Tuple[str, str]:
+def get_influencers() -> tuple[str, str]:
     """Step 1: Get list of influencers"""
     try:
         response = requests.get(f"{API_BASE_URL}/api/v1/influencers")
@@ -43,7 +42,7 @@ def get_influencers() -> Tuple[str, str]:
         return f"Error: {str(e)}", "{}"
 
 
-def create_conversation(influencer_id: str) -> Tuple[str, str, str]:
+def create_conversation(influencer_id: str) -> tuple[str, str, str]:
     """Step 2: Create or get conversation"""
     global current_conversation_id, current_influencer_id
     
@@ -75,7 +74,7 @@ def create_conversation(influencer_id: str) -> Tuple[str, str, str]:
         return f"Error: {str(e)}", "{}", ""
 
 
-def send_text_message(conversation_id: str, message: str) -> Tuple[str, str, List]:
+def send_text_message(conversation_id: str, message: str) -> tuple[str, str, list]:
     """Step 3: Send text message"""
     if not conversation_id.strip():
         return "Please create a conversation first", None, []
@@ -113,7 +112,7 @@ def send_text_message(conversation_id: str, message: str) -> Tuple[str, str, Lis
         return f"Error: {str(e)}", "{}", []
 
 
-def upload_media(file, media_type: str) -> Tuple[str, str]:
+def upload_media(file, media_type: str) -> tuple[str, str]:
     """Upload image or audio"""
     if file is None:
         return "Please select a file", None
@@ -144,7 +143,7 @@ def upload_media(file, media_type: str) -> Tuple[str, str]:
         return f"Error: {str(e)}", ""
 
 
-def send_image_message(conversation_id: str, image_url: str, caption: str) -> Tuple[str, str]:
+def send_image_message(conversation_id: str, image_url: str, caption: str) -> tuple[str, str]:
     """Send image message"""
     if not conversation_id.strip():
         return "Please create a conversation first", None
@@ -176,7 +175,7 @@ def send_image_message(conversation_id: str, image_url: str, caption: str) -> Tu
         return f"Error: {str(e)}", "{}"
 
 
-def send_audio_message(conversation_id: str, audio_url: str, duration: int) -> Tuple[str, str]:
+def send_audio_message(conversation_id: str, audio_url: str, duration: int) -> tuple[str, str]:
     """Send audio message"""
     if not conversation_id.strip():
         return "Please create a conversation first", None
@@ -209,7 +208,7 @@ def send_audio_message(conversation_id: str, audio_url: str, duration: int) -> T
         return f"Error: {str(e)}", "{}"
 
 
-def get_message_history(conversation_id: str, limit: int) -> Tuple[str, str, List]:
+def get_message_history(conversation_id: str, limit: int) -> tuple[str, str, list]:
     """Get conversation history"""
     if not conversation_id.strip():
         return "Please create a conversation first", None, []
@@ -237,7 +236,7 @@ def get_message_history(conversation_id: str, limit: int) -> Tuple[str, str, Lis
         return f"Error: {str(e)}", "{}", []
 
 
-def list_conversations(limit: int) -> Tuple[str, str]:
+def list_conversations(limit: int) -> tuple[str, str]:
     """List all user conversations"""
     try:
         response = requests.get(
@@ -266,7 +265,7 @@ def list_conversations(limit: int) -> Tuple[str, str]:
         return f"Error: {str(e)}", "{}"
 
 
-def delete_conversation(conversation_id: str) -> Tuple[str, str]:
+def delete_conversation(conversation_id: str) -> tuple[str, str]:
     """Delete a conversation"""
     if not conversation_id.strip():
         return "Please enter a conversation ID", None
@@ -288,7 +287,7 @@ def delete_conversation(conversation_id: str) -> Tuple[str, str]:
         return f"Error: {str(e)}", "{}"
 
 
-def check_health() -> Tuple[str, str]:
+def check_health() -> tuple[str, str]:
     """Check API health"""
     try:
         response = requests.get(f"{API_BASE_URL}/health")

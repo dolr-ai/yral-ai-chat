@@ -1,7 +1,7 @@
 """
 Repository for Conversation operations
 """
-from typing import List, Optional, Dict, Any
+from typing import Any
 from uuid import UUID
 import uuid
 from src.db.base import db
@@ -26,7 +26,7 @@ class ConversationRepository:
         # Fetch the created conversation
         return await self.get_by_id(UUID(conversation_id))
     
-    async def get_by_id(self, conversation_id: UUID) -> Optional[Conversation]:
+    async def get_by_id(self, conversation_id: UUID) -> Conversation | None:
         """Get conversation by ID"""
         query = """
             SELECT 
@@ -40,7 +40,7 @@ class ConversationRepository:
         row = await db.fetchone(query, str(conversation_id))
         return self._row_to_conversation_with_influencer(row) if row else None
     
-    async def get_existing(self, user_id: str, influencer_id: UUID) -> Optional[Conversation]:
+    async def get_existing(self, user_id: str, influencer_id: UUID) -> Conversation | None:
         """Check if conversation already exists between user and influencer"""
         query = """
             SELECT 
@@ -57,10 +57,10 @@ class ConversationRepository:
     async def list_by_user(
         self, 
         user_id: str, 
-        influencer_id: Optional[UUID] = None,
+        influencer_id: UUID | None = None,
         limit: int = 20, 
         offset: int = 0
-    ) -> List[Conversation]:
+    ) -> list[Conversation]:
         """List conversations for a user"""
         if influencer_id:
             query = """
@@ -106,7 +106,7 @@ class ConversationRepository:
         
         return conversations
     
-    async def count_by_user(self, user_id: str, influencer_id: Optional[UUID] = None) -> int:
+    async def count_by_user(self, user_id: str, influencer_id: UUID | None = None) -> int:
         """Count conversations for a user"""
         if influencer_id:
             query = "SELECT COUNT(*) FROM conversations WHERE user_id = $1 AND influencer_id = $2"
@@ -127,7 +127,7 @@ class ConversationRepository:
         
         return message_count
     
-    async def _get_last_message(self, conversation_id: UUID) -> Optional[Dict[str, Any]]:
+    async def _get_last_message(self, conversation_id: UUID) -> dict[str, Any] | None:
         """Get last message in conversation"""
         query = """
             SELECT content, role, created_at

@@ -5,7 +5,7 @@ Configured for use with Litestream for real-time S3 backups
 import aiosqlite
 import re
 import uuid
-from typing import Optional, List, Any, Dict
+from typing import Any
 from pathlib import Path
 from loguru import logger
 from src.config import settings
@@ -16,7 +16,7 @@ class Database:
     
     def __init__(self):
         self.db_path: str = settings.database_path
-        self._connection: Optional[aiosqlite.Connection] = None
+        self._connection: aiosqlite.Connection | None = None
     
     async def connect(self) -> None:
         """Create database connection"""
@@ -70,7 +70,7 @@ class Database:
             logger.error(f"Execute error: {e}, Query: {query[:100]}")
             raise
     
-    async def fetch(self, query: str, *args) -> List[Dict[str, Any]]:
+    async def fetch(self, query: str, *args) -> list[dict[str, Any]]:
         """Fetch multiple rows"""
         query = self._convert_query(query)
         try:
@@ -81,7 +81,7 @@ class Database:
             logger.error(f"Fetch error: {e}, Query: {query[:100]}")
             raise
     
-    async def fetchone(self, query: str, *args) -> Optional[Dict[str, Any]]:
+    async def fetchone(self, query: str, *args) -> dict[str, Any] | None:
         """Fetch a single row"""
         query = self._convert_query(query)
         try:

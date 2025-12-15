@@ -1,9 +1,7 @@
 """
 Tests for media upload endpoints
 """
-import pytest
 import io
-from datetime import datetime
 
 
 def test_upload_image_invalid_format(client):

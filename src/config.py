@@ -1,7 +1,6 @@
 """
 Configuration management for Yral AI Chat API
 """
-from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -61,7 +60,7 @@ class Settings(BaseSettings):
     log_format: str = Field(default="json", alias="LOG_FORMAT")
     
     @property
-    def cors_origins_list(self) -> List[str]:
+    def cors_origins_list(self) -> list[str]:
         """Parse CORS origins into a list"""
         if self.cors_origins == "*":
             return ["*"]

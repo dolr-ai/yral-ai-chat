@@ -1,7 +1,6 @@
 """
 Repository for Message operations
 """
-from typing import List, Optional
 from uuid import UUID
 import uuid
 from src.db.base import db
@@ -15,12 +14,12 @@ class MessageRepository:
         self,
         conversation_id: UUID,
         role: MessageRole,
-        content: Optional[str],
+        content: str | None,
         message_type: MessageType,
-        media_urls: List[str] = None,
-        audio_url: Optional[str] = None,
-        audio_duration_seconds: Optional[int] = None,
-        token_count: Optional[int] = None
+        media_urls: list[str] = None,
+        audio_url: str | None = None,
+        audio_duration_seconds: int | None = None,
+        token_count: int | None = None
     ) -> Message:
         """Create a new message"""
         import json
@@ -53,7 +52,7 @@ class MessageRepository:
         # Fetch the created message
         return await self.get_by_id(UUID(message_id))
     
-    async def get_by_id(self, message_id: UUID) -> Optional[Message]:
+    async def get_by_id(self, message_id: UUID) -> Message | None:
         """Get message by ID"""
         query = """
             SELECT 
@@ -73,7 +72,7 @@ class MessageRepository:
         limit: int = 50,
         offset: int = 0,
         order: str = "desc"
-    ) -> List[Message]:
+    ) -> list[Message]:
         """List messages in a conversation"""
         order_clause = "DESC" if order.lower() == "desc" else "ASC"
         
@@ -95,7 +94,7 @@ class MessageRepository:
         self,
         conversation_id: UUID,
         limit: int = 10
-    ) -> List[Message]:
+    ) -> list[Message]:
         """Get recent messages for AI context (ordered oldest to newest)"""
         query = """
             SELECT 

@@ -1,8 +1,8 @@
 """
 Response models for API endpoints
 """
-from typing import Optional, List, Dict, Any
 from datetime import datetime
+from typing import Any
 from pydantic import BaseModel, Field
 from uuid import UUID
 from src.models.entities import MessageType, MessageRole
@@ -13,25 +13,25 @@ class InfluencerBasicInfo(BaseModel):
     id: UUID
     name: str
     display_name: str
-    avatar_url: Optional[str] = None
+    avatar_url: str | None = None
 
 
 class MessageResponse(BaseModel):
     """Message response model"""
     id: UUID
     role: MessageRole
-    content: Optional[str] = None
+    content: str | None = None
     message_type: MessageType
-    media_urls: List[str] = Field(default_factory=list)
-    audio_url: Optional[str] = None
-    audio_duration_seconds: Optional[int] = None
-    token_count: Optional[int] = None
+    media_urls: list[str] = Field(default_factory=list)
+    audio_url: str | None = None
+    audio_duration_seconds: int | None = None
+    token_count: int | None = None
     created_at: datetime
 
 
 class LastMessageInfo(BaseModel):
     """Last message information for conversation list"""
-    content: Optional[str] = None
+    content: str | None = None
     role: MessageRole
     created_at: datetime
 
@@ -44,7 +44,7 @@ class ConversationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     message_count: int = 0
-    last_message: Optional[LastMessageInfo] = None
+    last_message: LastMessageInfo | None = None
 
 
 class SendMessageResponse(BaseModel):
@@ -55,7 +55,7 @@ class SendMessageResponse(BaseModel):
 
 class ListConversationsResponse(BaseModel):
     """Response for listing conversations"""
-    conversations: List[ConversationResponse]
+    conversations: list[ConversationResponse]
     total: int
     limit: int
     offset: int
@@ -64,7 +64,7 @@ class ListConversationsResponse(BaseModel):
 class ListMessagesResponse(BaseModel):
     """Response for listing messages"""
     conversation_id: UUID
-    messages: List[MessageResponse]
+    messages: list[MessageResponse]
     total: int
     limit: int
     offset: int
@@ -75,16 +75,16 @@ class InfluencerResponse(BaseModel):
     id: UUID
     name: str
     display_name: str
-    avatar_url: Optional[str] = None
-    description: Optional[str] = None
-    category: Optional[str] = None
+    avatar_url: str | None = None
+    description: str | None = None
+    category: str | None = None
     is_active: bool
     created_at: datetime
-    conversation_count: Optional[int] = None
+    conversation_count: int | None = None
 
 class ListInfluencersResponse(BaseModel):
     """Response for listing influencers"""
-    influencers: List[InfluencerResponse]
+    influencers: list[InfluencerResponse]
     total: int
     limit: int
     offset: int
@@ -93,24 +93,24 @@ class ListInfluencersResponse(BaseModel):
 class ServiceHealth(BaseModel):
     """Health status of a service"""
     status: str
-    latency_ms: Optional[int] = None
-    error: Optional[str] = None
-    pool_size: Optional[int] = None
-    pool_free: Optional[int] = None
+    latency_ms: int | None = None
+    error: str | None = None
+    pool_size: int | None = None
+    pool_free: int | None = None
 
 
 class HealthResponse(BaseModel):
     """Health check response"""
     status: str
     timestamp: datetime
-    services: Dict[str, ServiceHealth]
+    services: dict[str, ServiceHealth]
 
 
 class DatabaseStats(BaseModel):
     """Database statistics"""
     connected: bool
-    pool_size: Optional[int] = None
-    active_connections: Optional[int] = None
+    pool_size: int | None = None
+    active_connections: int | None = None
 
 
 class SystemStatistics(BaseModel):
@@ -137,7 +137,7 @@ class MediaUploadResponse(BaseModel):
     type: str  # "image" or "audio"
     size: int
     mime_type: str
-    duration_seconds: Optional[int] = None
+    duration_seconds: int | None = None
     uploaded_at: datetime
 
 
@@ -153,6 +153,6 @@ class ErrorResponse(BaseModel):
     """Error response model"""
     error: str
     message: str
-    details: Optional[Dict[str, Any]] = None
+    details: dict[str, Any] | None = None
 
 

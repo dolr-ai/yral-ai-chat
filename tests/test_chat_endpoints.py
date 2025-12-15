@@ -1,7 +1,6 @@
 """
 Tests for chat endpoints
 """
-import pytest
 from uuid import UUID
 from datetime import datetime
 

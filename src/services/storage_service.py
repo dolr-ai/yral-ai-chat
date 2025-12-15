@@ -4,7 +4,6 @@ S3 storage service for media uploads
 import boto3
 from botocore.config import Config
 from pathlib import Path
-from typing import Tuple
 from uuid import uuid4
 from loguru import logger
 from src.config import settings
@@ -32,7 +31,7 @@ class StorageService:
         file_content: bytes,
         filename: str,
         user_id: str
-    ) -> Tuple[str, str, int]:
+    ) -> tuple[str, str, int]:
         """
         Save uploaded file to S3
         

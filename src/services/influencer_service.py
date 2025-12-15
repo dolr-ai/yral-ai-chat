@@ -1,7 +1,6 @@
 """
 Influencer service - Business logic for AI influencers
 """
-from typing import List
 from uuid import UUID
 from src.db.repositories import InfluencerRepository
 from src.models.entities import AIInfluencer
@@ -18,7 +17,7 @@ class InfluencerService:
         self,
         limit: int = 50,
         offset: int = 0
-    ) -> tuple[List[AIInfluencer], int]:
+    ) -> tuple[list[AIInfluencer], int]:
         """List all active influencers"""
         influencers = await self.influencer_repo.list_all(limit=limit, offset=offset)
         total = await self.influencer_repo.count_all()
