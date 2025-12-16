@@ -1,8 +1,6 @@
 """
 Chat endpoints
 """
-from uuid import UUID
-
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.security import HTTPBearer
 
@@ -114,7 +112,7 @@ async def create_conversation(
 async def list_conversations(
     limit: int = Query(default=20, ge=1, le=100, description="Number of conversations to return"),
     offset: int = Query(default=0, ge=0, description="Number of conversations to skip"),
-    influencer_id: UUID | None = Query(default=None, description="Filter by specific influencer ID"),
+    influencer_id: str | None = Query(default=None, description="Filter by specific influencer ID"),
     current_user: CurrentUser = Depends(get_current_user),
     chat_service: ChatServiceDep = None
 ):
@@ -183,7 +181,7 @@ async def list_conversations(
     }
 )
 async def list_messages(
-    conversation_id: UUID,
+    conversation_id: str,
     limit: int = Query(default=50, ge=1, le=200, description="Number of messages to return"),
     offset: int = Query(default=0, ge=0, description="Number of messages to skip"),
     order: str = Query(default="desc", pattern="^(asc|desc)$", description="Sort order: 'asc' or 'desc'"),
@@ -257,7 +255,7 @@ async def list_messages(
     }
 )
 async def send_message(
-    conversation_id: UUID,
+    conversation_id: str,
     request: SendMessageRequest,
     background_tasks: BackgroundTasks,
     current_user: CurrentUser = Depends(get_current_user),
@@ -352,7 +350,7 @@ async def send_message(
     }
 )
 async def delete_conversation(
-    conversation_id: UUID,
+    conversation_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     chat_service: ChatServiceDep = None
 ):

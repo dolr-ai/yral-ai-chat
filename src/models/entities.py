@@ -27,7 +27,7 @@ class AIInfluencer(BaseModel):
     """AI Influencer entity"""
     model_config = ConfigDict(from_attributes=True)
     
-    id: UUID
+    id: str  # Changed from UUID to str to support IC Principal IDs
     name: str
     display_name: str
     avatar_url: str | None = None
@@ -49,9 +49,9 @@ class Conversation(BaseModel):
     """Conversation entity"""
     model_config = ConfigDict(from_attributes=True)
     
-    id: UUID
+    id: str  # Changed from UUID to str
     user_id: str
-    influencer_id: UUID
+    influencer_id: str  # Changed from UUID to str to support IC Principal IDs
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -66,8 +66,8 @@ class Message(BaseModel):
     """Message entity"""
     model_config = ConfigDict(from_attributes=True)
     
-    id: UUID
-    conversation_id: UUID
+    id: str  # Changed from UUID to str
+    conversation_id: str  # Changed from UUID to str
     role: MessageRole
     content: str | None = None
     message_type: MessageType

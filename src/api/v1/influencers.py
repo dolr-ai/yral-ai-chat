@@ -1,8 +1,6 @@
 """
 AI Influencer endpoints
 """
-from uuid import UUID
-
 from fastapi import APIRouter, Query
 
 from src.core.dependencies import InfluencerServiceDep
@@ -16,7 +14,7 @@ router = APIRouter(prefix="/api/v1/influencers", tags=["Influencers"])
     response_model=ListInfluencersResponse,
     operation_id="listInfluencers",
     summary="List AI influencers",
-    description="Retrieve paginated list of available AI influencers. No authentication required.",
+    description="Retrieve paginated list of all AI influencers (active and inactive). Active influencers are listed first. No authentication required.",
     responses={
         200: {"description": "List of influencers retrieved successfully"},
         422: {"description": "Validation error - Invalid query parameters"},
@@ -30,9 +28,10 @@ async def list_influencers(
     influencer_service: InfluencerServiceDep = None
 ):
     """
-    List all active AI influencers
+    List all AI influencers (both active and inactive)
     
-    No authentication required for discovery
+    Active influencers are listed first, followed by inactive ones.
+    No authentication required for discovery.
     """
     influencers, total = await influencer_service.list_influencers(
         limit=limit,
@@ -77,7 +76,7 @@ async def list_influencers(
     }
 )
 async def get_influencer(
-    influencer_id: UUID,
+    influencer_id: str,
     influencer_service: InfluencerServiceDep = None
 ):
     """

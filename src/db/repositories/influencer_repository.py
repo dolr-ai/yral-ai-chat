@@ -2,7 +2,6 @@
 Repository for AI Influencer operations
 """
 import json
-from uuid import UUID
 
 from src.db.base import db
 from src.models.entities import AIInfluencer
@@ -12,22 +11,21 @@ class InfluencerRepository:
     """Repository for AI influencer database operations"""
 
     async def list_all(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
-        """List all active influencers"""
+        """List all influencers (both active and inactive)"""
         query = """
             SELECT 
                 id, name, display_name, avatar_url, description, 
                 category, system_instructions, personality_traits,
                 initial_greeting, is_active, created_at, updated_at, metadata
             FROM ai_influencers
-            WHERE is_active = true
-            ORDER BY created_at DESC
+            ORDER BY is_active DESC, created_at DESC
             LIMIT $1 OFFSET $2
         """
 
         rows = await db.fetch(query, limit, offset)
         return [self._row_to_influencer(row) for row in rows]
 
-    async def get_by_id(self, influencer_id: UUID) -> AIInfluencer | None:
+    async def get_by_id(self, influencer_id: str) -> AIInfluencer | None:
         """Get influencer by ID"""
         query = """
             SELECT 
@@ -38,7 +36,7 @@ class InfluencerRepository:
             WHERE id = $1 AND is_active = true
         """
 
-        row = await db.fetchone(query, str(influencer_id))
+        row = await db.fetchone(query, influencer_id)
         return self._row_to_influencer(row) if row else None
 
     async def get_by_name(self, name: str) -> AIInfluencer | None:
@@ -56,11 +54,11 @@ class InfluencerRepository:
         return self._row_to_influencer(row) if row else None
 
     async def count_all(self) -> int:
-        """Count all active influencers"""
-        query = "SELECT COUNT(*) FROM ai_influencers WHERE is_active = true"
+        """Count all influencers (both active and inactive)"""
+        query = "SELECT COUNT(*) FROM ai_influencers"
         return await db.fetchval(query)
 
-    async def get_with_conversation_count(self, influencer_id: UUID) -> AIInfluencer | None:
+    async def get_with_conversation_count(self, influencer_id: str) -> AIInfluencer | None:
         """Get influencer with conversation count"""
         query = """
             SELECT 
@@ -74,7 +72,7 @@ class InfluencerRepository:
             GROUP BY i.id
         """
 
-        row = await db.fetchone(query, str(influencer_id))
+        row = await db.fetchone(query, influencer_id)
         if not row:
             return None
 

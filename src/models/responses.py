@@ -3,7 +3,6 @@ Response models for API endpoints
 """
 from datetime import datetime
 from typing import Any
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,7 +17,7 @@ class InfluencerBasicInfo(BaseModel):
         populate_by_name=True
     )
 
-    id: UUID = Field(..., description="Unique identifier for the influencer", examples=["550e8400-e29b-41d4-a716-446655440000"])
+    id: str = Field(..., description="Unique identifier for the influencer (UUID or IC Principal)", examples=["550e8400-e29b-41d4-a716-446655440000"])
     name: str = Field(..., description="URL-friendly username", examples=["tech_guru_ai"])
     display_name: str = Field(..., description="Display name for the influencer", examples=["Tech Guru AI"])
     avatar_url: str | None = Field(None, description="Profile picture URL", examples=["https://cdn.yral.com/avatars/tech_guru.png"])
@@ -28,7 +27,7 @@ class MessageResponse(BaseModel):
     """Message response model"""
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
-    id: UUID = Field(..., description="Unique message identifier")
+    id: str = Field(..., description="Unique message identifier")
     role: MessageRole = Field(..., description="Message sender: 'user' or 'assistant'", examples=["user"])
     content: str | None = Field(None, description="Message text content", examples=["Hello! How are you today?"])
     message_type: MessageType = Field(..., description="Message type: TEXT, IMAGE, MULTIMODAL, or AUDIO", examples=["TEXT"])
@@ -52,7 +51,7 @@ class ConversationResponse(BaseModel):
     """Conversation response model"""
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
-    id: UUID
+    id: str
     user_id: str
     influencer: InfluencerBasicInfo
     created_at: datetime
@@ -83,7 +82,7 @@ class ListMessagesResponse(BaseModel):
     """Response for listing messages"""
     model_config = ConfigDict(from_attributes=True)
 
-    conversation_id: UUID
+    conversation_id: str
     messages: list[MessageResponse]
     total: int
     limit: int
@@ -94,7 +93,7 @@ class InfluencerResponse(BaseModel):
     """AI Influencer response model"""
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
-    id: UUID = Field(..., description="Unique identifier for the influencer")
+    id: str = Field(..., description="Unique identifier for the influencer (UUID or IC Principal)")
     name: str = Field(..., description="URL-friendly username", examples=["tech_guru_ai"])
     display_name: str = Field(..., description="Display name", examples=["Tech Guru AI"])
     avatar_url: str | None = Field(None, description="Profile picture URL")
@@ -183,7 +182,7 @@ class DeleteConversationResponse(BaseModel):
 
     success: bool
     message: str
-    deleted_conversation_id: UUID
+    deleted_conversation_id: str
     deleted_messages_count: int
 
 
