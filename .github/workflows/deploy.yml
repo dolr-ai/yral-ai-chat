@@ -112,6 +112,10 @@ jobs:
             # Stop existing Docker containers
             docker compose down || true
             
+            echo "🧹 Cleaning up Docker build cache..."
+            # Prune build cache to fix corrupted layer issues
+            docker builder prune -af || true
+            
             echo "🏗️  Building Docker image..."
             docker compose build --no-cache
             
