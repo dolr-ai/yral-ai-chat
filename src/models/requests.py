@@ -1,8 +1,6 @@
 """
 Request models for API endpoints
 """
-from uuid import UUID
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.models.entities import MessageType
@@ -24,9 +22,9 @@ class CreateConversationRequest(BaseModel):
         }
     )
 
-    influencer_id: UUID = Field(
+    influencer_id: str = Field(
         ...,
-        description="ID of the AI influencer",
+        description="ID of the AI influencer (UUID or IC Principal)",
         examples=["550e8400-e29b-41d4-a716-446655440000"]
     )
 
