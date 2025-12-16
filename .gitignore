@@ -79,3 +79,6 @@ bin/
 
 # Gradio cache
 gradio-demo/.gradio/
+
+#Certificates
+*.pem
