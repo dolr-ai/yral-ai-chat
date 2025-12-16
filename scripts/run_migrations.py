@@ -51,7 +51,12 @@ def run_migrations():
                 sql = f.read()
 
             # Execute migration
-            conn.executescript(sql)
+            cursor = conn.executescript(sql)
+            
+            # Check if any rows were affected (for UPDATE/INSERT statements)
+            if cursor.rowcount >= 0:
+                print(f"   📊 Rows affected: {cursor.rowcount}")
+            
             conn.commit()
 
             print(f"   ✅ {migration_file.name} completed")
@@ -66,6 +71,18 @@ def run_migrations():
         cursor = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
         table_count = cursor.fetchone()[0]
         print(f"📊 Database has {table_count} table(s)")
+        
+        # Verify influencer IDs (if ai_influencers table exists)
+        try:
+            cursor = conn.execute("SELECT name, id, is_active FROM ai_influencers ORDER BY is_active DESC, name")
+            influencers = cursor.fetchall()
+            if influencers:
+                print(f"\n📋 Current influencer IDs:")
+                for name, id_val, is_active in influencers:
+                    status = "✅ ACTIVE" if is_active else "⏸️  INACTIVE"
+                    print(f"   {status} | {name:20} | {id_val}")
+        except sqlite3.OperationalError:
+            pass  # Table doesn't exist yet
 
     except Exception as e:
         print(f"❌ Migration failed: {e}")

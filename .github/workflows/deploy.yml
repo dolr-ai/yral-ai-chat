@@ -122,7 +122,18 @@ jobs:
             sleep 15
             
             echo "🗄️  Running database migrations..."
-            docker compose exec -T yral-ai-chat python scripts/run_migrations.py || echo "⚠️  Migrations already applied or failed"
+            docker compose exec -T yral-ai-chat python scripts/run_migrations.py
+            if [ $? -ne 0 ]; then
+              echo "❌ Migrations failed! Check logs above."
+              docker compose logs --tail=50 yral-ai-chat
+              exit 1
+            fi
+            
+            echo "🔄 Restarting service to load migrated data..."
+            docker compose restart yral-ai-chat
+            
+            echo "⏳ Waiting for service to restart..."
+            sleep 10
             
             echo "🏥 Running health checks..."
             max_attempts=15

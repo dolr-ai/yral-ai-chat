@@ -36,12 +36,3 @@ WHERE name = 'chef_marco';
 UPDATE ai_influencers
 SET id = 'nova-creative-spark-ic-principal-id-placeholder-006'
 WHERE name = 'nova_creative';
-
--- Verify all updates
-SELECT 
-    name,
-    display_name,
-    id,
-    is_active
-FROM ai_influencers
-ORDER BY is_active DESC, name;
