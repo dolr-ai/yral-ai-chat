@@ -543,7 +543,8 @@ Common HTTP status codes:
 - 500: Internal Server Error
 - 503: Service Unavailable
 
-## License
+## Additional Resources:
 
-MIT
+Front End Integration Guide- https://gist.github.com/kevin-antony-yral/3089b965f30b787923c7a58577ef37f9
+Message Types- https://gist.github.com/kevin-antony-yral/94360fe6923ecd7d02bf03b51c10dbf2
 
