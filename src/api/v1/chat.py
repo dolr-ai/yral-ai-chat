@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 @router.post(
     "/conversations",
     response_model=ConversationResponse,
+    response_model_exclude_none=True,
     status_code=201,
     operation_id="createConversation",
     summary="Create a new conversation",
@@ -80,6 +81,24 @@ async def create_conversation(
     # Get message count
     message_count = await message_repo.count_by_conversation(conversation.id)
 
+    # If this is a brand new conversation that only has the
+    # initial greeting message, return that greeting separately
+    greeting_message = None
+    if message_count == 1:
+        messages = await message_repo.list_by_conversation(
+            conversation_id=conversation.id,
+            limit=1,
+            offset=0,
+            order="desc",
+        )
+        if messages:
+            msg = messages[0]
+            greeting_message = LastMessageInfo(
+                content=msg.content,
+                role=msg.role,
+                created_at=msg.created_at,
+            )
+
     return ConversationResponse(
         id=conversation.id,
         user_id=conversation.user_id,
@@ -91,7 +110,8 @@ async def create_conversation(
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        message_count=message_count
+        message_count=message_count,
+        greeting_message=greeting_message,
     )
 
 
