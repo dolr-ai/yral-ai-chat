@@ -23,6 +23,23 @@ else:
 MIGRATIONS_DIR = PROJECT_ROOT / "migrations" / "sqlite"
 
 
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    """Check if a table exists in the current database."""
+    cursor = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+        (table_name,),
+    )
+    return cursor.fetchone() is not None
+
+
+def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    """Check if a column exists on a given table."""
+    # table_name is controlled by our code (no user input), so using it
+    # directly in the PRAGMA statement is safe here.
+    cursor = conn.execute(f"PRAGMA table_info({table_name})")
+    return any(row[1] == column_name for row in cursor.fetchall())
+
+
 def run_migrations():
     """Run all migration files in order"""
     # Ensure data directory exists
@@ -47,16 +64,29 @@ def run_migrations():
         for migration_file in migration_files:
             print(f"\n🔄 Running {migration_file.name}...")
 
+            # Backwards-compatible handling for adding suggested_messages column:
+            # older SQLite versions don't support "ADD COLUMN IF NOT EXISTS",
+            # so we add the column from Python if it doesn't exist yet.
+            if migration_file.name == "007_add_initial_suggested_messages.sql":
+                if _table_exists(conn, "ai_influencers") and not _column_exists(
+                    conn, "ai_influencers", "suggested_messages"
+                ):
+                    conn.execute(
+                        "ALTER TABLE ai_influencers "
+                        "ADD COLUMN suggested_messages TEXT DEFAULT '[]'"
+                    )
+                    conn.commit()
+
             with open(migration_file, encoding="utf-8") as f:
                 sql = f.read()
 
             # Execute migration
             cursor = conn.executescript(sql)
-            
+
             # Check if any rows were affected (for UPDATE/INSERT statements)
             if cursor.rowcount >= 0:
                 print(f"   📊 Rows affected: {cursor.rowcount}")
-            
+
             conn.commit()
 
             print(f"   ✅ {migration_file.name} completed")
@@ -71,10 +101,13 @@ def run_migrations():
         cursor = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
         table_count = cursor.fetchone()[0]
         print(f"📊 Database has {table_count} table(s)")
-        
+
         # Verify influencer IDs (if ai_influencers table exists)
         try:
-            cursor = conn.execute("SELECT name, id, is_active FROM ai_influencers ORDER BY is_active DESC, name")
+            cursor = conn.execute(
+                "SELECT name, id, is_active FROM ai_influencers "
+                "ORDER BY is_active DESC, name"
+            )
             influencers = cursor.fetchall()
             if influencers:
                 print("\n📋 Current influencer IDs:")
