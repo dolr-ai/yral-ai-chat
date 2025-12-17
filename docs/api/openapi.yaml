@@ -722,18 +722,6 @@ components:
           format: date-time
           title: Created At
           description: Creation timestamp
-        conversation_count:
-          anyOf:
-          - type: integer
-          - type: 'null'
-          title: Conversation Count
-          description: Total conversations with this influencer
-        suggested_messages:
-          items:
-            type: string
-          type: array
-          title: Initial Suggested Messages
-          description: Initial suggested messages users can ask to get started
       type: object
       required:
       - id

@@ -108,12 +108,6 @@ class InfluencerResponse(BaseModel):
     category: str | None = Field(None, description="Category/expertise area", examples=["Technology"])
     is_active: bool = Field(..., description="Whether influencer is currently active")
     created_at: datetime = Field(..., description="Creation timestamp")
-    conversation_count: int | None = Field(None, description="Total conversations with this influencer")
-    suggested_messages: list[str] = Field(
-        default_factory=list,
-        description="Initial suggested messages users can ask to get started",
-        examples=[["Help me create a simple fitness routine", "Give me a full body workout without gym equipment"]]
-    )
 
 
 class ListInfluencersResponse(BaseModel):

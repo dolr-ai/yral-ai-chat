@@ -49,7 +49,6 @@ async def list_influencers(
             category=inf.category,
             is_active=inf.is_active,
             created_at=inf.created_at,
-            suggested_messages=inf.suggested_messages,
         )
         for inf in influencers
     ]
@@ -96,8 +95,6 @@ async def get_influencer(
         category=influencer.category,
         is_active=influencer.is_active,
         created_at=influencer.created_at,
-        conversation_count=influencer.conversation_count,
-        suggested_messages=influencer.suggested_messages,
     )
 
 

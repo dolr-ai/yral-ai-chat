@@ -59,14 +59,12 @@ def test_list_influencers_response_structure(client):
     assert "category" in influencer
     assert "is_active" in influencer
     assert "created_at" in influencer
-    assert "suggested_messages" in influencer
-
+    
     # Verify data types
     assert isinstance(influencer["id"], str)
     assert isinstance(influencer["name"], str)
     assert isinstance(influencer["display_name"], str)
     assert isinstance(influencer["is_active"], bool)
-    assert isinstance(influencer["suggested_messages"], list)
 
     # Verify timestamp format
     created_at = datetime.fromisoformat(influencer["created_at"])
@@ -100,8 +98,6 @@ def test_get_single_influencer(client, test_influencer_id):
     assert "category" in data
     assert "is_active" in data
     assert "created_at" in data
-    assert "conversation_count" in data
-    assert "suggested_messages" in data
 
     # Verify the ID matches
     assert data["id"] == test_influencer_id
@@ -110,12 +106,6 @@ def test_get_single_influencer(client, test_influencer_id):
     assert isinstance(data["name"], str)
     assert isinstance(data["display_name"], str)
     assert isinstance(data["is_active"], bool)
-    assert isinstance(data["suggested_messages"], list)
-
-    # Conversation count can be null or an integer
-    if data["conversation_count"] is not None:
-        assert isinstance(data["conversation_count"], int)
-        assert data["conversation_count"] >= 0
 
 
 def test_get_influencer_with_invalid_uuid(client):
