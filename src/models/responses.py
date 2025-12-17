@@ -21,6 +21,11 @@ class InfluencerBasicInfo(BaseModel):
     name: str = Field(..., description="URL-friendly username", examples=["tech_guru_ai"])
     display_name: str = Field(..., description="Display name for the influencer", examples=["Tech Guru AI"])
     avatar_url: str | None = Field(None, description="Profile picture URL", examples=["https://cdn.yral.com/avatars/tech_guru.png"])
+    suggested_messages: list[str] | None = Field(
+        default=None,
+        description="Initial suggested messages users can ask to get started",
+        examples=[["Help me create a simple fitness routine", "Give me a full body workout without gym equipment"]],
+    )
 
 
 class MessageResponse(BaseModel):
@@ -58,6 +63,8 @@ class ConversationResponse(BaseModel):
     updated_at: datetime
     message_count: int = 0
     last_message: LastMessageInfo | None = None
+    greeting_message: LastMessageInfo | None = None
+    recent_messages: list[MessageResponse] | None = None
 
 
 class SendMessageResponse(BaseModel):
@@ -102,6 +109,12 @@ class InfluencerResponse(BaseModel):
     is_active: bool = Field(..., description="Whether influencer is currently active")
     created_at: datetime = Field(..., description="Creation timestamp")
     conversation_count: int | None = Field(None, description="Total conversations with this influencer")
+    suggested_messages: list[str] = Field(
+        default_factory=list,
+        description="Initial suggested messages users can ask to get started",
+        examples=[["Help me create a simple fitness routine", "Give me a full body workout without gym equipment"]]
+    )
+
 
 class ListInfluencersResponse(BaseModel):
     """Response for listing influencers"""

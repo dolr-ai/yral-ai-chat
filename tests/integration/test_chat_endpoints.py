@@ -35,6 +35,8 @@ def test_create_conversation(client, test_influencer_id):
     assert "name" in influencer
     assert "display_name" in influencer
     assert "avatar_url" in influencer
+    assert "suggested_messages" in influencer
+    assert isinstance(influencer["suggested_messages"], list)
 
 
 def test_create_conversation_returns_existing(client, test_influencer_id):
@@ -129,6 +131,10 @@ def test_list_conversations_response_structure(client, test_conversation_id):
     UUID(conv["id"])
     assert isinstance(conv["user_id"], str)
     assert isinstance(conv["message_count"], int)
+
+    # recent_messages is optional but, if present, must be a list
+    if "recent_messages" in conv and conv["recent_messages"] is not None:
+        assert isinstance(conv["recent_messages"], list)
 
     # Verify timestamps
     datetime.fromisoformat(conv["created_at"])

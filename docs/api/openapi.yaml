@@ -523,6 +523,19 @@ components:
           anyOf:
           - $ref: '#/components/schemas/LastMessageInfo'
           - type: 'null'
+          title: Last Message
+        greeting_message:
+          anyOf:
+          - $ref: '#/components/schemas/LastMessageInfo'
+          - type: 'null'
+          title: Greeting Message
+        recent_messages:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/MessageResponse'
+          - type: 'null'
+          title: Recent Messages
       type: object
       required:
       - id
@@ -625,9 +638,8 @@ components:
       properties:
         id:
           type: string
-          format: uuid
           title: Id
-          description: Unique identifier for the influencer
+          description: Unique identifier for the influencer (UUID or IC Principal)
           examples:
           - 550e8400-e29b-41d4-a716-446655440000
         name:
@@ -650,6 +662,12 @@ components:
           description: Profile picture URL
           examples:
           - https://cdn.yral.com/avatars/tech_guru.png
+        suggested_messages:
+          items:
+            type: string
+          type: array
+          title: Initial Suggested Messages
+          description: Initial suggested messages users can ask to get started
       type: object
       required:
       - id
@@ -661,9 +679,8 @@ components:
       properties:
         id:
           type: string
-          format: uuid
           title: Id
-          description: Unique identifier for the influencer
+          description: Unique identifier for the influencer (UUID or IC Principal)
         name:
           type: string
           title: Name
@@ -711,6 +728,12 @@ components:
           - type: 'null'
           title: Conversation Count
           description: Total conversations with this influencer
+        suggested_messages:
+          items:
+            type: string
+          type: array
+          title: Initial Suggested Messages
+          description: Initial suggested messages users can ask to get started
       type: object
       required:
       - id

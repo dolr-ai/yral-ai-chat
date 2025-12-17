@@ -4,7 +4,6 @@ Domain entity models
 from datetime import datetime
 from enum import Enum
 from typing import Any
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,6 +35,7 @@ class AIInfluencer(BaseModel):
     system_instructions: str
     personality_traits: dict[str, Any] = Field(default_factory=dict)
     initial_greeting: str | None = None
+    suggested_messages: list[str] = Field(default_factory=list)
     is_active: bool = True
     created_at: datetime
     updated_at: datetime

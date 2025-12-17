@@ -2,7 +2,6 @@
 Tests for influencer endpoints
 """
 from datetime import datetime
-from uuid import UUID
 
 
 def test_list_influencers_default_pagination(client):
@@ -60,13 +59,14 @@ def test_list_influencers_response_structure(client):
     assert "category" in influencer
     assert "is_active" in influencer
     assert "created_at" in influencer
+    assert "suggested_messages" in influencer
 
     # Verify data types
     assert isinstance(influencer["id"], str)
-    UUID(influencer["id"])  # Validate UUID format
     assert isinstance(influencer["name"], str)
     assert isinstance(influencer["display_name"], str)
     assert isinstance(influencer["is_active"], bool)
+    assert isinstance(influencer["suggested_messages"], list)
 
     # Verify timestamp format
     created_at = datetime.fromisoformat(influencer["created_at"])
@@ -101,15 +101,16 @@ def test_get_single_influencer(client, test_influencer_id):
     assert "is_active" in data
     assert "created_at" in data
     assert "conversation_count" in data
+    assert "suggested_messages" in data
 
     # Verify the ID matches
     assert data["id"] == test_influencer_id
 
     # Verify data types
-    UUID(data["id"])
     assert isinstance(data["name"], str)
     assert isinstance(data["display_name"], str)
     assert isinstance(data["is_active"], bool)
+    assert isinstance(data["suggested_messages"], list)
 
     # Conversation count can be null or an integer
     if data["conversation_count"] is not None:
@@ -118,14 +119,14 @@ def test_get_single_influencer(client, test_influencer_id):
 
 
 def test_get_influencer_with_invalid_uuid(client):
-    """Test getting influencer with invalid UUID format"""
+    """Test getting influencer with an invalid ID"""
     response = client.get("/api/v1/influencers/invalid-uuid-format")
 
-    # Should return 422 validation error
-    assert response.status_code == 422
+    # With non-UUID IDs allowed, an unknown ID should return 404 not found
+    assert response.status_code == 404
     data = response.json()
     assert "error" in data
-    assert data["error"] == "validation_error"
+    assert data["error"] == "not_found"
     assert "message" in data
 
 

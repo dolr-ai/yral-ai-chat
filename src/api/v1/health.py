@@ -2,7 +2,7 @@
 Health check and status endpoints
 """
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 from loguru import logger
@@ -88,7 +88,7 @@ async def health_check():
 
     return HealthResponse(
         status=overall_status,
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(UTC),
         services=services
     )
 
@@ -147,7 +147,7 @@ async def system_status():
         uptime_seconds=uptime_seconds,
         database=db_stats,
         statistics=system_stats,
-        timestamp=datetime.now(timezone.utc)
+        timestamp=datetime.now(UTC)
     )
 
 

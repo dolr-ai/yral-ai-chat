@@ -33,7 +33,8 @@ class ConversationRepository:
         query = """
             SELECT 
                 c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
-                i.id as inf_id, i.name, i.display_name, i.avatar_url
+                i.id as inf_id, i.name, i.display_name, i.avatar_url,
+                i.suggested_messages
             FROM conversations c
             JOIN ai_influencers i ON c.influencer_id = i.id
             WHERE c.id = $1
@@ -47,7 +48,8 @@ class ConversationRepository:
         query = """
             SELECT 
                 c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
-                i.id as inf_id, i.name, i.display_name, i.avatar_url
+                i.id as inf_id, i.name, i.display_name, i.avatar_url,
+                i.suggested_messages
             FROM conversations c
             JOIN ai_influencers i ON c.influencer_id = i.id
             WHERE c.user_id = $1 AND c.influencer_id = $2
@@ -61,7 +63,7 @@ class ConversationRepository:
         user_id: str,
         influencer_id: UUID | None = None,
         limit: int = 20,
-        offset: int = 0
+        offset: int = 0,
     ) -> list[Conversation]:
         """List conversations for a user"""
         if influencer_id:
@@ -69,6 +71,7 @@ class ConversationRepository:
                 SELECT 
                     c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                     i.id as inf_id, i.name, i.display_name, i.avatar_url,
+                    i.suggested_messages,
                     COUNT(m.id) as message_count
                 FROM conversations c
                 JOIN ai_influencers i ON c.influencer_id = i.id
@@ -84,6 +87,7 @@ class ConversationRepository:
                 SELECT 
                     c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                     i.id as inf_id, i.name, i.display_name, i.avatar_url,
+                    i.suggested_messages,
                     COUNT(m.id) as message_count
                 FROM conversations c
                 JOIN ai_influencers i ON c.influencer_id = i.id
@@ -143,7 +147,7 @@ class ConversationRepository:
             return {
                 "content": row["content"],
                 "role": row["role"],
-                "created_at": row["created_at"]
+                "created_at": row["created_at"],
             }
         return None
 
@@ -160,12 +164,21 @@ class ConversationRepository:
             influencer_id=row["influencer_id"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
-            metadata=metadata
+            metadata=metadata,
         )
 
     def _row_to_conversation_with_influencer(self, row) -> Conversation:
         """Convert database row to Conversation with influencer info"""
         conversation = self._row_to_conversation(row)
+
+        suggested_messages = row.get("suggested_messages")
+        if isinstance(suggested_messages, str):
+            try:
+                suggested_messages = json.loads(suggested_messages)
+            except json.JSONDecodeError:
+                suggested_messages = []
+        elif not isinstance(suggested_messages, list):
+            suggested_messages = []
 
         # Add influencer basic info
         conversation.influencer = AIInfluencer(
@@ -174,8 +187,9 @@ class ConversationRepository:
             display_name=row["display_name"],
             avatar_url=row["avatar_url"],
             system_instructions="",  # Not needed in list view
+            suggested_messages=suggested_messages,
             created_at=row["created_at"],
-            updated_at=row["updated_at"]
+            updated_at=row["updated_at"],
         )
 
         return conversation

@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 @router.post(
     "/conversations",
     response_model=ConversationResponse,
+    response_model_exclude_none=True,
     status_code=201,
     operation_id="createConversation",
     summary="Create a new conversation",
@@ -48,37 +49,55 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
                             "id": "660e8400-e29b-41d4-a716-446655440000",
                             "name": "tech_guru",
                             "display_name": "Tech Guru AI",
-                            "avatar_url": "https://example.com/avatar.jpg"
+                            "avatar_url": "https://example.com/avatar.jpg",
                         },
                         "created_at": "2024-01-15T10:30:00Z",
                         "updated_at": "2024-01-15T10:30:00Z",
-                        "message_count": 0
+                        "message_count": 0,
                     }
                 }
-            }
+            },
         },
         400: {"description": "Bad request - Invalid influencer_id format"},
         401: {"description": "Unauthorized - Invalid or missing JWT token"},
         404: {"description": "Influencer not found"},
         422: {"description": "Validation error - Request body validation failed"},
         429: {"description": "Rate limit exceeded"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def create_conversation(
     request: CreateConversationRequest,
     current_user: CurrentUser = Depends(get_current_user),
     chat_service: ChatServiceDep = None,
-    message_repo: MessageRepositoryDep = None
+    message_repo: MessageRepositoryDep = None,
 ):
     """Create a new conversation with an AI influencer"""
     conversation = await chat_service.create_conversation(
         user_id=current_user.user_id,
-        influencer_id=request.influencer_id
+        influencer_id=request.influencer_id,
     )
 
     # Get message count
     message_count = await message_repo.count_by_conversation(conversation.id)
+
+    # If this is a brand new conversation that only has the
+    # initial greeting message, return that greeting separately
+    greeting_message = None
+    if message_count == 1:
+        messages = await message_repo.list_by_conversation(
+            conversation_id=conversation.id,
+            limit=1,
+            offset=0,
+            order="desc",
+        )
+        if messages:
+            msg = messages[0]
+            greeting_message = LastMessageInfo(
+                content=msg.content,
+                role=msg.role,
+                created_at=msg.created_at,
+            )
 
     return ConversationResponse(
         id=conversation.id,
@@ -87,11 +106,15 @@ async def create_conversation(
             id=conversation.influencer.id,
             name=conversation.influencer.name,
             display_name=conversation.influencer.display_name,
-            avatar_url=conversation.influencer.avatar_url
+            avatar_url=conversation.influencer.avatar_url,
+            suggested_messages=conversation.influencer.suggested_messages
+            if message_count <= 1
+            else None,
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        message_count=message_count
+        message_count=message_count,
+        greeting_message=greeting_message,
     )
 
 
@@ -100,21 +123,22 @@ async def create_conversation(
     response_model=ListConversationsResponse,
     operation_id="listConversations",
     summary="List user conversations",
-    description="Retrieve paginated list of user's conversations, optionally filtered by influencer",
+    description="Retrieve paginated list of user's conversations, optionally filtered by influencer. Includes the last 10 messages per conversation.",
     responses={
         200: {"description": "List of conversations retrieved successfully"},
         401: {"description": "Unauthorized - Invalid or missing JWT token"},
         422: {"description": "Validation error - Invalid query parameters"},
         429: {"description": "Rate limit exceeded"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def list_conversations(
     limit: int = Query(default=20, ge=1, le=100, description="Number of conversations to return"),
     offset: int = Query(default=0, ge=0, description="Number of conversations to skip"),
     influencer_id: str | None = Query(default=None, description="Filter by specific influencer ID"),
     current_user: CurrentUser = Depends(get_current_user),
-    chat_service: ChatServiceDep = None
+    chat_service: ChatServiceDep = None,
+    message_repo: MessageRepositoryDep = None,
 ):
     """
     List user's conversations
@@ -125,19 +149,37 @@ async def list_conversations(
         user_id=current_user.user_id,
         influencer_id=influencer_id,
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
-    # Convert to response models
-    conversation_responses = []
+    # Convert to response models, including last 10 messages per conversation
+    conversation_responses: list[ConversationResponse] = []
     for conv in conversations:
-        last_msg = None
-        if conv.last_message:
-            last_msg = LastMessageInfo(
-                content=conv.last_message.get("content"),
-                role=conv.last_message.get("role"),
-                created_at=conv.last_message.get("created_at")
-            )
+        msg_count = conv.message_count or 0
+
+        # Fetch up to the last 10 messages for this conversation (newest first)
+        recent_messages_list = await message_repo.list_by_conversation(
+            conversation_id=conv.id,
+            limit=10,
+            offset=0,
+            order="desc",
+        )
+        recent_messages: list[MessageResponse] | None = None
+        if recent_messages_list:
+            recent_messages = [
+                MessageResponse(
+                    id=msg.id,
+                    role=msg.role,
+                    content=msg.content,
+                    message_type=msg.message_type,
+                    media_urls=msg.media_urls,
+                    audio_url=msg.audio_url,
+                    audio_duration_seconds=msg.audio_duration_seconds,
+                    token_count=msg.token_count,
+                    created_at=msg.created_at,
+                )
+                for msg in recent_messages_list
+            ]
 
         conversation_responses.append(
             ConversationResponse(
@@ -147,12 +189,15 @@ async def list_conversations(
                     id=conv.influencer.id,
                     name=conv.influencer.name,
                     display_name=conv.influencer.display_name,
-                    avatar_url=conv.influencer.avatar_url
+                    avatar_url=conv.influencer.avatar_url,
+                    suggested_messages=conv.influencer.suggested_messages
+                    if msg_count <= 1
+                    else None,
                 ),
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
-                message_count=conv.message_count or 0,
-                last_message=last_msg
+                message_count=msg_count,
+                recent_messages=recent_messages,
             )
         )
 
@@ -160,7 +205,7 @@ async def list_conversations(
         conversations=conversation_responses,
         total=total,
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
 
@@ -177,8 +222,8 @@ async def list_conversations(
         404: {"description": "Conversation not found"},
         422: {"description": "Validation error - Invalid parameters"},
         429: {"description": "Rate limit exceeded"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def list_messages(
     conversation_id: str,
@@ -186,7 +231,7 @@ async def list_messages(
     offset: int = Query(default=0, ge=0, description="Number of messages to skip"),
     order: str = Query(default="desc", pattern="^(asc|desc)$", description="Sort order: 'asc' or 'desc'"),
     current_user: CurrentUser = Depends(get_current_user),
-    chat_service: ChatServiceDep = None
+    chat_service: ChatServiceDep = None,
 ):
     """
     Get conversation message history
@@ -198,7 +243,7 @@ async def list_messages(
         user_id=current_user.user_id,
         limit=limit,
         offset=offset,
-        order=order
+        order=order,
     )
 
     # Convert to response models
@@ -212,7 +257,7 @@ async def list_messages(
             audio_url=msg.audio_url,
             audio_duration_seconds=msg.audio_duration_seconds,
             token_count=msg.token_count,
-            created_at=msg.created_at
+            created_at=msg.created_at,
         )
         for msg in messages
     ]
@@ -222,7 +267,7 @@ async def list_messages(
         messages=message_responses,
         total=total,
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
 
@@ -251,15 +296,15 @@ async def list_messages(
         422: {"description": "Validation error - Invalid message data"},
         429: {"description": "Rate limit exceeded"},
         500: {"description": "Internal server error"},
-        503: {"description": "Service unavailable - AI service temporarily unavailable"}
-    }
+        503: {"description": "Service unavailable - AI service temporarily unavailable"},
+    },
 )
 async def send_message(
     conversation_id: str,
     request: SendMessageRequest,
     background_tasks: BackgroundTasks,
     current_user: CurrentUser = Depends(get_current_user),
-    chat_service: ChatServiceDep = None
+    chat_service: ChatServiceDep = None,
 ):
     """
     Send a message to AI influencer
@@ -279,7 +324,7 @@ async def send_message(
         message_type=request.message_type,
         media_urls=request.media_urls or [],
         audio_url=request.audio_url,
-        audio_duration_seconds=request.audio_duration_seconds
+        audio_duration_seconds=request.audio_duration_seconds,
     )
 
     # Add background tasks for non-critical operations
@@ -295,17 +340,17 @@ async def send_message(
             model="gemini",
             tokens=assistant_msg.token_count,
             user_id=current_user.user_id,
-            conversation_id=str(conversation_id)
+            conversation_id=str(conversation_id),
         )
 
     background_tasks.add_task(
         update_conversation_stats,
-        conversation_id=str(conversation_id)
+        conversation_id=str(conversation_id),
     )
 
     background_tasks.add_task(
         invalidate_cache_for_user,
-        user_id=current_user.user_id
+        user_id=current_user.user_id,
     )
 
     return SendMessageResponse(
@@ -318,7 +363,7 @@ async def send_message(
             audio_url=user_msg.audio_url,
             audio_duration_seconds=user_msg.audio_duration_seconds,
             token_count=user_msg.token_count,
-            created_at=user_msg.created_at
+            created_at=user_msg.created_at,
         ),
         assistant_message=MessageResponse(
             id=assistant_msg.id,
@@ -329,8 +374,8 @@ async def send_message(
             audio_url=assistant_msg.audio_url,
             audio_duration_seconds=assistant_msg.audio_duration_seconds,
             token_count=assistant_msg.token_count,
-            created_at=assistant_msg.created_at
-        )
+            created_at=assistant_msg.created_at,
+        ),
     )
 
 
@@ -346,27 +391,27 @@ async def send_message(
         403: {"description": "Forbidden - Not authorized to delete this conversation"},
         404: {"description": "Conversation not found"},
         429: {"description": "Rate limit exceeded"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def delete_conversation(
     conversation_id: str,
     current_user: CurrentUser = Depends(get_current_user),
-    chat_service: ChatServiceDep = None
+    chat_service: ChatServiceDep = None,
 ):
-    """
+    """\
     Delete a conversation and all its messages
     """
     deleted_messages = await chat_service.delete_conversation(
         conversation_id=conversation_id,
-        user_id=current_user.user_id
+        user_id=current_user.user_id,
     )
 
     return DeleteConversationResponse(
         success=True,
         message="Conversation deleted successfully",
         deleted_conversation_id=conversation_id,
-        deleted_messages_count=deleted_messages
+        deleted_messages_count=deleted_messages,
     )
 
 
