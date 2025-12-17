@@ -529,6 +529,13 @@ components:
           - $ref: '#/components/schemas/LastMessageInfo'
           - type: 'null'
           title: Greeting Message
+        recent_messages:
+          anyOf:
+          - type: array
+            items:
+              $ref: '#/components/schemas/MessageResponse'
+          - type: 'null'
+          title: Recent Messages
       type: object
       required:
       - id

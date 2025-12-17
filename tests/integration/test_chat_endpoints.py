@@ -132,6 +132,10 @@ def test_list_conversations_response_structure(client, test_conversation_id):
     assert isinstance(conv["user_id"], str)
     assert isinstance(conv["message_count"], int)
 
+    # recent_messages is optional but, if present, must be a list
+    if "recent_messages" in conv and conv["recent_messages"] is not None:
+        assert isinstance(conv["recent_messages"], list)
+
     # Verify timestamps
     datetime.fromisoformat(conv["created_at"])
     datetime.fromisoformat(conv["updated_at"])

@@ -121,10 +121,9 @@ async def create_conversation(
 @router.get(
     "/conversations",
     response_model=ListConversationsResponse,
-    response_model_exclude_none=True,
     operation_id="listConversations",
     summary="List user conversations",
-    description="Retrieve paginated list of user's conversations, optionally filtered by influencer",
+    description="Retrieve paginated list of user's conversations, optionally filtered by influencer. Includes the last 10 messages per conversation.",
     responses={
         200: {"description": "List of conversations retrieved successfully"},
         401: {"description": "Unauthorized - Invalid or missing JWT token"},
@@ -139,6 +138,7 @@ async def list_conversations(
     influencer_id: str | None = Query(default=None, description="Filter by specific influencer ID"),
     current_user: CurrentUser = Depends(get_current_user),
     chat_service: ChatServiceDep = None,
+    message_repo: MessageRepositoryDep = None,
 ):
     """
     List user's conversations
@@ -152,17 +152,34 @@ async def list_conversations(
         offset=offset,
     )
 
-    # Convert to response models
-    conversation_responses = []
+    # Convert to response models, including last 10 messages per conversation
+    conversation_responses: list[ConversationResponse] = []
     for conv in conversations:
         msg_count = conv.message_count or 0
-        last_msg = None
-        if conv.last_message:
-            last_msg = LastMessageInfo(
-                content=conv.last_message.get("content"),
-                role=conv.last_message.get("role"),
-                created_at=conv.last_message.get("created_at"),
-            )
+
+        # Fetch up to the last 10 messages for this conversation (newest first)
+        recent_messages_list = await message_repo.list_by_conversation(
+            conversation_id=conv.id,
+            limit=10,
+            offset=0,
+            order="desc",
+        )
+        recent_messages: list[MessageResponse] | None = None
+        if recent_messages_list:
+            recent_messages = [
+                MessageResponse(
+                    id=msg.id,
+                    role=msg.role,
+                    content=msg.content,
+                    message_type=msg.message_type,
+                    media_urls=msg.media_urls,
+                    audio_url=msg.audio_url,
+                    audio_duration_seconds=msg.audio_duration_seconds,
+                    token_count=msg.token_count,
+                    created_at=msg.created_at,
+                )
+                for msg in recent_messages_list
+            ]
 
         conversation_responses.append(
             ConversationResponse(
@@ -180,7 +197,7 @@ async def list_conversations(
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
                 message_count=msg_count,
-                last_message=last_msg,
+                recent_messages=recent_messages,
             )
         )
 
