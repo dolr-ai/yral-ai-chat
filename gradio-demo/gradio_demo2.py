@@ -2,7 +2,6 @@
 Gradio Chat App for Yral AI
 A streamlined chat interface to talk with AI influencers
 """
-import json
 from datetime import datetime
 
 import gradio as gr
@@ -29,7 +28,7 @@ def get_influencers():
         data = response.json()
         
         # Return list of tuples (display_name, id) for dropdown
-        influencers = [(inf['display_name'], inf['id']) for inf in data.get("influencers", [])]
+        influencers = [(inf["display_name"], inf["id"]) for inf in data.get("influencers", [])]
         return influencers
     except Exception as e:
         print(f"Error fetching influencers: {e}")
@@ -77,7 +76,7 @@ def start_conversation(influencer_id):
         return chat_history, status, gr.update(interactive=True)
         
     except Exception as e:
-        error_msg = f"❌ Error: {str(e)}"
+        error_msg = f"❌ Error: {e!s}"
         print(error_msg)
         return [], error_msg, gr.update(interactive=False)
 
@@ -112,7 +111,7 @@ def send_message(message, chat_history):
         return chat_history, ""
         
     except Exception as e:
-        error_msg = f"Error: {str(e)}"
+        error_msg = f"Error: {e!s}"
         print(error_msg)
         # Add error to chat
         chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
@@ -158,7 +157,7 @@ def send_image_message(image, caption, chat_history):
         data = response.json()
         
         # Update chat history
-        user_msg = f"🖼️ [Image]"
+        user_msg = "🖼️ [Image]"
         if caption:
             user_msg += f" {caption}"
         
@@ -170,7 +169,7 @@ def send_image_message(image, caption, chat_history):
         return chat_history, None
         
     except Exception as e:
-        error_msg = f"Error uploading image: {str(e)}"
+        error_msg = f"Error uploading image: {e!s}"
         print(error_msg)
         chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
         return chat_history, None
@@ -225,7 +224,7 @@ def send_audio_message(audio, chat_history):
         return chat_history, None
         
     except Exception as e:
-        error_msg = f"Error uploading audio: {str(e)}"
+        error_msg = f"Error uploading audio: {e!s}"
         print(error_msg)
         chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
         return chat_history, None
@@ -254,7 +253,7 @@ def load_conversation_list():
         conversations = []
         for conv in data.get("conversations", []):
             label = f"{conv['influencer']['display_name']} - {conv['message_count']} msgs - {conv['updated_at'][:10]}"
-            conversations.append((label, conv['id']))
+            conversations.append((label, conv["id"]))
         
         return gr.update(choices=conversations)
     except Exception as e:
@@ -295,7 +294,7 @@ def load_existing_conversation(conversation_id):
         return chat_history, status, gr.update(interactive=True)
         
     except Exception as e:
-        error_msg = f"❌ Error loading conversation: {str(e)}"
+        error_msg = f"❌ Error loading conversation: {e!s}"
         print(error_msg)
         return [], error_msg, gr.update(interactive=False)
 
@@ -307,7 +306,7 @@ def check_api_status():
         response.raise_for_status()
         return "🟢 API Connected"
     except Exception as e:
-        return f"🔴 API Offline: {str(e)}"
+        return f"🔴 API Offline: {e!s}"
 
 
 # Create Gradio Interface

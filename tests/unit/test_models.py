@@ -1,8 +1,6 @@
 """
 Unit tests for Pydantic models
 """
-from uuid import UUID
-
 import pytest
 from pydantic import ValidationError
 
@@ -15,16 +13,16 @@ class TestCreateConversationRequest:
     """Tests for CreateConversationRequest model"""
 
     def test_valid_request(self):
-        """Test creating valid conversation request"""
-        request = CreateConversationRequest(
-            influencer_id="550e8400-e29b-41d4-a716-446655440000"
-        )
-        assert isinstance(request.influencer_id, UUID)
+        """Test creating valid conversation request accepts string IDs (UUID or IC principal)"""
+        value = "550e8400-e29b-41d4-a716-446655440000"
+        request = CreateConversationRequest(influencer_id=value)
+        assert isinstance(request.influencer_id, str)
 
-    def test_invalid_uuid(self):
-        """Test that invalid UUID raises error"""
-        with pytest.raises(ValidationError):
-            CreateConversationRequest(influencer_id="not-a-uuid")
+    def test_allows_non_uuid_ids(self):
+        """Test that non-UUID influencer IDs (e.g. IC Principals) are accepted as strings"""
+        value = "not-a-uuid"
+        request = CreateConversationRequest(influencer_id=value)
+        assert request.influencer_id == value
 
 
 class TestSendMessageRequest:

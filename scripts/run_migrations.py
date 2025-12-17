@@ -77,7 +77,7 @@ def run_migrations():
             cursor = conn.execute("SELECT name, id, is_active FROM ai_influencers ORDER BY is_active DESC, name")
             influencers = cursor.fetchall()
             if influencers:
-                print(f"\n📋 Current influencer IDs:")
+                print("\n📋 Current influencer IDs:")
                 for name, id_val, is_active in influencers:
                     status = "✅ ACTIVE" if is_active else "⏸️  INACTIVE"
                     print(f"   {status} | {name:20} | {id_val}")

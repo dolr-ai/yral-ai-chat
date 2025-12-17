@@ -35,6 +35,8 @@ def test_create_conversation(client, test_influencer_id):
     assert "name" in influencer
     assert "display_name" in influencer
     assert "avatar_url" in influencer
+    assert "suggested_messages" in influencer
+    assert isinstance(influencer["suggested_messages"], list)
 
 
 def test_create_conversation_returns_existing(client, test_influencer_id):

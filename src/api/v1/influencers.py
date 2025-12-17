@@ -19,15 +19,15 @@ router = APIRouter(prefix="/api/v1/influencers", tags=["Influencers"])
         200: {"description": "List of influencers retrieved successfully"},
         422: {"description": "Validation error - Invalid query parameters"},
         429: {"description": "Rate limit exceeded"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def list_influencers(
     limit: int = Query(default=50, ge=1, le=100, description="Number of influencers to return"),
     offset: int = Query(default=0, ge=0, description="Number of influencers to skip"),
-    influencer_service: InfluencerServiceDep = None
+    influencer_service: InfluencerServiceDep = None,
 ):
-    """
+    """\
     List all AI influencers (both active and inactive)
     
     Active influencers are listed first, followed by inactive ones.
@@ -35,7 +35,7 @@ async def list_influencers(
     """
     influencers, total = await influencer_service.list_influencers(
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
     # Convert to response models
@@ -48,7 +48,8 @@ async def list_influencers(
             description=inf.description,
             category=inf.category,
             is_active=inf.is_active,
-            created_at=inf.created_at
+            created_at=inf.created_at,
+            suggested_messages=inf.suggested_messages,
         )
         for inf in influencers
     ]
@@ -57,7 +58,7 @@ async def list_influencers(
         influencers=influencer_responses,
         total=total,
         limit=limit,
-        offset=offset
+        offset=offset,
     )
 
 
@@ -72,14 +73,14 @@ async def list_influencers(
         404: {"description": "Influencer not found"},
         422: {"description": "Validation error - Invalid influencer ID format"},
         429: {"description": "Rate limit exceeded"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def get_influencer(
     influencer_id: str,
-    influencer_service: InfluencerServiceDep = None
+    influencer_service: InfluencerServiceDep = None,
 ):
-    """
+    """\
     Get specific AI influencer details
     
     No authentication required
@@ -95,7 +96,8 @@ async def get_influencer(
         category=influencer.category,
         is_active=influencer.is_active,
         created_at=influencer.created_at,
-        conversation_count=influencer.conversation_count
+        conversation_count=influencer.conversation_count,
+        suggested_messages=influencer.suggested_messages,
     )
 
 
