@@ -6,6 +6,7 @@ from fastapi.security import HTTPBearer
 
 from src.auth.jwt_auth import CurrentUser, get_current_user
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep
+from src.models.entities import MessageRole
 from src.models.requests import CreateConversationRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,
@@ -73,7 +74,7 @@ async def create_conversation(
     message_repo: MessageRepositoryDep = None,
 ):
     """Create a new conversation with an AI influencer"""
-    conversation = await chat_service.create_conversation(
+    conversation, is_new = await chat_service.create_conversation(
         user_id=current_user.user_id,
         influencer_id=request.influencer_id,
     )
@@ -81,10 +82,49 @@ async def create_conversation(
     # Get message count
     message_count = await message_repo.count_by_conversation(conversation.id)
 
-    # If this is a brand new conversation that only has the
-    # initial greeting message, return that greeting separately
+    # If this is a brand new conversation, try to get the greeting message
     greeting_message = None
-    if message_count == 1:
+    if is_new and conversation.influencer and conversation.influencer.initial_greeting:
+        from loguru import logger
+        logger.info(
+            f"New conversation created {conversation.id}. "
+            f"Fetching greeting message. initial_greeting exists: {bool(conversation.influencer.initial_greeting)}"
+        )
+        # For new conversations, fetch the greeting message directly
+        # This handles cases where message_count might be 0 due to timing
+        messages = await message_repo.list_by_conversation(
+            conversation_id=conversation.id,
+            limit=1,
+            offset=0,
+            order="desc",
+        )
+        logger.info(f"Fetched {len(messages)} messages for new conversation {conversation.id}")
+        if messages:
+            msg = messages[0]
+            logger.info(
+                f"First message: role={msg.role}, content_preview={msg.content[:50] if msg.content else 'None'}..."
+            )
+            # Verify it's the greeting (assistant role, matches initial_greeting)
+            if msg.role == MessageRole.ASSISTANT:
+                greeting_message = LastMessageInfo(
+                    content=msg.content,
+                    role=msg.role,
+                    created_at=msg.created_at,
+                )
+                logger.info(f"✅ Greeting message found and added to response for conversation {conversation.id}")
+            else:
+                logger.warning(
+                    f"First message is not assistant role: {msg.role} for conversation {conversation.id}"
+                )
+        # If no messages found but we have initial_greeting, log a warning
+        elif conversation.influencer.initial_greeting:
+            logger.warning(
+                f"⚠️ Initial greeting should exist for conversation {conversation.id} "
+                f"but no messages found. initial_greeting: {conversation.influencer.initial_greeting[:50]}... "
+                f"message_count: {message_count}"
+            )
+    elif message_count == 1:
+        # Fallback: if message_count is 1, try to get it (for existing conversations that were just created)
         messages = await message_repo.list_by_conversation(
             conversation_id=conversation.id,
             limit=1,

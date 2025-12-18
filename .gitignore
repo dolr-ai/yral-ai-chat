@@ -82,3 +82,7 @@ gradio-demo/.gradio/
 
 #Certificates
 *.pem
+
+#Addon files
+*.jpg
+test_media_upload.py
