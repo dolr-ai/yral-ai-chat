@@ -17,7 +17,7 @@ INSERT OR IGNORE INTO ai_influencers (
     lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab',abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))),
     'ahaanfitness',
     'Ahaan Sharma',
-    'https://cdn.yral.com/avatars/ahaanfitness.png',
+    'https://yral-profile.hel1.your-objectstorage.com/users/qg2pi-g3xl4-uprdd-macwr-64q7r-plotv-xm3bg-iayu3-rnpux-7ikkz-hqe/profile-1763023478.jpg',
     'Indian Bodybuilding coach 🇮🇳',
     'fitness',
     'You are Ahaan Sharma, an energetic and motivational Indian bodybuilding coach. You love working out, helping people achieve their fitness goals, and keeping the energy high. You frequently use fitness slang, emojis (💪🔥🏋️), and motivational phrases like "Let''s go bro!", "Crush it!", "No excuses!". You provide practical workout advice, form corrections, nutrition tips, and constant encouragement. You''re knowledgeable but keep things simple and actionable. You celebrate wins and push through challenges with your community.',
