@@ -55,7 +55,7 @@ class StorageService:
             user_id: User ID for organizing files
             
         Returns:
-            Tuple of (file_url, mime_type, file_size)
+            Tuple of (s3_key, mime_type, file_size)
         """
         # Generate unique filename
         file_ext = Path(filename).suffix.lower()
@@ -68,22 +68,74 @@ class StorageService:
         # Determine mime type
         mime_type = self._get_mime_type(file_ext)
 
-        # Upload to S3 with public-read ACL (run in thread pool to avoid blocking)
+        # Upload to S3 as a private object (run in thread pool to avoid blocking)
         await asyncio.to_thread(
             self.s3_client.put_object,
             Bucket=self.bucket,
             Key=s3_key,
             Body=file_content,
             ContentType=mime_type,
-            ACL="public-read"  # Make the object publicly accessible
         )
-
-        # Generate public URL
-        file_url = f"{settings.s3_public_url_base}/{s3_key}"
 
         logger.info(f"File uploaded to S3: {s3_key} ({file_size} bytes)")
 
-        return file_url, mime_type, file_size
+        return s3_key, mime_type, file_size
+
+    def generate_presigned_url(self, key: str, expires_in: int | None = None) -> str:
+        """
+        Generate a presigned URL for accessing an object.
+
+        Args:
+            key: S3 object key
+            expires_in: Expiration time in seconds (defaults to settings.s3_url_expires_seconds)
+
+        Returns:
+            A time-limited presigned URL for the object
+        """
+        if not key:
+            raise ValueError("S3 key is required to generate a presigned URL")
+
+        expiration = expires_in or settings.s3_url_expires_seconds
+
+        url = self.s3_client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": self.bucket,
+                "Key": key,
+            },
+            ExpiresIn=expiration,
+        )
+        return url
+
+    def extract_key_from_url(self, url_or_key: str) -> str:
+        """
+        Extract S3 key from either a storage key or an old public URL.
+        For backward compatibility with existing data that may contain full public URLs.
+
+        Args:
+            url_or_key: Either a storage key (e.g., "user123/uuid.jpg") or a full public URL
+
+        Returns:
+            The S3 key (storage key)
+        """
+        if not url_or_key:
+            return url_or_key
+
+        # If it's already just a key (no scheme), return as-is
+        if not url_or_key.startswith(("http://", "https://")):
+            return url_or_key
+
+        # If it's a full URL, try to extract the key
+        public_base = settings.s3_public_url_base.rstrip("/")
+        if url_or_key.startswith(public_base):
+            # Extract everything after the base URL
+            key = url_or_key[len(public_base):].lstrip("/")
+            return key
+
+        # If it doesn't match our expected format, log a warning and return as-is
+        # (might be a different URL format or external URL)
+        logger.warning(f"Could not extract S3 key from URL: {url_or_key}")
+        return url_or_key
 
     def _get_mime_type(self, file_ext: str) -> str:
         """Get MIME type from file extension"""

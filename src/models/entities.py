@@ -71,8 +71,14 @@ class Message(BaseModel):
     role: MessageRole
     content: str | None = None
     message_type: MessageType
-    media_urls: list[str] = Field(default_factory=list)
-    audio_url: str | None = None
+    media_urls: list[str] = Field(
+        default_factory=list,
+        description="List of storage keys for image files"
+    )
+    audio_url: str | None = Field(
+        None,
+        description="Storage key for audio file"
+    )
     audio_duration_seconds: int | None = None
     token_count: int | None = None
     created_at: datetime

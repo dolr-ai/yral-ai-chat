@@ -24,9 +24,10 @@ router = APIRouter(prefix="/api/v1/media", tags=["Media"])
     **Supported formats:**
     - Images: JPEG, PNG, GIF, WebP (max 10MB)
     - Audio: MP3, WAV, M4A (max 20MB, 5 minutes)
-    
-    Returns the public URL of the uploaded file.
-    
+
+    Returns a short-lived presigned URL for immediate access and a stable storage_key
+    that can be used later when sending chat messages.
+
     **Authentication required**: JWT token in Authorization header
     """,
     responses={
@@ -54,7 +55,7 @@ async def upload_media(
         type: Type of file ("image" or "audio")
     
     Returns:
-        MediaUploadResponse with file URL and metadata
+        MediaUploadResponse with presigned URL, storage key and metadata
     """
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
@@ -73,7 +74,7 @@ async def upload_media(
 
     # Save file
     try:
-        file_url, mime_type, file_size = await storage_service.save_file(
+        s3_key, mime_type, file_size = await storage_service.save_file(
             file_content=file_content,
             filename=file.filename,
             user_id=current_user.user_id
@@ -82,6 +83,13 @@ async def upload_media(
         logger.error(f"File upload failed: {e}")
         raise HTTPException(status_code=500, detail=f"File upload failed: {e!s}") from e
 
+    # Generate a short-lived presigned URL for immediate access
+    try:
+        presigned_url = storage_service.generate_presigned_url(s3_key)
+    except Exception as e:
+        logger.error(f"Failed to generate presigned URL for {s3_key}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate access URL for uploaded file") from e
+
     # Get audio duration if applicable (placeholder for now)
     duration_seconds = None
     if type == "audio":
@@ -89,7 +97,8 @@ async def upload_media(
         duration_seconds = None
 
     return MediaUploadResponse(
-        url=file_url,
+        url=presigned_url,
+        storage_key=s3_key,
         type=type,
         size=file_size,
         mime_type=mime_type,

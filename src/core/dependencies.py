@@ -47,9 +47,10 @@ def get_chat_service(
     influencer_repo: Annotated[InfluencerRepository, Depends(get_influencer_repository)],
     conversation_repo: Annotated[ConversationRepository, Depends(get_conversation_repository)],
     message_repo: Annotated[MessageRepository, Depends(get_message_repository)],
+    storage_service: Annotated[StorageService, Depends(get_storage_service)],
 ) -> ChatService:
     """Get chat service instance with injected dependencies"""
-    service = ChatService()
+    service = ChatService(storage_service=storage_service)
     service.influencer_repo = influencer_repo
     service.conversation_repo = conversation_repo
     service.message_repo = message_repo
