@@ -58,6 +58,7 @@ logs/
 *.db
 *.sqlite
 *.sql
+!migrations/**/*.sql
 data/
 
 # Litestream config (contains S3 credentials)
@@ -85,4 +86,4 @@ gradio-demo/.gradio/
 
 #Addon files
 *.jpg
-test_media_upload.py
+media_upload.py
