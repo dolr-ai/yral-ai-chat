@@ -79,6 +79,15 @@ Authorization: Bearer <your_jwt_token>
 #### Media
 - `POST /api/v1/media/upload` - Upload image or audio file
 
+**Media Upload Security:**
+- Uploaded files are stored as **private objects** in S3 (not publicly accessible)
+- The upload endpoint returns:
+  - `storage_key`: An opaque identifier (e.g., `user123/uuid.jpg`) that should be stored and used when sending messages
+  - `url`: A **short-lived presigned URL** (typically valid for 15 minutes) for immediate preview/access
+- When sending messages, use the `storage_key` value (not the presigned URL) in `media_urls` or `audio_url` fields
+- When fetching message history, the API automatically converts stored keys to fresh presigned URLs
+- Presigned URLs expire after the configured time (`S3_URL_EXPIRES_SECONDS`, default 900 seconds)
+
 #### Health
 - `GET /health` - Health check
 - `GET /status` - System status

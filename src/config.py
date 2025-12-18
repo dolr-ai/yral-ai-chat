@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     aws_region: str = Field(..., min_length=1, alias="AWS_REGION")
     s3_endpoint_url: str = Field(..., alias="S3_ENDPOINT_URL")
     s3_public_url_base: str = Field(..., alias="S3_PUBLIC_URL_BASE")
+    s3_url_expires_seconds: int = Field(
+        default=900,
+        ge=60,
+        le=86400,
+        alias="S3_URL_EXPIRES_SECONDS",
+        description="Expiration time in seconds for generated S3 presigned URLs",
+    )
 
     @field_validator("s3_endpoint_url", "s3_public_url_base")
     @classmethod

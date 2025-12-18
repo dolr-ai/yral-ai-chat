@@ -9,15 +9,17 @@ from src.core.exceptions import ForbiddenException, NotFoundException
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
 from src.models.entities import Conversation, Message, MessageRole, MessageType
 from src.services.gemini_client import gemini_client
+from src.services.storage_service import StorageService
 
 
 class ChatService:
     """Service for chat operations"""
 
-    def __init__(self):
+    def __init__(self, storage_service: StorageService | None = None):
         self.influencer_repo = InfluencerRepository()
         self.conversation_repo = ConversationRepository()
         self.message_repo = MessageRepository()
+        self.storage_service = storage_service
 
     async def create_conversation(
         self,
@@ -106,7 +108,13 @@ class ChatService:
         transcribed_content = content
         if message_type == MessageType.AUDIO and audio_url:
             try:
-                transcription = await gemini_client.transcribe_audio(audio_url)
+                # Convert storage key to presigned URL if needed
+                audio_url_for_transcription = audio_url
+                if self.storage_service:
+                    s3_key = self.storage_service.extract_key_from_url(audio_url)
+                    audio_url_for_transcription = self.storage_service.generate_presigned_url(s3_key)
+                
+                transcription = await gemini_client.transcribe_audio(audio_url_for_transcription)
                 transcribed_content = f"[Transcribed: {transcription}]"
                 logger.info(f"Audio transcribed: {transcription[:100]}...")
             except Exception as e:
@@ -132,8 +140,61 @@ class ChatService:
             limit=10
         )
 
+        # Convert storage keys to presigned URLs in history for Gemini
+        if self.storage_service:
+            for msg in history:
+                # Convert media_urls from storage keys to presigned URLs
+                if msg.media_urls and msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
+                    converted_urls = []
+                    for media_key in msg.media_urls:
+                        if media_key:
+                            try:
+                                s3_key = self.storage_service.extract_key_from_url(media_key)
+                                presigned_url = self.storage_service.generate_presigned_url(s3_key)
+                                converted_urls.append(presigned_url)
+                            except Exception as e:
+                                logger.warning(f"Failed to convert history media key {media_key} to presigned URL: {e}")
+                                # If it's already a URL, keep it
+                                if media_key.startswith(("http://", "https://")):
+                                    converted_urls.append(media_key)
+                    msg.media_urls = converted_urls
+                
+                # Convert audio_url from storage key to presigned URL
+                if msg.audio_url and msg.message_type == MessageType.AUDIO:
+                    try:
+                        s3_key = self.storage_service.extract_key_from_url(msg.audio_url)
+                        msg.audio_url = self.storage_service.generate_presigned_url(s3_key)
+                    except Exception as e:
+                        logger.warning(f"Failed to convert history audio key {msg.audio_url} to presigned URL: {e}")
+                        # If it's already a URL, keep it
+                        if not msg.audio_url.startswith(("http://", "https://")):
+                            msg.audio_url = None  # Can't use storage key as URL
+
         # Prepare content for AI
         ai_input_content = content or transcribed_content or "What do you think?"
+
+        # Convert storage keys to presigned URLs for Gemini (if storage service is available)
+        media_urls_for_ai = None
+        if message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and media_urls:
+            if self.storage_service:
+                media_urls_for_ai = []
+                for media_key in media_urls:
+                    if media_key:
+                        try:
+                            # Extract key from URL if it's an old public URL (backward compat)
+                            s3_key = self.storage_service.extract_key_from_url(media_key)
+                            presigned_url = self.storage_service.generate_presigned_url(s3_key)
+                            media_urls_for_ai.append(presigned_url)
+                        except Exception as e:
+                            logger.warning(f"Failed to generate presigned URL for {media_key}: {e}")
+                            # Fallback: if it already looks like a URL, use it as-is
+                            if media_key.startswith(("http://", "https://")):
+                                media_urls_for_ai.append(media_key)
+                            else:
+                                logger.error(f"Cannot use storage key as URL: {media_key}")
+            else:
+                # No storage service available, use as-is (might be URLs already)
+                media_urls_for_ai = media_urls
 
         # Generate AI response
         try:
@@ -141,7 +202,7 @@ class ChatService:
                 user_message=ai_input_content,
                 system_instructions=influencer.system_instructions,
                 conversation_history=history,
-                media_urls=media_urls if message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] else None
+                media_urls=media_urls_for_ai
             )
         except Exception as e:
             logger.error(f"AI response generation failed: {e}")

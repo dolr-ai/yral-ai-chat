@@ -175,7 +175,16 @@ class MediaUploadResponse(BaseModel):
     """Media upload response"""
     model_config = ConfigDict(from_attributes=True)
 
-    url: str = Field(..., description="Public URL of uploaded file", examples=["https://storage.example.com/uploads/image123.jpg"])
+    url: str = Field(
+        ...,
+        description="Temporary presigned URL of uploaded file",
+        examples=["https://storage.example.com/uploads/image123.jpg?X-Amz-Expires=900&X-Amz-Signature=..."],
+    )
+    storage_key: str = Field(
+        ...,
+        description="Opaque storage key for the uploaded file, to be stored and later referenced in chat messages",
+        examples=["user123/550e8400-e29b-41d4-a716-446655440000.jpg"],
+    )
     type: str = Field(..., description="Media type: 'image' or 'audio'", examples=["image"])
     size: int = Field(..., description="File size in bytes", examples=[1024000])
     mime_type: str = Field(..., description="MIME type of the file", examples=["image/jpeg"])

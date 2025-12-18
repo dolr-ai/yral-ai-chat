@@ -77,13 +77,13 @@ class SendMessageRequest(BaseModel):
     media_urls: list[str] | None = Field(
         default=None,
         max_length=10,
-        description="Array of image URLs (max 10)",
-        examples=[["https://example.com/image.jpg"]]
+        description="Array of storage keys from the upload endpoint (max 10). These are the storage_key values returned by POST /api/v1/media/upload.",
+        examples=[["user123/550e8400-e29b-41d4-a716-446655440000.jpg"]]
     )
     audio_url: str | None = Field(
         default=None,
-        description="URL to audio file",
-        examples=["https://example.com/audio.mp3"]
+        description="Storage key from the upload endpoint. This is the storage_key value returned by POST /api/v1/media/upload.",
+        examples=["user123/550e8400-e29b-41d4-a716-446655440000.mp3"]
     )
     audio_duration_seconds: int | None = Field(
         default=None,
