@@ -79,10 +79,7 @@ async def create_conversation(
         influencer_id=request.influencer_id,
     )
 
-    # Get message count
-    message_count = await message_repo.count_by_conversation(conversation.id)
-
-    # If this is a brand new conversation, try to get the greeting message
+    # If this is a brand new conversation, try to get the greeting message first
     greeting_message = None
     if is_new and conversation.influencer and conversation.influencer.initial_greeting:
         from loguru import logger
@@ -120,11 +117,24 @@ async def create_conversation(
         elif conversation.influencer.initial_greeting:
             logger.warning(
                 f"⚠️ Initial greeting should exist for conversation {conversation.id} "
-                f"but no messages found. initial_greeting: {conversation.influencer.initial_greeting[:50]}... "
-                f"message_count: {message_count}"
+                f"but no messages found. initial_greeting: {conversation.influencer.initial_greeting[:50]}..."
             )
-    elif message_count == 1:
-        # Fallback: if message_count is 1, try to get it (for existing conversations that were just created)
+
+    # Get message count (recalculate after fetching greeting to ensure accuracy)
+    message_count = await message_repo.count_by_conversation(conversation.id)
+    
+    # If we found a greeting but count is still 0, set it to 1
+    # This handles race conditions where the count query runs before the greeting is visible
+    if greeting_message and message_count == 0:
+        from loguru import logger
+        logger.warning(
+            f"Greeting message found but message_count is 0 for conversation {conversation.id}. "
+            f"Setting message_count to 1."
+        )
+        message_count = 1
+    
+    # Fallback: if message_count is 1 and we haven't fetched greeting yet, try to get it
+    if not greeting_message and message_count == 1:
         messages = await message_repo.list_by_conversation(
             conversation_id=conversation.id,
             limit=1,
