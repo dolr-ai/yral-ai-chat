@@ -58,6 +58,7 @@ logs/
 *.db
 *.sqlite
 *.sql
+!migrations/**/*.sql
 data/
 
 # Litestream config (contains S3 credentials)

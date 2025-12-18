@@ -39,6 +39,92 @@ def test_create_conversation(client, test_influencer_id):
     assert isinstance(influencer["suggested_messages"], list)
 
 
+def test_create_conversation_with_initial_greeting_sets_message_count_and_greeting(client):
+    """New conversation with an influencer that has initial_greeting should:
+    - create a greeting message
+    - return message_count == 1
+    - include greeting_message in the response
+    """
+    # Use Ahaan Sharma's influencer ID (known to have initial_greeting)
+    influencer_id = "qg2pi-g3xl4-uprdd-macwr-64q7r-plotv-xm3bg-iayu3-rnpux-7ikkz-hqe"
+
+    # Create a new conversation for that influencer
+    response = client.post(
+        "/api/v1/chat/conversations",
+        json={"influencer_id": influencer_id},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+
+    # 3) message_count should reflect the greeting message that was auto-created
+    assert "message_count" in data
+    assert data["message_count"] == 1
+
+    # 4) greeting_message should be present and structured correctly
+    greeting = data.get("greeting_message")
+    assert greeting is not None
+    assert greeting.get("role") == "assistant"
+    assert isinstance(greeting.get("content"), str)
+    assert greeting["content"].strip() != ""
+
+    # 5) created_at of greeting should be a valid ISO timestamp
+    assert "created_at" in greeting
+    datetime.fromisoformat(greeting["created_at"])
+
+
+def test_initial_greeting_message_appears_in_conversation_history(client):
+    """Verify that the initial greeting message is viewable in conversation message history"""
+    # Use Ahaan Sharma's influencer ID (known to have initial_greeting)
+    influencer_id = "qg2pi-g3xl4-uprdd-macwr-64q7r-plotv-xm3bg-iayu3-rnpux-7ikkz-hqe"
+
+    # 1) Create a new conversation for that influencer
+    create_response = client.post(
+        "/api/v1/chat/conversations",
+        json={"influencer_id": influencer_id},
+    )
+    assert create_response.status_code == 201
+    conversation_data = create_response.json()
+    conversation_id = conversation_data["id"]
+
+    # Verify greeting was returned in create response
+    greeting_from_create = conversation_data.get("greeting_message")
+    assert greeting_from_create is not None
+    expected_greeting_content = greeting_from_create["content"]
+
+    # 2) Fetch conversation messages to verify greeting is in history
+    messages_response = client.get(
+        f"/api/v1/chat/conversations/{conversation_id}/messages",
+        params={"limit": 50, "order": "asc"}  # asc to get oldest first (greeting should be first)
+    )
+    assert messages_response.status_code == 200
+    messages_data = messages_response.json()
+
+    # 3) Verify messages list structure
+    assert "messages" in messages_data
+    assert "total" in messages_data
+    assert messages_data["total"] == 1  # Should only have the greeting message
+
+    # 4) Verify greeting message is in the list
+    messages = messages_data["messages"]
+    assert len(messages) == 1
+
+    greeting_message = messages[0]
+
+    # 5) Verify greeting message structure and content
+    assert greeting_message["role"] == "assistant"
+    assert greeting_message["content"] == expected_greeting_content
+    assert greeting_message["content"].strip() != ""
+    assert greeting_message["message_type"] == "text"
+    assert "id" in greeting_message
+    assert "created_at" in greeting_message
+    datetime.fromisoformat(greeting_message["created_at"])
+
+    # 6) Verify it matches the greeting from create response
+    assert greeting_message["content"] == greeting_from_create["content"]
+    assert greeting_message["role"] == greeting_from_create["role"]
+
+
 def test_create_conversation_returns_existing(client, test_influencer_id):
     """Test creating a conversation returns existing one if it exists"""
     # Create first conversation

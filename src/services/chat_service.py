@@ -25,7 +25,7 @@ class ChatService:
         self,
         user_id: str,
         influencer_id: UUID
-    ) -> Conversation:
+    ) -> tuple[Conversation, bool]:
         """
         Create a new conversation or return existing one
         
@@ -34,7 +34,7 @@ class ChatService:
             influencer_id: AI Influencer ID
             
         Returns:
-            Conversation object
+            Tuple of (Conversation object, is_new_conversation: bool)
         """
         # Verify influencer exists
         influencer = await self.influencer_repo.get_by_id(influencer_id)
@@ -45,26 +45,48 @@ class ChatService:
         existing = await self.conversation_repo.get_existing(user_id, influencer_id)
         if existing:
             logger.info(f"Returning existing conversation: {existing.id}")
-            return existing
+            existing.influencer = influencer
+            return existing, False
 
         # Create new conversation
         conversation = await self.conversation_repo.create(user_id, influencer_id)
         logger.info(f"Created new conversation: {conversation.id}")
 
         # Create initial greeting message if configured
+        greeting_created = False
         if influencer.initial_greeting:
-            await self.message_repo.create(
-                conversation_id=conversation.id,
-                role=MessageRole.ASSISTANT,
-                content=influencer.initial_greeting,
-                message_type=MessageType.TEXT
+            logger.info(
+                f"Creating initial greeting for conversation {conversation.id}. "
+                f"Greeting content length: {len(influencer.initial_greeting)}"
             )
-            logger.info(f"Created initial greeting message for conversation: {conversation.id}")
+            try:
+                greeting_msg = await self.message_repo.create(
+                    conversation_id=conversation.id,
+                    role=MessageRole.ASSISTANT,
+                    content=influencer.initial_greeting,
+                    message_type=MessageType.TEXT
+                )
+                greeting_created = True
+                logger.info(
+                    f"✅ Created initial greeting message for conversation: {conversation.id}. "
+                    f"Message ID: {greeting_msg.id}, Content preview: {greeting_msg.content[:50]}..."
+                )
+            except Exception as e:
+                logger.error(
+                    f"❌ Failed to create initial greeting message for conversation {conversation.id}: {e}",
+                    exc_info=True
+                )
+                # Continue even if greeting creation fails
+        else:
+            logger.info(
+                f"No initial_greeting configured for influencer {influencer.id} "
+                f"({influencer.display_name}). initial_greeting value: {influencer.initial_greeting}"
+            )
 
         # Attach influencer info
         conversation.influencer = influencer
 
-        return conversation
+        return conversation, True  # Return True to indicate this is a new conversation
 
     async def send_message(
         self,
