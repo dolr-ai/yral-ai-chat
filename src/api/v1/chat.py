@@ -36,6 +36,10 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
     If a conversation already exists between the user and influencer, 
     returns the existing conversation instead of creating a new one.
     
+    **Response includes:**
+    - For new conversations: `greeting_message` if the influencer has an initial greeting
+    - For existing conversations with message_count > 1: `recent_messages` (last 10 messages, newest first)
+    
     **Authentication required**: JWT token in Authorization header
     """,
     responses={
@@ -149,6 +153,31 @@ async def create_conversation(
                 created_at=msg.created_at,
             )
 
+    # Fetch recent messages (last 10) if message_count > 1
+    recent_messages: list[MessageResponse] | None = None
+    if message_count > 1:
+        recent_messages_list = await message_repo.list_by_conversation(
+            conversation_id=conversation.id,
+            limit=10,
+            offset=0,
+            order="desc",
+        )
+        if recent_messages_list:
+            recent_messages = [
+                MessageResponse(
+                    id=msg.id,
+                    role=msg.role,
+                    content=msg.content,
+                    message_type=msg.message_type,
+                    media_urls=msg.media_urls,
+                    audio_url=msg.audio_url,
+                    audio_duration_seconds=msg.audio_duration_seconds,
+                    token_count=msg.token_count,
+                    created_at=msg.created_at,
+                )
+                for msg in recent_messages_list
+            ]
+
     return ConversationResponse(
         id=conversation.id,
         user_id=conversation.user_id,
@@ -165,6 +194,7 @@ async def create_conversation(
         updated_at=conversation.updated_at,
         message_count=message_count,
         greeting_message=greeting_message,
+        recent_messages=recent_messages,
     )
 
 
