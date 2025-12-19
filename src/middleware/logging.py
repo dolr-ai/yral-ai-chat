@@ -1,7 +1,6 @@
 """
 Enhanced logging middleware with correlation IDs and structured logging
 """
-import json
 import sys
 import time
 import uuid
@@ -169,7 +168,6 @@ def configure_logging():
                     "value": str(record["exception"].value)
                 }
 
-            print(json.dumps(log_data), flush=True)
 
         logger.add(
             json_sink,

@@ -477,8 +477,4 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
 
 
 if __name__ == "__main__":
-    print("🚀 Starting Gradio Demo...")
-    print(f"📡 API URL: {API_BASE_URL}")
-    print("🌐 Make sure your API server is running!")
-    print("\nStarting demo on http://localhost:7860")
     demo.launch(server_name="0.0.0.0", server_port=7860, share=True)

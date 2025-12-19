@@ -67,9 +67,9 @@ class CircuitBreaker:
 
         try:
             result = func(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             self._on_failure()
-            raise e
+            raise
         else:
             self._on_success()
             return result
@@ -98,9 +98,9 @@ class CircuitBreaker:
 
         try:
             result = await func(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             self._on_failure()
-            raise e
+            raise
         else:
             self._on_success()
             return result
@@ -118,13 +118,12 @@ class CircuitBreaker:
         self.failure_count += 1
         self.last_failure_time = time.time()
 
-        if self.failure_count >= self.failure_threshold:
-            if self.state != CircuitState.OPEN:
-                logger.warning(
-                    f"Circuit breaker entering OPEN state "
-                    f"(failures: {self.failure_count})"
-                )
-                self.state = CircuitState.OPEN
+        if self.failure_count >= self.failure_threshold and self.state != CircuitState.OPEN:
+            logger.warning(
+                f"Circuit breaker entering OPEN state "
+                f"(failures: {self.failure_count})"
+            )
+            self.state = CircuitState.OPEN
 
     def _should_attempt_reset(self) -> bool:
         """Check if enough time has passed to attempt recovery"""

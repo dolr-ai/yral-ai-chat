@@ -11,7 +11,7 @@ from pathlib import Path
 # Get paths - works both in Docker and locally
 # In Docker: /app is the working directory
 # Locally: script is in scripts/ directory
-if os.path.exists("/app"):
+if Path("/app").exists():
     # Running in Docker
     PROJECT_ROOT = Path("/app")
     DB_PATH = Path(os.getenv("DATABASE_PATH", "/app/data/yral_chat.db"))
@@ -56,28 +56,26 @@ def run_migrations():
         migration_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
 
         if not migration_files:
-            print(f"⚠️  No migration files found in {MIGRATIONS_DIR}")
             return
 
-        print(f"📦 Found {len(migration_files)} migration file(s)")
 
         for migration_file in migration_files:
-            print(f"\n🔄 Running {migration_file.name}...")
 
             # Backwards-compatible handling for adding suggested_messages column:
             # older SQLite versions don't support "ADD COLUMN IF NOT EXISTS",
             # so we add the column from Python if it doesn't exist yet.
-            if migration_file.name == "007_add_initial_suggested_messages.sql":
-                if _table_exists(conn, "ai_influencers") and not _column_exists(
-                    conn, "ai_influencers", "suggested_messages"
-                ):
+            if (
+                migration_file.name == "007_add_initial_suggested_messages.sql"
+                and _table_exists(conn, "ai_influencers")
+                and not _column_exists(conn, "ai_influencers", "suggested_messages")
+            ):
                     conn.execute(
                         "ALTER TABLE ai_influencers "
                         "ADD COLUMN suggested_messages TEXT DEFAULT '[]'"
                     )
                     conn.commit()
 
-            with open(migration_file, encoding="utf-8") as f:
+            with migration_file.open(encoding="utf-8") as f:
                 sql = f.read()
 
             # Execute migration
@@ -85,22 +83,19 @@ def run_migrations():
 
             # Check if any rows were affected (for UPDATE/INSERT statements)
             if cursor.rowcount >= 0:
-                print(f"   📊 Rows affected: {cursor.rowcount}")
+                pass
 
             conn.commit()
 
-            print(f"   ✅ {migration_file.name} completed")
 
         # Enable WAL mode for better concurrency
         conn.execute("PRAGMA journal_mode = WAL")
         conn.commit()
 
-        print("\n✅ All migrations completed successfully")
 
         # Show database info
         cursor = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
-        table_count = cursor.fetchone()[0]
-        print(f"📊 Database has {table_count} table(s)")
+        cursor.fetchone()[0]
 
         # Verify influencer IDs (if ai_influencers table exists)
         try:
@@ -110,15 +105,12 @@ def run_migrations():
             )
             influencers = cursor.fetchall()
             if influencers:
-                print("\n📋 Current influencer IDs:")
-                for name, id_val, is_active in influencers:
-                    status = "✅ ACTIVE" if is_active else "⏸️  INACTIVE"
-                    print(f"   {status} | {name:20} | {id_val}")
+                for _name, _id_val, _is_active in influencers:
+                    pass
         except sqlite3.OperationalError:
             pass  # Table doesn't exist yet
 
-    except Exception as e:
-        print(f"❌ Migration failed: {e}")
+    except Exception:
         conn.rollback()
         sys.exit(1)
     finally:
@@ -126,12 +118,6 @@ def run_migrations():
 
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("🗄️  Database Migration Runner")
-    print("=" * 60)
-    print(f"Database: {DB_PATH}")
-    print(f"Migrations: {MIGRATIONS_DIR}")
-    print()
 
     run_migrations()
 

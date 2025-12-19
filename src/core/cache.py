@@ -207,7 +207,7 @@ def invalidate_cache_pattern(pattern: str):
         pattern: Pattern to match (simple prefix matching)
     """
     keys_to_delete = [
-        key for key in cache._cache.keys()
+        key for key in cache._cache
         if key.startswith(pattern)
     ]
 

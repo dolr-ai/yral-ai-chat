@@ -28,10 +28,8 @@ def get_influencers():
         data = response.json()
         
         # Return list of tuples (display_name, id) for dropdown
-        influencers = [(inf["display_name"], inf["id"]) for inf in data.get("influencers", [])]
-        return influencers
-    except Exception as e:
-        print(f"Error fetching influencers: {e}")
+        return [(inf["display_name"], inf["id"]) for inf in data.get("influencers", [])]
+    except Exception:
         return [("Error loading influencers", None)]
 
 
@@ -77,7 +75,6 @@ def start_conversation(influencer_id):
         
     except Exception as e:
         error_msg = f"❌ Error: {e!s}"
-        print(error_msg)
         return [], error_msg, gr.update(interactive=False)
 
 
@@ -112,7 +109,6 @@ def send_message(message, chat_history):
         
     except Exception as e:
         error_msg = f"Error: {e!s}"
-        print(error_msg)
         # Add error to chat
         chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
         return chat_history, ""
@@ -170,7 +166,6 @@ def send_image_message(image, caption, chat_history):
         
     except Exception as e:
         error_msg = f"Error uploading image: {e!s}"
-        print(error_msg)
         chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
         return chat_history, None
 
@@ -225,7 +220,6 @@ def send_audio_message(audio, chat_history):
         
     except Exception as e:
         error_msg = f"Error uploading audio: {e!s}"
-        print(error_msg)
         chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
         return chat_history, None
 
@@ -256,8 +250,7 @@ def load_conversation_list():
             conversations.append((label, conv["id"]))
         
         return gr.update(choices=conversations)
-    except Exception as e:
-        print(f"Error loading conversations: {e}")
+    except Exception:
         return gr.update(choices=[])
 
 
@@ -295,7 +288,6 @@ def load_existing_conversation(conversation_id):
         
     except Exception as e:
         error_msg = f"❌ Error loading conversation: {e!s}"
-        print(error_msg)
         return [], error_msg, gr.update(interactive=False)
 
 
@@ -466,8 +458,4 @@ with gr.Blocks(title="Yral AI Chat", theme=gr.themes.Soft()) as demo:
 
 
 if __name__ == "__main__":
-    print("🚀 Starting Yral AI Chat App...")
-    print(f"📡 API URL: {API_BASE_URL}")
-    print("🌐 Make sure your API server is running!")
-    print("\nStarting chat app on http://localhost:7861")
     demo.launch(server_name="0.0.0.0", server_port=7861, share=False)

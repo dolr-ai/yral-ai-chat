@@ -145,9 +145,8 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         )
 
         # Replace numeric IDs
-        path = re.sub(r"/\d+", "/{id}", path)
+        return re.sub(r"/\d+", "/{id}", path)
 
-        return path
 
 
 async def metrics_endpoint():

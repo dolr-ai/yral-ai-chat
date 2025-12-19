@@ -51,7 +51,6 @@ class ChatService:
         logger.info(f"Created new conversation: {conversation.id}")
 
         # Create initial greeting message if configured
-        greeting_created = False
         if influencer.initial_greeting:
             logger.info(
                 f"Creating initial greeting for conversation {conversation.id}. "
@@ -64,7 +63,6 @@ class ChatService:
                     content=influencer.initial_greeting,
                     message_type=MessageType.TEXT
                 )
-                greeting_created = True
                 logger.info(
                     f"✅ Created initial greeting message for conversation: {conversation.id}. "
                     f"Message ID: {greeting_msg.id}, Content preview: {greeting_msg.content[:50]}..."

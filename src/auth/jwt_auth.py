@@ -39,10 +39,7 @@ def decode_jwt(token: str) -> dict:
 
         # Validate required fields
         if "user_id" not in payload:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid token: missing user_id"
-            )
+            _raise_invalid_token_error("Invalid token: missing user_id")
     except jwt.ExpiredSignatureError as e:
         logger.warning("JWT token expired")
         raise HTTPException(
@@ -90,28 +87,6 @@ async def get_current_user(authorization: str | None = Header(None)) -> CurrentU
         payload={"user_id": "test_user_no_auth", "iss": "yral_auth"}
     )
 
-    # ===== ORIGINAL AUTH CODE (COMMENTED OUT) =====
-    # if not authorization:
-    #     raise HTTPException(
-    #         status_code=401,
-    #         detail="Missing authorization header"
-    #     )
-    #
-    # # Extract token from "Bearer <token>"
-    # parts = authorization.split()
-    # if len(parts) != 2 or parts[0].lower() != "bearer":
-    #     raise HTTPException(
-    #         status_code=401,
-    #         detail="Invalid authorization header format. Expected: Bearer <token>"
-    #     )
-    #
-    # token = parts[1]
-    # payload = decode_jwt(token)
-    #
-    # return CurrentUser(
-    #     user_id=payload['user_id'],
-    #     payload=payload
-    # )
 
 
 async def get_optional_user(authorization: str | None = Header(None)) -> CurrentUser | None:
@@ -132,11 +107,3 @@ async def get_optional_user(authorization: str | None = Header(None)) -> Current
         payload={"user_id": "test_user_no_auth", "iss": "yral_auth"}
     )
 
-    # ===== ORIGINAL AUTH CODE (COMMENTED OUT) =====
-    # if not authorization:
-    #     return None
-    #
-    # try:
-    #     return await get_current_user(authorization)
-    # except HTTPException:
-    #     return None

@@ -30,7 +30,7 @@ class MessageRepository:
 
         query = """
             INSERT INTO messages (
-                id, conversation_id, role, content, message_type, 
+                id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds, token_count
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -55,7 +55,7 @@ class MessageRepository:
     async def get_by_id(self, message_id: UUID) -> Message | None:
         """Get message by ID"""
         query = """
-            SELECT 
+            SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
                 token_count, created_at, metadata
@@ -74,16 +74,22 @@ class MessageRepository:
         order: str = "desc"
     ) -> list[Message]:
         """List messages in a conversation"""
-        order_clause = "DESC" if order.lower() == "desc" else "ASC"
+        # Validate order parameter to prevent SQL injection
+        # Only allow "asc" or "desc" - validated at API level via Query pattern
+        order_map = {"asc": "ASC", "desc": "DESC"}
+        order_sql = order_map.get(order.lower(), "DESC")
 
-        query = f"""
-            SELECT 
+        # Build query with validated order clause
+        # Note: ORDER BY cannot be parameterized, but input is validated above
+        base_query = """
+            SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
                 token_count, created_at, metadata
             FROM messages
             WHERE conversation_id = $1
-            ORDER BY created_at {order_clause}
+            ORDER BY created_at """
+        query = base_query + order_sql + """
             LIMIT $2 OFFSET $3
         """
 
@@ -97,7 +103,7 @@ class MessageRepository:
     ) -> list[Message]:
         """Get recent messages for AI context (ordered oldest to newest)"""
         query = """
-            SELECT 
+            SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
                 token_count, created_at, metadata

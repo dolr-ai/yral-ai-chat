@@ -170,10 +170,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Fall back to IP address
         # Check for forwarded IP first (behind proxy)
         forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            ip = forwarded.split(",")[0].strip()
-        else:
-            ip = request.client.host if request.client else "unknown"
+        ip = (
+            forwarded.split(",")[0].strip()
+            if forwarded
+            else request.client.host if request.client else "unknown"
+        )
 
         return f"ip:{ip}"
 

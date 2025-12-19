@@ -86,8 +86,11 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
         if "version=" in accept:
             # Extract version from Accept: application/json; version=v1
             try:
-                version_part = [p for p in accept.split(";") if "version=" in p][0]
-                return version_part.split("=")[1].strip()
+                version_part = next(
+                    (p for p in accept.split(";") if "version=" in p), None
+                )
+                if version_part:
+                    return version_part.split("=")[1].strip()
             except (IndexError, AttributeError):
                 pass
 

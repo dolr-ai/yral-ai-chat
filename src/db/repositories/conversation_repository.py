@@ -6,7 +6,7 @@ import uuid
 from typing import Any
 from uuid import UUID
 
-from src.db.base import db
+from src.db.base import db, parse_sqlite_datetime
 from src.models.entities import AIInfluencer, Conversation
 
 
@@ -31,7 +31,7 @@ class ConversationRepository:
     async def get_by_id(self, conversation_id: UUID) -> Conversation | None:
         """Get conversation by ID"""
         query = """
-            SELECT 
+            SELECT
                 c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                 i.id as inf_id, i.name, i.display_name, i.avatar_url,
                 i.suggested_messages
@@ -46,7 +46,7 @@ class ConversationRepository:
     async def get_existing(self, user_id: str, influencer_id: UUID) -> Conversation | None:
         """Check if conversation already exists between user and influencer"""
         query = """
-            SELECT 
+            SELECT
                 c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                 i.id as inf_id, i.name, i.display_name, i.avatar_url,
                 i.suggested_messages
@@ -68,7 +68,7 @@ class ConversationRepository:
         """List conversations for a user"""
         if influencer_id:
             query = """
-                SELECT 
+                SELECT
                     c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                     i.id as inf_id, i.name, i.display_name, i.avatar_url,
                     i.suggested_messages,
@@ -84,7 +84,7 @@ class ConversationRepository:
             rows = await db.fetch(query, user_id, str(influencer_id), limit, offset)
         else:
             query = """
-                SELECT 
+                SELECT
                     c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                     i.id as inf_id, i.name, i.display_name, i.avatar_url,
                     i.suggested_messages,
@@ -162,8 +162,8 @@ class ConversationRepository:
             id=row["id"],
             user_id=row["user_id"],
             influencer_id=row["influencer_id"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
+            created_at=parse_sqlite_datetime(row["created_at"]),
+            updated_at=parse_sqlite_datetime(row["updated_at"]),
             metadata=metadata,
         )
 
@@ -188,8 +188,8 @@ class ConversationRepository:
             avatar_url=row["avatar_url"],
             system_instructions="",  # Not needed in list view
             suggested_messages=suggested_messages,
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
+            created_at=parse_sqlite_datetime(row.get("inf_created_at", row.get("created_at"))),
+            updated_at=parse_sqlite_datetime(row.get("inf_updated_at", row.get("updated_at"))),
         )
 
         return conversation

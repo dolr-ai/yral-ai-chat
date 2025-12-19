@@ -6,6 +6,7 @@ import asyncio
 import re
 import time
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -206,9 +207,8 @@ class Database:
         # Convert PostgreSQL true/false to SQLite 1/0 in comparisons
         # But be careful not to replace inside strings
         query = re.sub(r"\s+=\s+true\b", " = 1", query, flags=re.IGNORECASE)
-        query = re.sub(r"\s+=\s+false\b", " = 0", query, flags=re.IGNORECASE)
+        return re.sub(r"\s+=\s+false\b", " = 0", query, flags=re.IGNORECASE)
 
-        return query
 
     def generate_uuid(self) -> str:
         """Generate a UUID for use as primary key"""
@@ -246,6 +246,42 @@ class Database:
 
 # Global database instance
 db = Database()
+
+
+def parse_sqlite_datetime(dt_str: str | datetime) -> datetime:
+    """
+    Parse SQLite datetime string to timezone-aware UTC datetime.
+    
+    SQLite stores datetimes as strings in UTC but without timezone info.
+    This function ensures they're parsed as UTC-aware datetimes.
+    
+    Args:
+        dt_str: Datetime string from SQLite (format: 'YYYY-MM-DD HH:MM:SS')
+                or already a datetime object
+        
+    Returns:
+        timezone-aware datetime in UTC
+    """
+    if isinstance(dt_str, datetime):
+        # If already a datetime, ensure it's UTC-aware
+        if dt_str.tzinfo is None:
+            return dt_str.replace(tzinfo=UTC)
+        return dt_str.astimezone(UTC)
+    
+    # Parse SQLite datetime string (UTC, no timezone in string)
+    # Format: 'YYYY-MM-DD HH:MM:SS'
+    if isinstance(dt_str, str):
+        try:
+            # Try parsing with space separator
+            dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            # Try ISO format if space format fails
+            dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        
+        # Make it UTC-aware
+        return dt.replace(tzinfo=UTC)
+    
+    return dt_str
 
 
 async def init_db():

@@ -1,7 +1,7 @@
 """
 Media upload endpoints
 """
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from loguru import logger
@@ -42,17 +42,17 @@ router = APIRouter(prefix="/api/v1/media", tags=["Media"])
 )
 async def upload_media(
     file: UploadFile = File(..., description="File to upload"),
-    type: str = Form(..., pattern="^(image|audio)$", description="Type of media: 'image' or 'audio'"),
+    media_type: str = Form(..., pattern="^(image|audio)$", description="Type of media: 'image' or 'audio'"),
     current_user: CurrentUser = Depends(get_current_user),
     storage_service: StorageServiceDep = None
 ):
     """
     Upload media file (image or audio)
-    
+
     Args:
         file: File to upload
-        type: Type of file ("image" or "audio")
-    
+        media_type: Type of file ("image" or "audio")
+
     Returns:
         MediaUploadResponse with file URL and metadata
     """
@@ -63,10 +63,10 @@ async def upload_media(
     file_content = await file.read()
     file_size = len(file_content)
 
-    # Validate based on type
-    if type == "image":
+    # Validate based on media_type
+    if media_type == "image":
         storage_service.validate_image(file.filename, file_size)
-    elif type == "audio":
+    elif media_type == "audio":
         storage_service.validate_audio(file.filename, file_size)
     else:
         raise HTTPException(status_code=400, detail="Invalid type. Must be 'image' or 'audio'")
@@ -84,17 +84,17 @@ async def upload_media(
 
     # Get audio duration if applicable (placeholder for now)
     duration_seconds = None
-    if type == "audio":
+    if media_type == "audio":
         # TODO: Implement actual audio duration detection
         duration_seconds = None
 
     return MediaUploadResponse(
         url=file_url,
-        type=type,
+        type=media_type,
         size=file_size,
         mime_type=mime_type,
         duration_seconds=duration_seconds,
-        uploaded_at=datetime.utcnow()
+        uploaded_at=datetime.now(UTC)
     )
 
 
