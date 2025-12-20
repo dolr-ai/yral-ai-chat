@@ -77,6 +77,7 @@ async def create_conversation(
     current_user: CurrentUser = Depends(get_current_user),
     chat_service: ChatServiceDep = None,
     message_repo: MessageRepositoryDep = None,
+    storage_service: StorageServiceDep = None,
 ):
     """Create a new conversation with an AI influencer"""
     conversation, is_new = await chat_service.create_conversation(
@@ -164,20 +165,45 @@ async def create_conversation(
             order="desc",
         )
         if recent_messages_list:
-            recent_messages = [
-                MessageResponse(
-                    id=msg.id,
-                    role=msg.role,
-                    content=msg.content,
-                    message_type=msg.message_type,
-                    media_urls=msg.media_urls,
-                    audio_url=msg.audio_url,
-                    audio_duration_seconds=msg.audio_duration_seconds,
-                    token_count=msg.token_count,
-                    created_at=msg.created_at,
+            recent_messages = []
+            for msg in recent_messages_list:
+                # Convert storage keys to presigned URLs for media
+                presigned_media_urls = []
+                for media_key in msg.media_urls:
+                    if media_key:
+                        # Extract key from URL if it's an old public URL (backward compat)
+                        s3_key = storage_service.extract_key_from_url(media_key)
+                        try:
+                            presigned_url = storage_service.generate_presigned_url(s3_key)
+                            presigned_media_urls.append(presigned_url)
+                        except Exception as e:
+                            # Log error but continue - don't break the response
+                            logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
+                            presigned_media_urls.append(media_key)  # Fallback to original
+
+                # Convert audio storage key to presigned URL
+                presigned_audio_url = None
+                if msg.audio_url:
+                    s3_key = storage_service.extract_key_from_url(msg.audio_url)
+                    try:
+                        presigned_audio_url = storage_service.generate_presigned_url(s3_key)
+                    except Exception as e:
+                        logger.warning(f"Failed to generate presigned URL for audio {s3_key}: {e}")
+                        presigned_audio_url = msg.audio_url  # Fallback to original
+
+                recent_messages.append(
+                    MessageResponse(
+                        id=msg.id,
+                        role=msg.role,
+                        content=msg.content,
+                        message_type=msg.message_type,
+                        media_urls=presigned_media_urls,
+                        audio_url=presigned_audio_url,
+                        audio_duration_seconds=msg.audio_duration_seconds,
+                        token_count=msg.token_count,
+                        created_at=msg.created_at,
+                    )
                 )
-                for msg in recent_messages_list
-            ]
 
     return ConversationResponse(
         id=conversation.id,

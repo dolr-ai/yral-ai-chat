@@ -84,6 +84,6 @@ gradio-demo/.gradio/
 #Certificates
 *.pem
 
-#Addon files WITH SECRETS
-test_media_upload.py
+#Addon files
 *.jpg
+media_upload.py
