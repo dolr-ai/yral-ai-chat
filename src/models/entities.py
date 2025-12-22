@@ -22,6 +22,13 @@ class MessageRole(str, Enum):
     ASSISTANT = "assistant"
 
 
+class InfluencerStatus(str, Enum):
+    """Influencer status enumeration"""
+    ACTIVE = "active"
+    COMING_SOON = "coming soon"
+    DISCONTINUED = "discontinued"
+
+
 class AIInfluencer(BaseModel):
     """AI Influencer entity"""
     model_config = ConfigDict(from_attributes=True)
@@ -36,7 +43,7 @@ class AIInfluencer(BaseModel):
     personality_traits: dict[str, Any] = Field(default_factory=dict)
     initial_greeting: str | None = None
     suggested_messages: list[str] = Field(default_factory=list)
-    is_active: bool = True
+    is_active: InfluencerStatus = InfluencerStatus.ACTIVE
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)

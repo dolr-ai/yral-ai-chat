@@ -106,13 +106,26 @@ def run_migrations():
         try:
             cursor = conn.execute(
                 "SELECT name, id, is_active FROM ai_influencers "
-                "ORDER BY is_active DESC, name"
+                "ORDER BY CASE is_active "
+                "  WHEN 'active' THEN 1 "
+                "  WHEN 'coming soon' THEN 2 "
+                "  WHEN 'discontinued' THEN 3 "
+                "END, name"
             )
             influencers = cursor.fetchall()
             if influencers:
                 print("\n📋 Current influencer IDs:")
                 for name, id_val, is_active in influencers:
-                    status = "✅ ACTIVE" if is_active else "⏸️  INACTIVE"
+                    # Handle both enum string values and legacy boolean values
+                    if isinstance(is_active, (int, bool)):
+                        status = "✅ ACTIVE" if is_active else "⏸️  INACTIVE"
+                    else:
+                        status_map = {
+                            "active": "✅ ACTIVE",
+                            "coming soon": "⏳ COMING SOON",
+                            "discontinued": "⏸️  DISCONTINUED"
+                        }
+                        status = status_map.get(is_active, f"❓ {is_active}")
                     print(f"   {status} | {name:20} | {id_val}")
         except sqlite3.OperationalError:
             pass  # Table doesn't exist yet
