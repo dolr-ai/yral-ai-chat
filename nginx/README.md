@@ -153,6 +153,57 @@ If you're not using Let's Encrypt, you can manually configure SSL certificates:
 - Check that the FastAPI app is running: `ps aux | grep uvicorn`
 - Ensure the app is bound to 0.0.0.0, not just localhost
 
+## Staging Environment Setup
+
+The nginx configuration supports both production and staging environments on the same domain using path-based routing:
+
+- **Production**: `https://chat.yral.com/*` → routes to container on port 8000
+- **Staging**: `https://chat.yral.com/staging/*` → routes to container on port 8001
+
+### Deploying Updated Nginx Config for Staging
+
+After updating the nginx configuration file in the repository, deploy it to your server:
+
+1. **Copy the updated configuration**:
+   ```bash
+   sudo cp nginx/yral-ai-chat.conf /etc/nginx/sites-available/yral-ai-chat.conf
+   ```
+
+2. **Test the configuration**:
+   ```bash
+   sudo nginx -t
+   ```
+
+3. **If test passes, reload nginx** (no downtime):
+   ```bash
+   sudo systemctl reload nginx
+   ```
+
+4. **Verify staging routing works**:
+   ```bash
+   # Test production endpoint
+   curl https://chat.yral.com/health
+   
+   # Test staging endpoint
+   curl https://chat.yral.com/staging/health
+   ```
+
+### CI/CD Deployment
+
+For automated deployment via GitHub Actions:
+
+1. **SSH into server with sudo access** (requires passwordless sudo for nginx commands)
+2. **Copy updated config**: `sudo cp nginx/yral-ai-chat.conf /etc/nginx/sites-available/yral-ai-chat.conf`
+3. **Test and reload**: `sudo nginx -t && sudo systemctl reload nginx`
+
+Alternatively, configure passwordless sudo for specific nginx commands:
+```bash
+# Add to /etc/sudoers.d/nginx-deploy (via visudo)
+deploy_user ALL=(ALL) NOPASSWD: /usr/bin/cp /path/to/nginx/yral-ai-chat.conf /etc/nginx/sites-available/yral-ai-chat.conf
+deploy_user ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t
+deploy_user ALL=(ALL) NOPASSWD: /bin/systemctl reload nginx
+```
+
 ## Production Recommendations
 
 1. **Update CORS settings**: Update `CORS_ORIGINS` in your `.env` file to include your domain:
