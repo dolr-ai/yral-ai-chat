@@ -100,8 +100,8 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       
-      # Database (SQLite) - staging database
-      - DATABASE_PATH=${DATABASE_PATH:-/app/data/yral_chat_staging.db}
+      # Database (SQLite) - staging database (hardcoded to prevent .env override)
+      - DATABASE_PATH=/app/data/yral_chat_staging.db
       
       # JWT Authentication (REQUIRED)
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
@@ -154,4 +154,22 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  nginx:
+    image: nginx:alpine
+    container_name: yral-ai-chat-nginx
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./nginx/yral-ai-chat.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/nginx-certs/letsencrypt:/etc/letsencrypt:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - yral-ai-chat
+      - yral-ai-chat-staging
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
