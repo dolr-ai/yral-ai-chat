@@ -11,14 +11,18 @@ ALTER TABLE ai_influencers ADD COLUMN status TEXT;
 UPDATE ai_influencers SET status = 'active' WHERE is_active = 1 OR is_active IS NULL;
 UPDATE ai_influencers SET status = 'active' WHERE status IS NULL;
 
--- Step 3: Drop old is_active column
+-- Step 3: Drop any existing triggers that might reference is_active
+DROP TRIGGER IF EXISTS trigger_validate_influencer_status;
+DROP TRIGGER IF EXISTS trigger_validate_influencer_status_update;
+
+-- Step 4: Drop old is_active column and index
 DROP INDEX IF EXISTS idx_influencers_active;
 ALTER TABLE ai_influencers DROP COLUMN is_active;
 
--- Step 4: Rename status to is_active
+-- Step 5: Rename status to is_active
 ALTER TABLE ai_influencers RENAME COLUMN status TO is_active;
 
--- Step 5: Add CHECK constraint to enforce enum values
+-- Step 6: Add CHECK constraint to enforce enum values
 -- Note: SQLite doesn't support ALTER TABLE ADD CONSTRAINT, so we'll recreate the table
 -- However, a simpler approach is to just ensure data integrity at application level
 -- For SQLite, we'll add a CHECK constraint by recreating the table structure
@@ -43,6 +47,6 @@ BEGIN
     END;
 END;
 
--- Step 6: Recreate index
+-- Step 7: Recreate index
 CREATE INDEX IF NOT EXISTS idx_influencers_active ON ai_influencers(is_active);
 
