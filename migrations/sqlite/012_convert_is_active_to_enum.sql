@@ -1,6 +1,6 @@
 -- Migration: Convert is_active from INTEGER (boolean) to TEXT enum
 -- Version: 012
--- Description: Convert is_active field to enum with values: 'active', 'coming soon', 'discontinued'
+-- Description: Convert is_active field to enum with values: 'active', 'coming_soon', 'discontinued'
 -- All existing records will be set to 'active'
 
 -- Step 1: Add new temporary column 'status' as TEXT
@@ -33,8 +33,8 @@ CREATE TRIGGER IF NOT EXISTS trigger_validate_influencer_status
 BEFORE INSERT ON ai_influencers
 BEGIN
     SELECT CASE
-        WHEN NEW.is_active NOT IN ('active', 'coming soon', 'discontinued') THEN
-            RAISE(ABORT, 'Invalid is_active value. Must be one of: active, coming soon, discontinued')
+        WHEN NEW.is_active NOT IN ('active', 'coming_soon', 'discontinued') THEN
+            RAISE(ABORT, 'Invalid is_active value. Must be one of: active, coming_soon, discontinued')
     END;
 END;
 
@@ -42,8 +42,8 @@ CREATE TRIGGER IF NOT EXISTS trigger_validate_influencer_status_update
 BEFORE UPDATE ON ai_influencers
 BEGIN
     SELECT CASE
-        WHEN NEW.is_active NOT IN ('active', 'coming soon', 'discontinued') THEN
-            RAISE(ABORT, 'Invalid is_active value. Must be one of: active, coming soon, discontinued')
+        WHEN NEW.is_active NOT IN ('active', 'coming_soon', 'discontinued') THEN
+            RAISE(ABORT, 'Invalid is_active value. Must be one of: active, coming_soon, discontinued')
     END;
 END;
 

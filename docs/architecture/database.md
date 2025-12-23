@@ -88,7 +88,7 @@ CREATE TABLE ai_influencers (
     category TEXT,
     system_instructions TEXT NOT NULL,
     personality_traits TEXT,
-    is_active TEXT CHECK(is_active IN ('active', 'coming soon', 'discontinued')) DEFAULT 'active',
+    is_active TEXT CHECK(is_active IN ('active', 'coming_soon', 'discontinued')) DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

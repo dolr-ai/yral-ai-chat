@@ -21,7 +21,7 @@ class InfluencerRepository:
             FROM ai_influencers
             ORDER BY CASE is_active 
                 WHEN 'active' THEN 1 
-                WHEN 'coming soon' THEN 2 
+                WHEN 'coming_soon' THEN 2 
                 WHEN 'discontinued' THEN 3 
             END, created_at DESC
             LIMIT $1 OFFSET $2

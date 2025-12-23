@@ -165,7 +165,7 @@ def run_migrations():
                 "SELECT name, id, is_active FROM ai_influencers "
                 "ORDER BY CASE is_active "
                 "  WHEN 'active' THEN 1 "
-                "  WHEN 'coming soon' THEN 2 "
+                "  WHEN 'coming_soon' THEN 2 "
                 "  WHEN 'discontinued' THEN 3 "
                 "END, name"
             )
@@ -179,7 +179,7 @@ def run_migrations():
                     else:
                         status_map = {
                             "active": "✅ ACTIVE",
-                            "coming soon": "⏳ COMING SOON",
+                            "coming_soon": "⏳ COMING SOON",
                             "discontinued": "⏸️  DISCONTINUED"
                         }
                         status = status_map.get(is_active, f"❓ {is_active}")

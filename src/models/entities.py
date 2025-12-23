@@ -25,7 +25,7 @@ class MessageRole(str, Enum):
 class InfluencerStatus(str, Enum):
     """Influencer status enumeration"""
     ACTIVE = "active"
-    COMING_SOON = "coming soon"
+    COMING_SOON = "coming_soon"
     DISCONTINUED = "discontinued"
 
 
