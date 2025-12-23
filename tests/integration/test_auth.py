@@ -1,32 +1,52 @@
 """
 Tests for JWT authentication
 """
-import jwt
+import base64
+import json
+import time
 
-from src.config import settings
+
+def _encode_jwt(payload: dict) -> str:
+    """Create a dummy ES256-style JWT without real signature verification."""
+    header = {
+        "typ": "JWT",
+        "alg": "ES256",
+        "kid": "default",
+    }
+
+    def b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+    header_b64 = b64url(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    payload_b64 = b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+
+    # Signature is not validated in the backend, so we can use any placeholder
+    signature_b64 = "dummy_signature"
+
+    return f"{header_b64}.{payload_b64}.{signature_b64}"
 
 
 def generate_test_token(user_id: str = "test_user_123", expires_in_seconds: int = 3600) -> str:
     """
     Generate a test JWT token for testing
-    
+
     Args:
-        user_id: User ID to include in token
+        user_id: User ID to include in token (mapped to `sub`)
         expires_in_seconds: Token expiration time in seconds
-        
+
     Returns:
         JWT token string
     """
-    import time
-    
+    now = int(time.time())
+
     payload = {
-        "user_id": user_id,
-        "iss": settings.jwt_issuer,
-        "iat": int(time.time()),
-        "exp": int(time.time()) + expires_in_seconds
+        "sub": user_id,
+        "iss": "https://auth.yral.com",
+        "iat": now,
+        "exp": now + expires_in_seconds,
     }
-    
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+    return _encode_jwt(payload)
 
 
 def test_create_conversation_with_valid_token(client, test_influencer_id):
@@ -76,13 +96,9 @@ def test_create_conversation_with_invalid_token_format(client, test_influencer_i
 
 def test_create_conversation_with_invalid_token(client, test_influencer_id):
     """Test creating a conversation with an invalid JWT token"""
-    # Token with wrong secret
-    invalid_token = jwt.encode(
-        {"user_id": "test_user", "iss": settings.jwt_issuer},
-        "wrong_secret_key",
-        algorithm=settings.jwt_algorithm
-    )
-    
+    # Malformed token that should fail decoding
+    invalid_token = "invalid.token.value"
+
     response = client.post(
         "/api/v1/chat/conversations",
         json={"influencer_id": test_influencer_id},
@@ -114,19 +130,16 @@ def test_create_conversation_with_expired_token(client, test_influencer_id):
 
 def test_create_conversation_with_wrong_issuer(client, test_influencer_id):
     """Test creating a conversation with token from wrong issuer"""
-    import time
-    
+    now = int(time.time())
+
     # Token with wrong issuer
-    wrong_issuer_token = jwt.encode(
-        {
-            "user_id": "test_user",
-            "iss": "wrong_issuer",
-            "iat": int(time.time()),
-            "exp": int(time.time()) + 3600
-        },
-        settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm
-    )
+    wrong_issuer_payload = {
+        "sub": "test_user",
+        "iss": "wrong_issuer",
+        "iat": now,
+        "exp": now + 3600,
+    }
+    wrong_issuer_token = _encode_jwt(wrong_issuer_payload)
     
     response = client.post(
         "/api/v1/chat/conversations",
@@ -141,30 +154,28 @@ def test_create_conversation_with_wrong_issuer(client, test_influencer_id):
 
 
 def test_create_conversation_with_missing_user_id(client, test_influencer_id):
-    """Test creating a conversation with token missing user_id"""
-    import time
-    
-    # Token without user_id
-    token_without_user_id = jwt.encode(
-        {
-            "iss": settings.jwt_issuer,
-            "iat": int(time.time()),
-            "exp": int(time.time()) + 3600
-        },
-        settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm
-    )
+    """Test creating a conversation with token missing sub (user identifier)"""
+    now = int(time.time())
+
+    # Token without sub
+    token_without_sub_payload = {
+        "iss": "https://auth.yral.com",
+        "iat": now,
+        "exp": now + 3600,
+    }
+    token_without_sub = _encode_jwt(token_without_sub_payload)
     
     response = client.post(
         "/api/v1/chat/conversations",
         json={"influencer_id": test_influencer_id},
-        headers={"Authorization": f"Bearer {token_without_user_id}"}
+        headers={"Authorization": f"Bearer {token_without_sub}"}
     )
     
     assert response.status_code == 401
     data = response.json()
     assert "detail" in data
-    assert "user_id" in data["detail"].lower() or "missing user_id" in data["detail"].lower()
+    detail_lower = data["detail"].lower()
+    assert "sub" in detail_lower or "missing sub" in detail_lower
 
 
 def test_send_message_with_valid_token(client, test_influencer_id):

@@ -5,35 +5,57 @@ Tests use FastAPI TestClient - no separate server needed!
 
 Note: Make sure src/config.py has media_upload_dir and media_base_url fields.
 """
+import base64
+import json
 import time
 
-import jwt
 import pytest
 from fastapi.testclient import TestClient
 
-from src.config import settings
 from src.main import app
+
+
+def _encode_jwt(payload: dict) -> str:
+    """Create a dummy ES256-style JWT without real signature verification."""
+    header = {
+        "typ": "JWT",
+        "alg": "ES256",
+        "kid": "default",
+    }
+
+    def b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+    header_b64 = b64url(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    payload_b64 = b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+
+    # Signature is not validated in the backend, so we can use any placeholder
+    signature_b64 = "dummy_signature"
+
+    return f"{header_b64}.{payload_b64}.{signature_b64}"
 
 
 def generate_test_token(user_id: str = "test_user_123", expires_in_seconds: int = 3600) -> str:
     """
     Generate a test JWT token for testing
-    
+
     Args:
-        user_id: User ID to include in token
+        user_id: User ID to include in token (mapped to `sub`)
         expires_in_seconds: Token expiration time in seconds
-        
+
     Returns:
         JWT token string
     """
+    now = int(time.time())
+
     payload = {
-        "user_id": user_id,
-        "iss": settings.jwt_issuer,
-        "iat": int(time.time()),
-        "exp": int(time.time()) + expires_in_seconds
+        "sub": user_id,
+        "iss": "https://auth.yral.com",
+        "iat": now,
+        "exp": now + expires_in_seconds,
     }
-    
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+    return _encode_jwt(payload)
 
 
 @pytest.fixture(scope="module")

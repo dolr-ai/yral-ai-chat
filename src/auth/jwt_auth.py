@@ -1,77 +1,121 @@
 """
 JWT Authentication and validation
 """
-import jwt
+import base64
+import json
+import time
+
 from fastapi import Header, HTTPException
 from loguru import logger
-
-from src.config import settings
 
 
 class CurrentUser:
     """Current authenticated user"""
+
     def __init__(self, user_id: str, payload: dict):
         self.user_id = user_id
         self.payload = payload
 
 
+def _base64url_decode(input_str: str) -> bytes:
+    """Decode a base64url-encoded string, adding padding if necessary."""
+    padding = "=" * (-len(input_str) % 4)
+    return base64.urlsafe_b64decode(input_str + padding)
+
+
 def decode_jwt(token: str) -> dict:
     """
-    Decode and validate JWT token
-    
+    Decode and validate JWT token coming from auth.yral.com.
+
+    This function:
+    - base64url decodes the header and payload without verifying the signature
+    - validates issuer, expiration, and required claims
+
     Args:
         token: JWT token string
-        
+
     Returns:
         Decoded payload
-        
+
     Raises:
         HTTPException: If token is invalid or expired
     """
     try:
-        # Decode JWT
-        payload = jwt.decode(
-            token,
-            settings.jwt_secret_key,
-            algorithms=[settings.jwt_algorithm],
-            issuer=settings.jwt_issuer
-        )
-
-        # Validate required fields
-        if "user_id" not in payload:
+        # Split token into parts
+        parts = token.split(".")
+        if len(parts) != 3:
             raise HTTPException(
                 status_code=401,
-                detail="Invalid token: missing user_id"
+                detail="Invalid token format",
             )
+
+        header_b64, payload_b64, _signature_b64 = parts
+
+        # Decode header and payload
+        header_bytes = _base64url_decode(header_b64)
+        payload_bytes = _base64url_decode(payload_b64)
+
+        header = json.loads(header_bytes)
+        payload = json.loads(payload_bytes)
+
+        # Basic structural validation (optional logging)
+        logger.debug(f"Decoded JWT header: {header}")
+
+        # Validate issuer
+        issuer = payload.get("iss")
+        expected_issuer = "https://auth.yral.com"
+        if issuer != expected_issuer:
+            logger.warning(f"JWT token has invalid issuer: {issuer}")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token issuer",
+            )
+
+        # Validate expiration
+        exp = payload.get("exp")
+        if exp is None:
+            logger.warning("JWT token missing exp claim")
+            raise HTTPException(
+                status_code=401,
+                detail="Token has expired",
+            )
+
+        try:
+            exp_int = int(exp)
+        except (TypeError, ValueError) as e:
+            logger.warning(f"JWT token has invalid exp claim: {exp}")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token",
+            ) from e
+
+        now = int(time.time())
+        if exp_int <= now:
+            logger.warning("JWT token expired")
+            raise HTTPException(
+                status_code=401,
+                detail="Token has expired",
+            )
+
+        # Validate required subject (user identifier)
+        if "sub" not in payload:
+            logger.warning("JWT token missing sub claim")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid token: missing sub",
+            )
+
+        return payload
+
     except HTTPException:
-        # Re-raise HTTPException (like missing user_id) without wrapping
+        # Re-raise HTTPException without wrapping
         raise
-    except jwt.ExpiredSignatureError as e:
-        logger.warning("JWT token expired")
-        raise HTTPException(
-            status_code=401,
-            detail="Token has expired"
-        ) from e
-    except jwt.InvalidIssuerError as e:
-        logger.warning("JWT token has invalid issuer")
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token issuer"
-        ) from e
-    except jwt.InvalidTokenError as e:
-        logger.warning(f"Invalid JWT token: {e}")
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token"
-        ) from e
     except Exception as e:
         logger.error(f"JWT decode error: {e}")
         raise HTTPException(
             status_code=401,
-            detail="Authentication failed"
+            detail="Authentication failed",
         ) from e
-    else:
-        return payload
 
 
 async def get_current_user(authorization: str | None = Header(None)) -> CurrentUser:
@@ -102,8 +146,8 @@ async def get_current_user(authorization: str | None = Header(None)) -> CurrentU
     payload = decode_jwt(token)
 
     return CurrentUser(
-        user_id=payload["user_id"],
-        payload=payload
+        user_id=payload["sub"],
+        payload=payload,
     )
 
 
