@@ -40,6 +40,17 @@ def _column_exists(conn: sqlite3.Connection, table_name: str, column_name: str) 
     return any(row[1] == column_name for row in cursor.fetchall())
 
 
+def _get_column_type(conn: sqlite3.Connection, table_name: str, column_name: str) -> str | None:
+    """Get the type of a column, or None if it doesn't exist."""
+    # table_name is controlled by our code (no user input), so using it
+    # directly in the PRAGMA statement is safe here.
+    cursor = conn.execute(f"PRAGMA table_info({table_name})")
+    for row in cursor.fetchall():
+        if row[1] == column_name:
+            return row[2].upper()  # Return uppercase type (e.g., 'TEXT', 'INTEGER')
+    return None
+
+
 def run_migrations():
     """Run all migration files in order"""
     # Ensure data directory exists
@@ -76,6 +87,52 @@ def run_migrations():
                         "ADD COLUMN suggested_messages TEXT DEFAULT '[]'"
                     )
                     conn.commit()
+
+            # Handle migration 012 idempotently: Convert is_active from INTEGER to TEXT enum
+            if migration_file.name == "012_convert_is_active_to_enum.sql":
+                if _table_exists(conn, "ai_influencers"):
+                    is_active_type = _get_column_type(conn, "ai_influencers", "is_active")
+                    status_exists = _column_exists(conn, "ai_influencers", "status")
+                    
+                    # If is_active is already TEXT, conversion is complete - skip migration
+                    if is_active_type == "TEXT":
+                        print(f"   ⏭️  Migration already applied (is_active is already TEXT)")
+                        continue
+                    
+                    # If status column exists but is_active is still INTEGER, migration partially applied
+                    # Modify SQL to skip ADD COLUMN step
+                    if status_exists and is_active_type == "INTEGER":
+                        print(f"   ⚠️  Detected partially applied migration, continuing...")
+                        with open(migration_file, encoding="utf-8") as f:
+                            sql = f.read()
+                        # Remove the ADD COLUMN status line (handle various whitespace)
+                        # Match: ALTER TABLE ai_influencers ADD COLUMN status TEXT;
+                        sql_lines = sql.split('\n')
+                        sql_lines = [
+                            line for line in sql_lines 
+                            if not (
+                                'ALTER TABLE' in line.upper() and 
+                                'ADD COLUMN' in line.upper() and 
+                                'status' in line.lower() and 
+                                'TEXT' in line.upper()
+                            )
+                        ]
+                        sql = '\n'.join(sql_lines)
+                    else:
+                        # Normal case: run migration as-is
+                        with open(migration_file, encoding="utf-8") as f:
+                            sql = f.read()
+                    
+                    # Execute migration
+                    cursor = conn.executescript(sql)
+                    
+                    # Check if any rows were affected
+                    if cursor.rowcount >= 0:
+                        print(f"   📊 Rows affected: {cursor.rowcount}")
+                    
+                    conn.commit()
+                    print(f"   ✅ {migration_file.name} completed")
+                    continue
 
             with open(migration_file, encoding="utf-8") as f:
                 sql = f.read()
