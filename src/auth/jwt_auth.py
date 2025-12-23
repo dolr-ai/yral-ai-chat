@@ -43,6 +43,9 @@ def decode_jwt(token: str) -> dict:
                 status_code=401,
                 detail="Invalid token: missing user_id"
             )
+    except HTTPException:
+        # Re-raise HTTPException (like missing user_id) without wrapping
+        raise
     except jwt.ExpiredSignatureError as e:
         logger.warning("JWT token expired")
         raise HTTPException(
@@ -75,50 +78,38 @@ async def get_current_user(authorization: str | None = Header(None)) -> CurrentU
     """
     FastAPI dependency to get current authenticated user
     
-    ⚠️ AUTH DISABLED FOR TESTING - Returns dummy user
-    
     Args:
         authorization: Authorization header (Bearer token)
         
     Returns:
         CurrentUser object
     """
-    # ===== AUTH DISABLED FOR TESTING =====
-    # Always return a test user without checking token
-    return CurrentUser(
-        user_id="test_user_no_auth",
-        payload={"user_id": "test_user_no_auth", "iss": "yral_auth"}
-    )
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing authorization header"
+        )
 
-    # ===== ORIGINAL AUTH CODE (COMMENTED OUT) =====
-    # if not authorization:
-    #     raise HTTPException(
-    #         status_code=401,
-    #         detail="Missing authorization header"
-    #     )
-    #
-    # # Extract token from "Bearer <token>"
-    # parts = authorization.split()
-    # if len(parts) != 2 or parts[0].lower() != "bearer":
-    #     raise HTTPException(
-    #         status_code=401,
-    #         detail="Invalid authorization header format. Expected: Bearer <token>"
-    #     )
-    #
-    # token = parts[1]
-    # payload = decode_jwt(token)
-    #
-    # return CurrentUser(
-    #     user_id=payload['user_id'],
-    #     payload=payload
-    # )
+    # Extract token from "Bearer <token>"
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authorization header format. Expected: Bearer <token>"
+        )
+
+    token = parts[1]
+    payload = decode_jwt(token)
+
+    return CurrentUser(
+        user_id=payload["user_id"],
+        payload=payload
+    )
 
 
 async def get_optional_user(authorization: str | None = Header(None)) -> CurrentUser | None:
     """
     Optional authentication - returns None if not authenticated
-    
-    ⚠️ AUTH DISABLED FOR TESTING - Always returns test user
     
     Args:
         authorization: Authorization header (Bearer token)
@@ -126,17 +117,10 @@ async def get_optional_user(authorization: str | None = Header(None)) -> Current
     Returns:
         CurrentUser object or None
     """
-    # ===== AUTH DISABLED FOR TESTING =====
-    return CurrentUser(
-        user_id="test_user_no_auth",
-        payload={"user_id": "test_user_no_auth", "iss": "yral_auth"}
-    )
+    if not authorization:
+        return None
 
-    # ===== ORIGINAL AUTH CODE (COMMENTED OUT) =====
-    # if not authorization:
-    #     return None
-    #
-    # try:
-    #     return await get_current_user(authorization)
-    # except HTTPException:
-    #     return None
+    try:
+        return await get_current_user(authorization)
+    except HTTPException:
+        return None

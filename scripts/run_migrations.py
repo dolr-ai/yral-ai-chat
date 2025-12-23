@@ -96,28 +96,28 @@ def run_migrations():
                     
                     # If is_active is already TEXT, conversion is complete - skip migration
                     if is_active_type == "TEXT":
-                        print(f"   ⏭️  Migration already applied (is_active is already TEXT)")
+                        print("   ⏭️  Migration already applied (is_active is already TEXT)")
                         continue
                     
                     # If status column exists but is_active is still INTEGER, migration partially applied
                     # Modify SQL to skip ADD COLUMN step
                     if status_exists and is_active_type == "INTEGER":
-                        print(f"   ⚠️  Detected partially applied migration, continuing...")
+                        print("   ⚠️  Detected partially applied migration, continuing...")
                         with open(migration_file, encoding="utf-8") as f:
                             sql = f.read()
                         # Remove the ADD COLUMN status line (handle various whitespace)
                         # Match: ALTER TABLE ai_influencers ADD COLUMN status TEXT;
-                        sql_lines = sql.split('\n')
+                        sql_lines = sql.split("\n")
                         sql_lines = [
-                            line for line in sql_lines 
+                            line for line in sql_lines
                             if not (
-                                'ALTER TABLE' in line.upper() and 
-                                'ADD COLUMN' in line.upper() and 
-                                'status' in line.lower() and 
-                                'TEXT' in line.upper()
+                                "ALTER TABLE" in line.upper() and
+                                "ADD COLUMN" in line.upper() and
+                                "status" in line.lower() and
+                                "TEXT" in line.upper()
                             )
                         ]
-                        sql = '\n'.join(sql_lines)
+                        sql = "\n".join(sql_lines)
                     else:
                         # Normal case: run migration as-is
                         with open(migration_file, encoding="utf-8") as f:
