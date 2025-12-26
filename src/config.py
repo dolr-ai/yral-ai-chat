@@ -74,8 +74,14 @@ class Settings(BaseSettings):
     cors_allow_credentials: bool = Field(default=True, alias="CORS_ALLOW_CREDENTIALS")
 
     # Rate Limiting
-    rate_limit_per_minute: int = Field(default=60, ge=1, le=10000, alias="RATE_LIMIT_PER_MINUTE")
-    rate_limit_per_hour: int = Field(default=1000, ge=1, le=100000, alias="RATE_LIMIT_PER_HOUR")
+    # Conservative defaults to prevent resource exhaustion:
+    # - Database pool: 5-20 connections (default 5)
+    # - SQLite concurrency limitations
+    # - Gemini API costs and rate limits
+    # - Memory usage for token buckets
+    # Max safe values can be set via environment variables if needed
+    rate_limit_per_minute: int = Field(default=300, ge=1, le=10000, alias="RATE_LIMIT_PER_MINUTE")
+    rate_limit_per_hour: int = Field(default=5000, ge=1, le=100000, alias="RATE_LIMIT_PER_HOUR")
 
     @field_validator("rate_limit_per_hour")
     @classmethod
