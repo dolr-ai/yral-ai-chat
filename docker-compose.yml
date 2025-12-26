@@ -28,7 +28,7 @@ services:
       # JWT Authentication (REQUIRED)
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
-      - JWT_ISSUER=${JWT_ISSUER:-yral_auth}
+      - JWT_ISSUER=${JWT_ISSUER:-https://auth.yral.com}
       
       # Google Gemini API (REQUIRED)
       - GEMINI_API_KEY=${GEMINI_API_KEY}
@@ -106,7 +106,7 @@ services:
       # JWT Authentication (REQUIRED)
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
-      - JWT_ISSUER=${JWT_ISSUER:-yral_auth}
+      - JWT_ISSUER=${JWT_ISSUER:-https://auth.yral.com}
       
       # Google Gemini API (REQUIRED)
       - GEMINI_API_KEY=${GEMINI_API_KEY}

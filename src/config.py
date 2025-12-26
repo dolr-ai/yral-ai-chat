@@ -29,7 +29,9 @@ class Settings(BaseSettings):
     # JWT Authentication
     jwt_secret_key: str = Field(..., alias="JWT_SECRET_KEY")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
-    jwt_issuer: str = Field(default="yral_auth", alias="JWT_ISSUER")
+    jwt_issuer: str = Field(default="https://auth.yral.com", alias="JWT_ISSUER")
+    jwt_audience: str | None = Field(default=None, alias="JWT_AUDIENCE")
+    jwt_jwks_url: str | None = Field(default=None, alias="JWT_JWKS_URL")
 
     # Google Gemini API
     gemini_api_key: str = Field(..., min_length=1, alias="GEMINI_API_KEY")
