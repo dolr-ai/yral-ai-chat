@@ -152,8 +152,8 @@ jobs:
             # Step 1: Update code from repository
             echo "[INFO] Pulling latest code from $BRANCH branch"
             git fetch origin
-            git checkout "$BRANCH"
-            git pull origin "$BRANCH"
+            # Discard any local changes and reset branch to match remote exactly
+            git checkout -B "$BRANCH" "origin/$BRANCH"
             
             # Step 2: Validate nginx configuration
             echo "[INFO] Validating nginx configuration"
