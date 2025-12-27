@@ -18,7 +18,8 @@ if os.path.exists("/app"):
 else:
     # Running locally
     PROJECT_ROOT = Path(__file__).parent.parent
-    DB_PATH = PROJECT_ROOT / "data" / "yral_chat.db"
+    # Always check DATABASE_PATH environment variable first
+    DB_PATH = Path(os.getenv("DATABASE_PATH", str(PROJECT_ROOT / "data" / "yral_chat.db")))
 
 MIGRATIONS_DIR = PROJECT_ROOT / "migrations" / "sqlite"
 

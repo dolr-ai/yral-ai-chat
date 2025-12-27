@@ -28,14 +28,16 @@ jobs:
       
       - name: Initialize test database
         env:
-          DATABASE_PATH: data/test.db
+          DATABASE_PATH: ${{ github.workspace }}/data/test.db
         run: |
           mkdir -p data
           python scripts/run_migrations.py
+          echo "Database initialized at: $DATABASE_PATH"
+          ls -la data/ || true
       
       - name: Run tests
         env:
-          DATABASE_PATH: data/test.db
+          DATABASE_PATH: ${{ github.workspace }}/data/test.db
           JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
           JWT_ALGORITHM: HS256
           JWT_ISSUER: yral_auth
