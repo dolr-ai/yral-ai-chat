@@ -1,14 +1,13 @@
-name: Deploy
+name: Deploy Production
 
 on:
   push:
     branches:
       - main
-      - staging
 
 jobs:
   deploy:
-    name: Deploy ${{ github.ref_name == 'main' && 'Production' || 'Staging' }}
+    name: Deploy Production
     runs-on: ubuntu-latest
     
     steps:
@@ -25,26 +24,13 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
       
-      - name: Set deployment variables
-        id: vars
-        run: |
-          if [ "${{ github.ref_name }}" == "main" ]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
-            echo "service=yral-ai-chat" >> $GITHUB_OUTPUT
-            echo "branch=main" >> $GITHUB_OUTPUT
-          else
-            echo "environment=staging" >> $GITHUB_OUTPUT
-            echo "service=yral-ai-chat-staging" >> $GITHUB_OUTPUT
-            echo "branch=staging" >> $GITHUB_OUTPUT
-          fi
-      
       - name: Create .env file
         run: |
           cat > .env << 'EOF'
           # Application Settings
           APP_NAME=${{ secrets.APP_NAME || 'Yral AI Chat API' }}
           APP_VERSION=${{ secrets.APP_VERSION || '1.0.0' }}
-          ENVIRONMENT=${{ steps.vars.outputs.environment }}
+          ENVIRONMENT=production
           DEBUG=${{ secrets.DEBUG || 'False' }}
           
           # Database
@@ -109,9 +95,9 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'DEPLOY_SCRIPT'
             set -e
             
-            ENVIRONMENT="${{ steps.vars.outputs.environment }}"
-            SERVICE="${{ steps.vars.outputs.service }}"
-            BRANCH="${{ steps.vars.outputs.branch }}"
+            ENVIRONMENT="production"
+            SERVICE="yral-ai-chat"
+            BRANCH="main"
             PROJECT_DIR="/root/yral-ai-chat"
             HEALTH_CHECK_PORT=8000
             HEALTH_CHECK_MAX_ATTEMPTS=15
@@ -174,13 +160,16 @@ jobs:
             # Step 5: Start service
             echo "[INFO] Starting $ENVIRONMENT service"
             docker compose up -d "$SERVICE"
-            docker compose up -d nginx
             
-            # Step 6: Wait for service to start
+            # Step 6: Start nginx (without starting dependencies to avoid affecting staging)
+            echo "[INFO] Starting nginx"
+            docker compose up -d --no-deps nginx
+            
+            # Step 7: Wait for service to start
             echo "[INFO] Waiting ${SERVICE_START_DELAY}s for service to start"
             sleep $SERVICE_START_DELAY
             
-            # Step 7: Run database migrations
+            # Step 8: Run database migrations
             echo "[INFO] Running database migrations for $ENVIRONMENT"
             if ! docker compose exec -T "$SERVICE" python scripts/run_migrations.py; then
               echo "[ERROR] $ENVIRONMENT migrations failed"
@@ -188,19 +177,19 @@ jobs:
               exit 1
             fi
             
-            # Step 8: Restart service to load migrated data
+            # Step 9: Restart service to load migrated data
             echo "[INFO] Restarting service to load migrated data"
             docker compose restart "$SERVICE"
             echo "[INFO] Waiting ${SERVICE_RESTART_DELAY}s for service to restart"
             sleep $SERVICE_RESTART_DELAY
             
-            # Step 9: Health check
+            # Step 10: Health check
             echo "[INFO] Running health checks for $ENVIRONMENT"
             if ! check_service_health "$SERVICE" "$HEALTH_CHECK_PORT" "$HEALTH_CHECK_MAX_ATTEMPTS" "$HEALTH_CHECK_RETRY_DELAY"; then
               exit 1
             fi
             
-            # Step 10: Deployment summary
+            # Step 11: Deployment summary
             echo ""
             echo "[SUCCESS] $ENVIRONMENT deployment complete"
             echo "[INFO] Service status:"
@@ -209,3 +198,4 @@ jobs:
             echo "[INFO] Recent logs:"
             docker compose logs --tail=20 "$SERVICE"
           DEPLOY_SCRIPT
+
