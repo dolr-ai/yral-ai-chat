@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS ai_influencers (
     system_instructions TEXT NOT NULL,
     personality_traits TEXT DEFAULT '{}',
     initial_greeting TEXT,
+    suggested_messages TEXT DEFAULT '[]',
     is_active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
