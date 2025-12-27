@@ -88,7 +88,7 @@ CREATE TABLE ai_influencers (
     category TEXT,
     system_instructions TEXT NOT NULL,
     personality_traits TEXT,
-    is_active BOOLEAN DEFAULT true,
+    is_active TEXT CHECK(is_active IN ('active', 'coming_soon', 'discontinued')) DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -270,7 +270,7 @@ LIMIT ? OFFSET ?
 
 **Count Active Influencers:**
 ```sql
-SELECT COUNT(*) FROM ai_influencers WHERE is_active = true
+SELECT COUNT(*) FROM ai_influencers WHERE is_active = 'active'
 ```
 
 ## Performance Optimization

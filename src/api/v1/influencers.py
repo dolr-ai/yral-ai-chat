@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1/influencers", tags=["Influencers"])
     response_model=ListInfluencersResponse,
     operation_id="listInfluencers",
     summary="List AI influencers",
-    description="Retrieve paginated list of all AI influencers (active and inactive). Active influencers are listed first. No authentication required.",
+    description="Retrieve paginated list of all AI influencers. Influencers are ordered by status (active, coming_soon, discontinued) with active influencers listed first. No authentication required.",
     responses={
         200: {"description": "List of influencers retrieved successfully"},
         422: {"description": "Validation error - Invalid query parameters"},
@@ -28,9 +28,10 @@ async def list_influencers(
     influencer_service: InfluencerServiceDep = None,
 ):
     """\
-    List all AI influencers (both active and inactive)
+    List all AI influencers
     
-    Active influencers are listed first, followed by inactive ones.
+    Influencers are ordered by status: active, coming_soon, then discontinued.
+    Active influencers are listed first.
     No authentication required for discovery.
     """
     influencers, total = await influencer_service.list_influencers(

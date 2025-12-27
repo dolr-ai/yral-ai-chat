@@ -4,7 +4,7 @@ Additional tests for recent_messages in conversation list
 from datetime import datetime
 
 
-def test_list_conversations_includes_recent_messages(client, clean_conversation_id):
+def test_list_conversations_includes_recent_messages(client, clean_conversation_id, auth_headers):
     """Ensure list_conversations includes last messages as recent_messages"""
     # Send a few messages to ensure the conversation has history
     for i in range(3):
@@ -14,11 +14,12 @@ def test_list_conversations_includes_recent_messages(client, clean_conversation_
                 "content": f"Recent message {i}",
                 "message_type": "text",
             },
+            headers=auth_headers
         )
         assert response.status_code == 200
 
     # Now list conversations
-    response = client.get("/api/v1/chat/conversations")
+    response = client.get("/api/v1/chat/conversations", headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
 

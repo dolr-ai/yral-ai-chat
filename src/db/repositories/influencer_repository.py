@@ -4,7 +4,7 @@ Repository for AI Influencer operations
 import json
 
 from src.db.base import db
-from src.models.entities import AIInfluencer
+from src.models.entities import AIInfluencer, InfluencerStatus
 
 
 class InfluencerRepository:
@@ -19,7 +19,11 @@ class InfluencerRepository:
                 initial_greeting, suggested_messages,
                 is_active, created_at, updated_at, metadata
             FROM ai_influencers
-            ORDER BY is_active DESC, created_at DESC
+            ORDER BY CASE is_active 
+                WHEN 'active' THEN 1 
+                WHEN 'coming_soon' THEN 2 
+                WHEN 'discontinued' THEN 3 
+            END, created_at DESC
             LIMIT $1 OFFSET $2
         """
 
@@ -35,7 +39,7 @@ class InfluencerRepository:
                 initial_greeting, suggested_messages,
                 is_active, created_at, updated_at, metadata
             FROM ai_influencers
-            WHERE id = $1 AND is_active = true
+            WHERE id = $1 AND is_active = 'active'
         """
 
         row = await db.fetchone(query, influencer_id)
@@ -50,7 +54,7 @@ class InfluencerRepository:
                 initial_greeting, suggested_messages,
                 is_active, created_at, updated_at, metadata
             FROM ai_influencers
-            WHERE name = $1 AND is_active = true
+            WHERE name = $1 AND is_active = 'active'
         """
 
         row = await db.fetchone(query, name)
@@ -72,7 +76,7 @@ class InfluencerRepository:
                 COUNT(c.id) as conversation_count
             FROM ai_influencers i
             LEFT JOIN conversations c ON i.id = c.influencer_id
-            WHERE i.id = $1 AND i.is_active = true
+            WHERE i.id = $1 AND i.is_active = 'active'
             GROUP BY i.id
         """
 
@@ -105,6 +109,18 @@ class InfluencerRepository:
         if isinstance(metadata, str):
             metadata = json.loads(metadata)
 
+        # Convert is_active string to InfluencerStatus enum
+        is_active_value = row["is_active"]
+        if isinstance(is_active_value, str):
+            try:
+                is_active_enum = InfluencerStatus(is_active_value)
+            except ValueError:
+                # Fallback to ACTIVE if invalid value
+                is_active_enum = InfluencerStatus.ACTIVE
+        else:
+            # Handle legacy boolean values (should not happen after migration)
+            is_active_enum = InfluencerStatus.ACTIVE if is_active_value else InfluencerStatus.DISCONTINUED
+
         return AIInfluencer(
             id=row["id"],
             name=row["name"],
@@ -116,7 +132,7 @@ class InfluencerRepository:
             personality_traits=personality_traits,
             initial_greeting=row.get("initial_greeting"),
             suggested_messages=suggested_messages,
-            is_active=row["is_active"],
+            is_active=is_active_enum,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             metadata=metadata,

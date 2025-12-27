@@ -57,11 +57,16 @@ async def lifespan(app: FastAPI):
 
 
 # Create FastAPI app
+# Set root_path for staging to help Swagger UI generate correct URLs
+# This doesn't affect route matching (nginx strips the prefix), but helps with URL generation
+root_path = "/staging" if settings.environment == "staging" else None
+
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="AI Chat API for Yral with multimodal support",
     lifespan=lifespan,
+    root_path=root_path,
     docs_url="/docs",
     redoc_url="/redoc",
     swagger_ui_parameters={
@@ -75,14 +80,20 @@ app = FastAPI(
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-
+    
     openapi_schema = get_openapi(
         title=settings.app_name,
         version=settings.app_version,
         description="AI Chat API for Yral with multimodal support",
         routes=app.routes,
     )
-
+    
+    # Set server URL based on environment for correct Swagger UI routing
+    # root_path is already set above, but we also set servers for explicit Swagger UI configuration
+    if settings.environment == "staging":
+        openapi_schema["servers"] = [{"url": "/staging", "description": "Staging environment"}]
+    # Production: Don't set servers array - let Swagger UI use default (current origin)
+    
     # Add JWT Bearer authentication
     openapi_schema["components"]["securitySchemes"] = {
         "BearerAuth": {
@@ -92,7 +103,7 @@ def custom_openapi():
             "description": "Enter your JWT token (without 'Bearer' prefix)"
         }
     }
-
+    
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 

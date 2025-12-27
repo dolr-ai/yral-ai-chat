@@ -64,7 +64,8 @@ def test_list_influencers_response_structure(client):
     assert isinstance(influencer["id"], str)
     assert isinstance(influencer["name"], str)
     assert isinstance(influencer["display_name"], str)
-    assert isinstance(influencer["is_active"], bool)
+    assert isinstance(influencer["is_active"], str)
+    assert influencer["is_active"] in ["active", "coming_soon", "discontinued"]
 
     # Verify timestamp format
     created_at = datetime.fromisoformat(influencer["created_at"])
@@ -105,7 +106,8 @@ def test_get_single_influencer(client, test_influencer_id):
     # Verify data types
     assert isinstance(data["name"], str)
     assert isinstance(data["display_name"], str)
-    assert isinstance(data["is_active"], bool)
+    assert isinstance(data["is_active"], str)
+    assert data["is_active"] in ["active", "coming_soon", "discontinued"]
 
 
 def test_get_influencer_with_invalid_uuid(client):

@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.models.entities import MessageRole, MessageType
+from src.models.entities import InfluencerStatus, MessageRole, MessageType
 
 
 class InfluencerBasicInfo(BaseModel):
@@ -106,7 +106,7 @@ class InfluencerResponse(BaseModel):
     avatar_url: str | None = Field(None, description="Profile picture URL")
     description: str | None = Field(None, description="Bio/description of the influencer")
     category: str | None = Field(None, description="Category/expertise area", examples=["Technology"])
-    is_active: bool = Field(..., description="Whether influencer is currently active")
+    is_active: InfluencerStatus = Field(..., description="Influencer status: 'active', 'coming_soon', or 'discontinued'")
     created_at: datetime = Field(..., description="Creation timestamp")
 
 
