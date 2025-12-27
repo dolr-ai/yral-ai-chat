@@ -77,8 +77,11 @@ BEGIN
     UPDATE ai_influencers SET updated_at = datetime('now') WHERE id = OLD.id;
 END;
 
--- Trigger to validate is_active enum values
-CREATE TRIGGER IF NOT EXISTS trigger_validate_influencer_status
+-- Triggers to validate is_active enum values (drop first to ensure correct validation)
+DROP TRIGGER IF EXISTS trigger_validate_influencer_status;
+DROP TRIGGER IF EXISTS trigger_validate_influencer_status_update;
+
+CREATE TRIGGER trigger_validate_influencer_status
 BEFORE INSERT ON ai_influencers
 BEGIN
     SELECT CASE
@@ -87,7 +90,7 @@ BEGIN
     END;
 END;
 
-CREATE TRIGGER IF NOT EXISTS trigger_validate_influencer_status_update
+CREATE TRIGGER trigger_validate_influencer_status_update
 BEFORE UPDATE ON ai_influencers
 BEGIN
     SELECT CASE
