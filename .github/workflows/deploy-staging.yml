@@ -26,6 +26,13 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
       
+      - name: Initialize test database
+        env:
+          DATABASE_PATH: data/test.db
+        run: |
+          mkdir -p data
+          python scripts/run_migrations.py
+      
       - name: Run tests
         env:
           DATABASE_PATH: data/test.db
