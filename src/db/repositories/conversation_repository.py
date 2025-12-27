@@ -132,6 +132,12 @@ class ConversationRepository:
 
         return message_count
 
+    async def update_metadata(self, conversation_id: UUID, metadata: dict[str, Any]) -> None:
+        """Update conversation metadata"""
+        metadata_json = json.dumps(metadata)
+        query = "UPDATE conversations SET metadata = $1 WHERE id = $2"
+        await db.execute(query, metadata_json, str(conversation_id))
+
     async def _get_last_message(self, conversation_id: UUID) -> dict[str, Any] | None:
         """Get last message in conversation"""
         query = """

@@ -1,6 +1,8 @@
 """
 Google Gemini AI Client
 """
+import json
+import re
 import time
 from typing import Any
 
@@ -220,6 +222,93 @@ class GeminiClient:
                 "mime_type": mime_type,
                 "data": audio_data
             }
+
+    async def extract_memories(
+        self,
+        user_message: str,
+        assistant_response: str,
+        existing_memories: dict[str, str] = None
+    ) -> dict[str, str]:
+        """
+        Extract memories (like height, weight, name, preferences) from conversation
+        
+        Args:
+            user_message: Latest user message
+            assistant_response: Latest assistant response
+            existing_memories: Current memories dict to merge with
+            
+        Returns:
+            Updated memories dict
+        """
+        try:
+            existing_memories = existing_memories or {}
+            
+            # Build prompt to extract memories
+            existing_memories_text = ""
+            if existing_memories:
+                existing_memories_text = "\n\nCurrent memories:\n" + "\n".join(
+                    f"- {key}: {value}" for key, value in existing_memories.items()
+                )
+            
+            prompt = f"""Extract any factual information about the user from this conversation that should be remembered for future interactions.
+
+Examples of things to remember:
+- Physical attributes: height, weight, age, appearance
+- Personal information: name, location, occupation, interests
+- Preferences: favorite foods, hobbies, goals
+- Context: relationship status, family, pets
+
+Recent conversation:
+User: {user_message}
+Assistant: {assistant_response}
+{existing_memories_text}
+
+Return ONLY a JSON object with key-value pairs. Use lowercase keys with underscores (e.g., "height", "weight", "name"). 
+If no new information was provided, return an empty object {{}}.
+If information updates an existing memory, use the new value.
+Format: {{"key1": "value1", "key2": "value2"}}"""
+
+            response = self.model.generate_content(prompt)
+            response_text = response.text.strip()
+            
+            # Try to extract JSON from response
+            extracted = {}
+            try:
+                # First, try parsing the entire response as JSON
+                extracted = json.loads(response_text)
+            except json.JSONDecodeError:
+                # If that fails, try to find JSON object in the response
+                # Look for content between { and } (handling nested objects)
+                brace_count = 0
+                start_idx = -1
+                for i, char in enumerate(response_text):
+                    if char == '{':
+                        if brace_count == 0:
+                            start_idx = i
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and start_idx != -1:
+                            json_str = response_text[start_idx:i+1]
+                            try:
+                                extracted = json.loads(json_str)
+                                break
+                            except json.JSONDecodeError:
+                                continue
+            
+            # Merge extracted memories with existing ones
+            if extracted and isinstance(extracted, dict):
+                existing_memories.update(extracted)
+                logger.info(f"Extracted {len(extracted)} new/updated memories")
+            elif not extracted:
+                logger.debug("No new memories extracted from conversation")
+                
+            return existing_memories
+            
+        except Exception as e:
+            logger.error(f"Memory extraction failed: {e}")
+            # Return existing memories if extraction fails
+            return existing_memories or {}
 
     async def health_check(self) -> dict:
         """Check Gemini API health"""
