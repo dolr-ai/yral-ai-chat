@@ -107,6 +107,9 @@ jobs:
             
             cd "$PROJECT_DIR"
             
+            # Set environment variable for docker-compose
+            export STAGING_ENV=staging
+            
             # Helper function: Check service health
             check_service_health() {
               local service_name=$1
