@@ -466,3 +466,117 @@ def test_delete_nonexistent_conversation(client, auth_headers):
     assert "error" in data
     assert data["error"] == "not_found"
     assert "message" in data
+
+def test_message_content_not_duplicated(client, clean_conversation_id, auth_headers):
+    """
+    Test that message content is not duplicated or modified by the backend.
+    Specifically tests the "80" -> "8080" issue to ensure backend passes content through correctly.
+    """
+    # Send a message with content "80" (the problematic case)
+    test_content = "80"
+    
+    response = client.post(
+        f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+        json={
+            "content": test_content,
+            "message_type": "text"
+        },
+        headers=auth_headers
+    )
+    
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Verify user message in response matches exactly what was sent
+    user_msg = data["user_message"]
+    assert user_msg["role"] == "user"
+    assert user_msg["content"] == test_content, \
+        f"Expected content '{test_content}' but got '{user_msg['content']}'. " \
+        f"Content was duplicated or modified by backend!"
+    assert user_msg["message_type"] == "text"
+    assert "id" in user_msg
+    
+    # Verify the message was stored correctly by fetching it back
+    message_id = user_msg["id"]
+    messages_response = client.get(
+        f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+        params={"limit": 10, "order": "desc"},
+        headers=auth_headers
+    )
+    
+    assert messages_response.status_code == 200
+    messages_data = messages_response.json()
+    
+    # Find the message we just sent
+    found_message = None
+    for msg in messages_data["messages"]:
+        if msg["id"] == message_id:
+            found_message = msg
+            break
+    
+    assert found_message is not None, "Message not found in conversation history"
+    assert found_message["content"] == test_content, \
+        f"Message content in database is '{found_message['content']}' but expected '{test_content}'. " \
+        f"Content was modified during storage or retrieval!"
+    
+    # Additional check: verify content doesn't contain "8080"
+    assert "8080" not in user_msg["content"], \
+        f"Content was incorrectly duplicated to '{user_msg['content']}'"
+    assert "8080" not in found_message["content"], \
+        f"Stored message content was incorrectly duplicated to '{found_message['content']}'"
+
+
+def test_short_numeric_message_preserved(client, clean_conversation_id, auth_headers):
+    """
+    Test that short numeric messages (like "80") are preserved exactly as sent.
+    This is a regression test for the "8080" duplication issue.
+    """
+    test_cases = [
+        "80",
+        "80 kilos",
+        "80kg",
+        "80.5",
+        "80.0",
+    ]
+    
+    for test_content in test_cases:
+        response = client.post(
+            f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+            json={
+                "content": test_content,
+                "message_type": "text"
+            },
+            headers=auth_headers
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        user_msg = data["user_message"]
+        assert user_msg["content"] == test_content, \
+            f"Content '{test_content}' was modified to '{user_msg['content']}'"
+        
+        # Get the user message ID from the response
+        user_message_id = user_msg["id"]
+        
+        # Verify it's stored correctly by fetching messages and finding the user message
+        messages_response = client.get(
+            f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+            params={"limit": 10, "order": "desc"},
+            headers=auth_headers
+        )
+        
+        assert messages_response.status_code == 200
+        messages = messages_response.json()["messages"]
+        
+        # Find the user message by ID
+        stored_user_msg = None
+        for msg in messages:
+            if msg["id"] == user_message_id:
+                stored_user_msg = msg
+                break
+        
+        assert stored_user_msg is not None, f"User message {user_message_id} not found in conversation history"
+        assert stored_user_msg["content"] == test_content, \
+            f"Stored content '{stored_user_msg['content']}' doesn't match sent content '{test_content}'"
+        assert stored_user_msg["role"] == "user", "Found message is not a user message"

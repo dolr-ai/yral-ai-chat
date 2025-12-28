@@ -4,10 +4,10 @@ Test script to create a new test user, authenticate, create a conversation,
 and check if the greeting message is returned.
 
 Usage:
-    python3 scripts/test_conversation_greeting.py
-    python3 scripts/test_conversation_greeting.py --influencer-id <id>
-    python3 scripts/test_conversation_greeting.py --base-url https://chat.yral.com/staging
-    python3 scripts/test_conversation_greeting.py --base-url http://localhost:8000  # For local testing
+    python3 adhoc/test_conversation_greeting.py
+    python3 adhoc/test_conversation_greeting.py --influencer-id <id>
+    python3 adhoc/test_conversation_greeting.py --base-url https://chat.yral.com/staging
+    python3 adhoc/test_conversation_greeting.py --base-url http://localhost:8000  # For local testing
 """
 import argparse
 import base64
