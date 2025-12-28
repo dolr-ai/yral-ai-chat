@@ -34,7 +34,6 @@ def encode_jwt(payload: dict) -> str:
     header_b64 = b64url(json.dumps(header, separators=(",", ":")).encode("utf-8"))
     payload_b64 = b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
 
-    # Signature is not validated in the backend, so we can use any placeholder
     signature_b64 = "dummy_signature"
 
     return f"{header_b64}.{payload_b64}.{signature_b64}"
