@@ -23,7 +23,9 @@ class Settings(BaseSettings):
 
     # Database (SQLite with Litestream)
     database_path: str = Field(default="/root/yral-ai-chat/data/yral_chat.db", alias="DATABASE_PATH")
-    database_pool_size: int = Field(default=5, ge=1, le=20, alias="DATABASE_POOL_SIZE")
+    # Increased default pool size for high traffic (100 req/sec)
+    # SQLite with WAL mode handles concurrent reads well, but writes are serialized
+    database_pool_size: int = Field(default=10, ge=1, le=20, alias="DATABASE_POOL_SIZE")
     database_pool_timeout: float = Field(default=30.0, gt=0, alias="DATABASE_POOL_TIMEOUT")
 
     # JWT Authentication
@@ -74,14 +76,14 @@ class Settings(BaseSettings):
     cors_allow_credentials: bool = Field(default=True, alias="CORS_ALLOW_CREDENTIALS")
 
     # Rate Limiting
-    # Conservative defaults to prevent resource exhaustion:
-    # - Database pool: 5-20 connections (default 5)
-    # - SQLite concurrency limitations
-    # - Gemini API costs and rate limits
+    # Updated defaults to support 100 req/sec (6000/min) with true async implementation:
+    # - Database pool: 5-20 connections (default 10, increased for high traffic)
+    # - SQLite concurrency limitations (WAL mode handles multiple readers well)
+    # - Gemini API costs and rate limits (check your quota)
     # - Memory usage for token buckets
-    # Max safe values can be set via environment variables if needed
-    rate_limit_per_minute: int = Field(default=300, ge=1, le=10000, alias="RATE_LIMIT_PER_MINUTE")
-    rate_limit_per_hour: int = Field(default=5000, ge=1, le=100000, alias="RATE_LIMIT_PER_HOUR")
+    # Max safe values: 10000/min, 100000/hour (use with caution)
+    rate_limit_per_minute: int = Field(default=6000, ge=1, le=10000, alias="RATE_LIMIT_PER_MINUTE")
+    rate_limit_per_hour: int = Field(default=100000, ge=1, le=100000, alias="RATE_LIMIT_PER_HOUR")
 
     @field_validator("rate_limit_per_hour")
     @classmethod

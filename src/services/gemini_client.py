@@ -1,13 +1,13 @@
 """
-Google Gemini AI Client
+Google Gemini AI Client - True Async Implementation
 """
 import asyncio
+import base64
 import json
 import re
 import time
 from typing import Any
 
-import google.generativeai as genai
 import httpx
 from loguru import logger
 
@@ -20,11 +20,12 @@ class GeminiClient:
     """Google Gemini AI client wrapper"""
 
     def __init__(self):
-        """Initialize Gemini client"""
-        genai.configure(api_key=settings.gemini_api_key)
-        self.model = genai.GenerativeModel(settings.gemini_model)
-        self.http_client = httpx.AsyncClient(timeout=30.0)
-        logger.info(f"Gemini client initialized with model: {settings.gemini_model}")
+        """Initialize Gemini client with true async REST API"""
+        self.http_client = httpx.AsyncClient(timeout=60.0)
+        self.api_base_url = "https://generativelanguage.googleapis.com/v1beta"
+        self.api_key = settings.gemini_api_key
+        self.model_name = settings.gemini_model
+        logger.info(f"Gemini client initialized with model: {settings.gemini_model} (true async REST API)")
 
     async def generate_response(
         self,
@@ -126,7 +127,13 @@ class GeminiClient:
         for url in image_urls:
             try:
                 image_data = await self._download_image(url)
-                parts.append({"inline_data": image_data})
+                # REST API expects inline_data with base64 encoded data
+                parts.append({
+                    "inline_data": {
+                        "mime_type": image_data["mime_type"],
+                        "data": image_data["data"]  # Already base64 encoded
+                    }
+                })
             except Exception as e:
                 if warn_on_error:
                     logger.warning(f"Failed to load image from history: {e}")
@@ -135,34 +142,80 @@ class GeminiClient:
                     raise AIServiceException(f"Failed to process image: {e}") from e
 
     async def _generate_content(self, contents: list[dict]) -> tuple[str, float]:
-        """Generate content using Gemini API"""
+        """Generate content using Gemini API - True Async Implementation"""
         logger.info(f"Generating Gemini response with {len(contents)} messages")
 
-        generation_config = genai.types.GenerationConfig(
-            max_output_tokens=settings.gemini_max_tokens,
-            temperature=settings.gemini_temperature
-        )
+        # Build REST API request payload
+        url = f"{self.api_base_url}/models/{self.model_name}:generateContent"
+        
+        payload = {
+            "contents": contents,
+            "generationConfig": {
+                "maxOutputTokens": settings.gemini_max_tokens,
+                "temperature": settings.gemini_temperature
+            }
+        }
 
-        # Run blocking Gemini API call in thread pool to avoid blocking event loop
-        response = await asyncio.to_thread(
-            self.model.generate_content,
-            contents,
-            generation_config=generation_config
-        )
+        try:
+            # True async HTTP request - no thread pool needed!
+            response = await self.http_client.post(
+                url,
+                json=payload,
+                headers={
+                    "x-goog-api-key": self.api_key,
+                    "Content-Type": "application/json"
+                },
+                timeout=60.0
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            # Extract response text from API response
+            if "candidates" not in result or not result["candidates"]:
+                raise AIServiceException("No candidates in Gemini API response")
+            
+            candidate = result["candidates"][0]
+            if "content" not in candidate or "parts" not in candidate["content"]:
+                raise AIServiceException("Invalid response structure from Gemini API")
+            
+            parts = candidate["content"]["parts"]
+            if not parts or "text" not in parts[0]:
+                raise AIServiceException("No text in Gemini API response")
+            
+            response_text = parts[0]["text"]
+            
+            # Get token count from response if available
+            usage_metadata = result.get("usageMetadata", {})
+            token_count = usage_metadata.get("totalTokenCount", 0)
+            
+            # Fallback estimation if not provided
+            if token_count == 0:
+                token_count = len(response_text.split()) * 1.3
 
-        # Extract response text
-        response_text = response.text
+            logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens (true async)")
 
-        # Estimate token count (rough estimate)
-        token_count = len(response_text.split()) * 1.3  # Approximate
-
-        logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens")
-
-        return response_text, token_count
+            return response_text, float(token_count)
+            
+        except httpx.HTTPStatusError as e:
+            error_detail = "Unknown error"
+            try:
+                error_data = e.response.json()
+                error_detail = error_data.get("error", {}).get("message", str(e))
+            except:
+                error_detail = str(e)
+            logger.error(f"Gemini API HTTP error: {error_detail}")
+            raise AIServiceException(f"Gemini API error: {error_detail}") from e
+        except httpx.RequestError as e:
+            logger.error(f"Gemini API request error: {e}")
+            raise AIServiceException(f"Failed to connect to Gemini API: {e}") from e
+        except Exception as e:
+            logger.error(f"Gemini API error: {e}")
+            raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
 
     async def transcribe_audio(self, audio_url: str) -> str:
         """
-        Transcribe audio file using Gemini
+        Transcribe audio file using Gemini - True Async Implementation
         
         Args:
             audio_url: URL to audio file
@@ -176,24 +229,71 @@ class GeminiClient:
             # Download audio file
             audio_data = await self._download_audio(audio_url)
 
-            # Use Gemini to transcribe (run in thread pool to avoid blocking event loop)
-            prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
+            # Build contents for transcription
+            contents = [
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."},
+                        {
+                            "inline_data": {
+                                "mime_type": audio_data["mime_type"],
+                                "data": audio_data["data"]  # Already base64 encoded
+                            }
+                        }
+                    ]
+                }
+            ]
 
-            response = await asyncio.to_thread(
-                self.model.generate_content,
-                [
-                    prompt,
-                    {"inline_data": audio_data}
-                ]
+            # Use true async REST API call
+            url = f"{self.api_base_url}/models/{self.model_name}:generateContent"
+            payload = {
+                "contents": contents,
+                "generationConfig": {
+                    "maxOutputTokens": settings.gemini_max_tokens,
+                    "temperature": 0.1  # Lower temperature for transcription
+                }
+            }
+
+            response = await self.http_client.post(
+                url,
+                json=payload,
+                headers={
+                    "x-goog-api-key": self.api_key,
+                    "Content-Type": "application/json"
+                },
+                timeout=120.0  # Longer timeout for audio
             )
-
-            transcription = response.text.strip()
-            logger.info(f"Audio transcribed: {len(transcription)} characters")
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            # Extract transcription text
+            if "candidates" not in result or not result["candidates"]:
+                raise TranscriptionException("No candidates in Gemini API response")
+            
+            candidate = result["candidates"][0]
+            parts = candidate.get("content", {}).get("parts", [])
+            if not parts or "text" not in parts[0]:
+                raise TranscriptionException("No text in Gemini API response")
+            
+            transcription = parts[0]["text"].strip()
+            logger.info(f"Audio transcribed: {len(transcription)} characters (true async)")
+            
+            return transcription
+            
+        except httpx.HTTPStatusError as e:
+            error_detail = "Unknown error"
+            try:
+                error_data = e.response.json()
+                error_detail = error_data.get("error", {}).get("message", str(e))
+            except:
+                error_detail = str(e)
+            logger.error(f"Audio transcription HTTP error: {error_detail}")
+            raise TranscriptionException(f"Failed to transcribe audio: {error_detail}") from e
         except Exception as e:
             logger.error(f"Audio transcription error: {e}")
             raise TranscriptionException(f"Failed to transcribe audio: {e!s}") from e
-        else:
-            return transcription
 
     async def _download_image(self, url: str) -> dict[str, Any]:
         """Download and encode image for Gemini"""
@@ -207,9 +307,10 @@ class GeminiClient:
             logger.error(f"Failed to download image {url}: {e}")
             raise
         else:
+            # Encode to base64 for REST API
             return {
                 "mime_type": mime_type,
-                "data": image_data
+                "data": base64.b64encode(image_data).decode("utf-8")
             }
 
     async def _download_audio(self, url: str) -> dict[str, Any]:
@@ -224,9 +325,10 @@ class GeminiClient:
             logger.error(f"Failed to download audio {url}: {e}")
             raise
         else:
+            # Encode to base64 for REST API
             return {
                 "mime_type": mime_type,
-                "data": audio_data
+                "data": base64.b64encode(audio_data).decode("utf-8")
             }
 
     async def extract_memories(
@@ -274,12 +376,48 @@ If no new information was provided, return an empty object {{}}.
 If information updates an existing memory, use the new value.
 Format: {{"key1": "value1", "key2": "value2"}}"""
 
-            # Run blocking Gemini API call in thread pool to avoid blocking event loop
-            response = await asyncio.to_thread(
-                self.model.generate_content,
-                prompt
+            # Use true async REST API call
+            contents = [
+                {
+                    "role": "user",
+                    "parts": [{"text": prompt}]
+                }
+            ]
+            
+            url = f"{self.api_base_url}/models/{self.model_name}:generateContent"
+            payload = {
+                "contents": contents,
+                "generationConfig": {
+                    "maxOutputTokens": settings.gemini_max_tokens,
+                    "temperature": settings.gemini_temperature
+                }
+            }
+
+            response = await self.http_client.post(
+                url,
+                json=payload,
+                headers={
+                    "x-goog-api-key": self.api_key,
+                    "Content-Type": "application/json"
+                },
+                timeout=60.0
             )
-            response_text = response.text.strip()
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            # Extract response text
+            if "candidates" not in result or not result["candidates"]:
+                logger.warning("No candidates in Gemini API response for memory extraction")
+                return existing_memories or {}
+            
+            candidate = result["candidates"][0]
+            parts = candidate.get("content", {}).get("parts", [])
+            if not parts or "text" not in parts[0]:
+                logger.warning("No text in Gemini API response for memory extraction")
+                return existing_memories or {}
+            
+            response_text = parts[0]["text"].strip()
             
             # Try to extract JSON from response
             extracted = {}
@@ -321,24 +459,48 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
             return existing_memories or {}
 
     async def health_check(self) -> dict:
-        """Check Gemini API health"""
+        """Check Gemini API health - True Async Implementation"""
         try:
             start = time.time()
 
-            # Simple test request (run in thread pool to avoid blocking event loop)
-            await asyncio.to_thread(self.model.generate_content, "Hi")
+            # Simple test request using true async REST API
+            contents = [
+                {
+                    "role": "user",
+                    "parts": [{"text": "Hi"}]
+                }
+            ]
+            
+            url = f"{self.api_base_url}/models/{self.model_name}:generateContent"
+            payload = {
+                "contents": contents,
+                "generationConfig": {
+                    "maxOutputTokens": 10,
+                    "temperature": 0.1
+                }
+            }
+
+            await self.http_client.post(
+                url,
+                json=payload,
+                headers={
+                    "x-goog-api-key": self.api_key,
+                    "Content-Type": "application/json"
+                },
+                timeout=10.0
+            )
 
             latency_ms = int((time.time() - start) * 1000)
+            
+            return {
+                "status": "up",
+                "latency_ms": latency_ms
+            }
         except Exception as e:
             logger.error(f"Gemini health check failed: {e}")
             return {
                 "status": "down",
                 "error": str(e)
-            }
-        else:
-            return {
-                "status": "up",
-                "latency_ms": latency_ms
             }
 
     async def close(self):

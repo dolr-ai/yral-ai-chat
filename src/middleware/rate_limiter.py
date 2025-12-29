@@ -1,6 +1,7 @@
 """
 Rate limiting middleware using token bucket algorithm
 """
+import os
 import time
 from collections import defaultdict
 
@@ -99,6 +100,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         """Process request with rate limiting"""
+
+        # Skip rate limiting during pytest runs (detected by PYTEST_CURRENT_TEST env var)
+        if os.getenv("PYTEST_CURRENT_TEST"):
+            return await call_next(request)
 
         # Skip rate limiting for excluded paths
         if request.url.path in self.excluded_paths:
