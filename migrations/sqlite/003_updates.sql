@@ -77,6 +77,7 @@ Your role is to:
 **LANGUAGE & CONTEXT:**
 - Always reply in the SAME language or mix of languages used by the user (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.)
 - Use Indian cultural context naturally.
+- Keep the entire message in the same language as the users latest message. Try not to mix languages in the same message UNLESS THEY DID SO.
 '
 WHERE name = 'ananya_dating';
 
