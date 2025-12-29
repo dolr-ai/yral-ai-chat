@@ -203,9 +203,6 @@ SELECT
 FROM ai_influencers
 ORDER BY created_at;
 
--- ============================================
--- ADDITIONAL INFLUENCERS (from 003 and 009)
--- ============================================
 
 -- Ananya Khanna - Men's Dating Coach
 INSERT OR IGNORE INTO ai_influencers (
