@@ -1,6 +1,7 @@
 """
 Google Gemini AI Client
 """
+import asyncio
 import json
 import re
 import time
@@ -142,7 +143,9 @@ class GeminiClient:
             temperature=settings.gemini_temperature
         )
 
-        response = self.model.generate_content(
+        # Run blocking Gemini API call in thread pool to avoid blocking event loop
+        response = await asyncio.to_thread(
+            self.model.generate_content,
             contents,
             generation_config=generation_config
         )
@@ -173,13 +176,16 @@ class GeminiClient:
             # Download audio file
             audio_data = await self._download_audio(audio_url)
 
-            # Use Gemini to transcribe
+            # Use Gemini to transcribe (run in thread pool to avoid blocking event loop)
             prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
 
-            response = self.model.generate_content([
-                prompt,
-                {"inline_data": audio_data}
-            ])
+            response = await asyncio.to_thread(
+                self.model.generate_content,
+                [
+                    prompt,
+                    {"inline_data": audio_data}
+                ]
+            )
 
             transcription = response.text.strip()
             logger.info(f"Audio transcribed: {len(transcription)} characters")
@@ -268,7 +274,11 @@ If no new information was provided, return an empty object {{}}.
 If information updates an existing memory, use the new value.
 Format: {{"key1": "value1", "key2": "value2"}}"""
 
-            response = self.model.generate_content(prompt)
+            # Run blocking Gemini API call in thread pool to avoid blocking event loop
+            response = await asyncio.to_thread(
+                self.model.generate_content,
+                prompt
+            )
             response_text = response.text.strip()
             
             # Try to extract JSON from response
@@ -315,8 +325,8 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
         try:
             start = time.time()
 
-            # Simple test request
-            self.model.generate_content("Hi")
+            # Simple test request (run in thread pool to avoid blocking event loop)
+            await asyncio.to_thread(self.model.generate_content, "Hi")
 
             latency_ms = int((time.time() - start) * 1000)
         except Exception as e:
