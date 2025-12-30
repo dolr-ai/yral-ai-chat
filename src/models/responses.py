@@ -63,7 +63,6 @@ class ConversationResponse(BaseModel):
     updated_at: datetime
     message_count: int = 0
     last_message: LastMessageInfo | None = None
-    greeting_message: LastMessageInfo | None = None
     recent_messages: list[MessageResponse] | None = None
 
 

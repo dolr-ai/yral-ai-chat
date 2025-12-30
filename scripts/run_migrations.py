@@ -11,7 +11,7 @@ from pathlib import Path
 # Get paths - works both in Docker and locally
 # In Docker: /app is the working directory
 # Locally: script is in scripts/ directory
-if os.path.exists("/app"):
+if os.path.exists("/app/migrations"):
     # Running in Docker
     PROJECT_ROOT = Path("/app")
     DB_PATH = Path(os.getenv("DATABASE_PATH", "/app/data/yral_chat.db"))

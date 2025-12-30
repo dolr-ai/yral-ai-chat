@@ -1,6 +1,5 @@
 -- Yral AI Chat SQLite Schema
 -- Version: 1.0.0
--- Migrated from PostgreSQL for use with Litestream
 
 -- Enable foreign keys
 PRAGMA foreign_keys = ON;
@@ -16,7 +15,8 @@ CREATE TABLE IF NOT EXISTS ai_influencers (
     system_instructions TEXT NOT NULL,
     personality_traits TEXT DEFAULT '{}',
     initial_greeting TEXT,
-    is_active INTEGER DEFAULT 1,
+    suggested_messages TEXT DEFAULT '[]',
+    is_active TEXT DEFAULT 'active',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     metadata TEXT DEFAULT '{}'
@@ -75,5 +75,27 @@ CREATE TRIGGER IF NOT EXISTS trigger_update_influencer_timestamp
 AFTER UPDATE ON ai_influencers
 BEGIN
     UPDATE ai_influencers SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+-- Triggers to validate is_active enum values (drop first to ensure correct validation)
+DROP TRIGGER IF EXISTS trigger_validate_influencer_status;
+DROP TRIGGER IF EXISTS trigger_validate_influencer_status_update;
+
+CREATE TRIGGER trigger_validate_influencer_status
+BEFORE INSERT ON ai_influencers
+BEGIN
+    SELECT CASE
+        WHEN NEW.is_active NOT IN ('active', 'coming_soon', 'discontinued') THEN
+            RAISE(ABORT, 'Invalid is_active value. Must be one of: active, coming_soon, discontinued')
+    END;
+END;
+
+CREATE TRIGGER trigger_validate_influencer_status_update
+BEFORE UPDATE ON ai_influencers
+BEGIN
+    SELECT CASE
+        WHEN NEW.is_active NOT IN ('active', 'coming_soon', 'discontinued') THEN
+            RAISE(ABORT, 'Invalid is_active value. Must be one of: active, coming_soon, discontinued')
+    END;
 END;
 

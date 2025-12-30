@@ -126,6 +126,9 @@ class ChatService:
         if not influencer:
             raise NotFoundException("Influencer not found")
 
+        # Get existing memories from conversation metadata
+        memories = conversation.metadata.get("memories", {})
+
         # Handle audio transcription
         transcribed_content = content
         if message_type == MessageType.AUDIO and audio_url:
@@ -193,7 +196,15 @@ class ChatService:
                             msg.audio_url = None  # Can't use storage key as URL
 
         # Prepare content for AI
-        ai_input_content = content or transcribed_content or "What do you think?"
+        ai_input_content = str(content or transcribed_content or "What do you think?")
+
+        # Enhance system instructions with memories
+        enhanced_system_instructions = influencer.system_instructions
+        if memories:
+            memories_text = "\n\n**MEMORIES:**\n" + "\n".join(
+                f"- {key}: {value}" for key, value in memories.items()
+            )
+            enhanced_system_instructions = influencer.system_instructions + memories_text
 
         # Convert storage keys to presigned URLs for Gemini (if storage service is available)
         media_urls_for_ai = None
@@ -222,7 +233,7 @@ class ChatService:
         try:
             response_text, token_count = await gemini_client.generate_response(
                 user_message=ai_input_content,
-                system_instructions=influencer.system_instructions,
+                system_instructions=enhanced_system_instructions,
                 conversation_history=history,
                 media_urls=media_urls_for_ai
             )
@@ -242,6 +253,23 @@ class ChatService:
         )
 
         logger.info(f"Assistant message saved: {assistant_message.id}")
+
+        # Extract and update memories from this exchange
+        try:
+            updated_memories = await gemini_client.extract_memories(
+                user_message=ai_input_content,
+                assistant_response=response_text,
+                existing_memories=memories.copy()
+            )
+            
+            # Update conversation metadata with new memories
+            if updated_memories != memories:
+                conversation.metadata["memories"] = updated_memories
+                await self.conversation_repo.update_metadata(conversation_id, conversation.metadata)
+                logger.info(f"Updated memories: {len(updated_memories)} total memories")
+        except Exception as e:
+            logger.error(f"Failed to update memories: {e}", exc_info=True)
+            # Don't fail the request if memory extraction fails
 
         return user_message, assistant_message
 
