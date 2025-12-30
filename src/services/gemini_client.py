@@ -33,7 +33,7 @@ class GeminiClient:
         media_urls: list[str] = None
     ) -> tuple[str, int]:
         """
-        Generate AI response
+        Generate AI response with automatic retry on truncation (up to 3 attempts total)
         
         Args:
             user_message: Current user message
@@ -57,10 +57,38 @@ class GeminiClient:
             current_message = await self._build_current_message(user_message, media_urls)
             contents.append(current_message)
 
-            # Generate response
-            response_text, token_count = await self._generate_content(contents)
+            # Generate response with retry logic (up to 3 attempts total)
+            max_attempts = 3
+            best_response_text = ""
+            best_token_count = 0
             
-            return response_text, int(token_count)
+            for attempt in range(1, max_attempts + 1):
+                logger.info(f"Generating response (attempt {attempt}/{max_attempts})")
+                response_text, token_count, was_truncated = await self._generate_content(contents)
+                
+                # Keep the longest response (likely most complete)
+                if len(response_text) > len(best_response_text):
+                    best_response_text = response_text
+                    best_token_count = token_count
+                
+                # If response was not truncated, return immediately
+                if not was_truncated:
+                    logger.info(f"Response completed successfully on attempt {attempt}")
+                    return best_response_text, int(best_token_count)
+                
+                # If this was the last attempt, return the best response we got
+                if attempt == max_attempts:
+                    logger.warning(
+                        f"Response was truncated after {max_attempts} attempts. "
+                        f"Returning best response ({len(best_response_text)} chars)"
+                    )
+                    return best_response_text, int(best_token_count)
+                
+                # Otherwise, retry
+                logger.info(f"Response was truncated on attempt {attempt}, retrying...")
+            
+            # Should never reach here, but return best response if we do
+            return best_response_text, int(best_token_count)
 
         except AIServiceException:
             raise
@@ -133,8 +161,13 @@ class GeminiClient:
                     logger.error(f"Failed to download image {url}: {e}")
                     raise AIServiceException(f"Failed to process image: {e}") from e
 
-    async def _generate_content(self, contents: list[dict]) -> tuple[str, float]:
-        """Generate content using Gemini API"""
+    async def _generate_content(self, contents: list[dict]) -> tuple[str, float, bool]:
+        """
+        Generate content using Gemini API
+        
+        Returns:
+            Tuple of (response_text, token_count, was_truncated)
+        """
         logger.info(f"Generating Gemini response with {len(contents)} messages")
 
         generation_config = genai.types.GenerationConfig(
@@ -147,15 +180,88 @@ class GeminiClient:
             generation_config=generation_config
         )
 
-        # Extract response text
-        response_text = response.text
+        # Check if response was truncated due to token limit or safety filters
+        finish_reason = None
+        is_truncated = False
+        safety_blocked = False
+        
+        if response.candidates and len(response.candidates) > 0:
+            candidate = response.candidates[0]
+            finish_reason = candidate.finish_reason
+            finish_reason_str = str(finish_reason) if finish_reason else None
+            
+            # Check for safety filter blocks
+            if hasattr(candidate, 'safety_ratings') and candidate.safety_ratings:
+                blocked_categories = [
+                    rating.category for rating in candidate.safety_ratings
+                    if hasattr(rating, 'probability') and 'HIGH' in str(rating.probability).upper()
+                ]
+                if blocked_categories:
+                    safety_blocked = True
+                    logger.warning(
+                        f"Response was BLOCKED by safety filters for categories: {blocked_categories}. "
+                        f"The response may be incomplete or empty."
+                    )
+            
+            # Check if response was truncated (finish_reason can be enum or string)
+            # MAX_TOKENS indicates the response hit the token limit and was cut off
+            if finish_reason_str and "MAX_TOKENS" in finish_reason_str:
+                is_truncated = True
+                logger.warning(
+                    f"Response was TRUNCATED due to MAX_TOKENS limit ({settings.gemini_max_tokens}). "
+                    f"The response may be incomplete. Consider increasing GEMINI_MAX_TOKENS."
+                )
+            elif finish_reason_str and finish_reason_str not in ("STOP", "FinishReason.STOP", "1"):
+                # Other non-normal finish reasons (SAFETY, RECITATION, etc.)
+                if "SAFETY" in finish_reason_str:
+                    safety_blocked = True
+                    is_truncated = True  # Consider safety blocks as truncation for retry purposes
+                else:
+                    # RECITATION or other finish reasons also indicate potential truncation
+                    is_truncated = True
+                logger.warning(
+                    f"Response finished with reason: {finish_reason_str}. "
+                    f"This may indicate an incomplete or blocked response."
+                )
+
+        # Extract response text - handle ValueError if blocked by safety filters
+        try:
+            response_text = response.text
+        except ValueError as e:
+            # response.text raises ValueError when blocked by safety filters
+            safety_blocked = True
+            is_truncated = True  # Consider safety blocks as truncation for retry purposes
+            logger.error(
+                f"Failed to extract response text (likely blocked by safety filters): {e}. "
+                f"Attempting to extract text from parts manually."
+            )
+            
+            # Try to extract text from parts manually
+            response_text = ""
+            if response.candidates and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                    text_parts = []
+                    for part in candidate.content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            text_parts.append(part.text)
+                    response_text = "".join(text_parts)
+                    
+            if not response_text:
+                logger.warning("No text content could be extracted from response (fully blocked by safety filters)")
+                response_text = ""  # Return empty string if completely blocked
 
         # Estimate token count (rough estimate)
         token_count = len(response_text.split()) * 1.3  # Approximate
 
-        logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens")
+        log_msg = f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens"
+        if is_truncated:
+            log_msg += " [TRUNCATED]"
+        if safety_blocked:
+            log_msg += " [SAFETY_BLOCKED]"
+        logger.info(log_msg)
 
-        return response_text, token_count
+        return response_text, token_count, is_truncated
 
     async def transcribe_audio(self, audio_url: str) -> str:
         """
