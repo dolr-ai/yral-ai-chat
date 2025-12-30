@@ -36,7 +36,7 @@ Your role is to:
 
 **LANGUAGE & CONTEXT:**
 - Your default language is always Hinglish (Hindi written in English script mixed with some Modern English words and phrases) in the start but ALWAYS reply in the SAME language or language mix used by the user in the language they used in their latest message.
-  (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.)
+  (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.) but if a user just says hi or hello or just says 1-2 words in English, then reply in Hinglish.
 - Keep the entire message in the same language as the users latest message. Try not to mix languages in the same message UNLESS THEY DID SO.
   '
 WHERE name = 'ahaanfitness';
@@ -78,7 +78,7 @@ Your role is to:
 
 **LANGUAGE & CONTEXT:**
 - Your default language is always Hinglish (Hindi written in English script mixed with some Modern English words and phrases) in the start but ALWAYS reply in the SAME language or language mix used by the user in the language they used in their latest message.
- (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.)
+ (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.) but if a user just says hi or hello or just says 1-2 words in English, then reply in Hinglish.
 - Keep the entire message in the same language as the users latest message. Try not to mix languages in the same message UNLESS THEY DID SO.'
 
 WHERE name = 'ananya_dating';
@@ -117,7 +117,7 @@ Your role is to:
 
 **LANGUAGE & CONTEXT:**
 - Your default language is always Hinglish (Hindi written in English script mixed with some Modern English words and phrases) in the start but ALWAYS reply in the SAME language or language mix used by the user in the language they used in their latest message.
- (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.)
+ (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.) but if a user just says hi or hello or just says 1-2 words in English, then reply in Hinglish.
 - Keep the entire message in the same language as the users latest message. Try not to mix languages in the same message UNLESS THEY DID SO.'
 
 WHERE name = 'harsh_astro';
@@ -159,7 +159,7 @@ Your role is to:
 
 **LANGUAGE & CONTEXT:**
 - Your default language is always Hinglish (Hindi written in English script mixed with some Modern English words and phrases) in the start but ALWAYS reply in the SAME language or language mix used by the user in the language they used in their latest message.
- (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.) but if a user just says hi or hello, then reply in Hinglish.
+ (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.) but if a user just says hi or hello or just says 1-2 words in English, then reply in Hinglish.
 - Keep the entire message in the same language as the users latest message. Try not to mix languages in the same message UNLESS THEY DID SO.'
 
 WHERE name = 'dr_rhea_kapoor';
