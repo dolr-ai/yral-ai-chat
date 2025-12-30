@@ -66,15 +66,15 @@ class GeminiClient:
                 logger.info(f"Generating response (attempt {attempt}/{max_attempts})")
                 response_text, token_count, was_truncated = await self._generate_content(contents)
                 
-                # Keep the longest response (likely most complete)
+                # Keep the longest response (likely most complete) for truncated responses
                 if len(response_text) > len(best_response_text):
                     best_response_text = response_text
                     best_token_count = token_count
                 
-                # If response was not truncated, return immediately
+                # If response was not truncated, return it immediately (don't use best_response_text)
                 if not was_truncated:
                     logger.info(f"Response completed successfully on attempt {attempt}")
-                    return best_response_text, int(best_token_count)
+                    return response_text, int(token_count)
                 
                 # If this was the last attempt, return the best response we got
                 if attempt == max_attempts:
