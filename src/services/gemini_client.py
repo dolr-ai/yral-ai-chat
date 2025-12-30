@@ -50,12 +50,20 @@ class GeminiClient:
             
             # Add conversation history
             if conversation_history:
+                logger.info(f"DEBUG GEMINI: Building history from {len(conversation_history)} messages")
                 history_contents = await self._build_history_contents(conversation_history)
+                logger.info(f"DEBUG GEMINI: History contents built: {len(history_contents)} messages")
+                for i, hist_msg in enumerate(history_contents):
+                    logger.info(f"DEBUG GEMINI: History message {i}: {hist_msg}")
                 contents.extend(history_contents)
             
             # Add current message
+            logger.info(f"DEBUG GEMINI: About to build message with user_message={repr(user_message)}, type={type(user_message)}")
             current_message = await self._build_current_message(user_message, media_urls)
+            logger.info(f"DEBUG GEMINI: Built current_message: {current_message}")
             contents.append(current_message)
+            logger.info(f"DEBUG GEMINI: Total contents count: {len(contents)} messages")
+            logger.info(f"DEBUG GEMINI: Full contents being sent to Gemini (last message): {contents[-1] if contents else 'empty'}")
 
             # Generate response
             response_text, token_count = await self._generate_content(contents)
@@ -89,9 +97,12 @@ class GeminiClient:
             role = "user" if msg.role == MessageRole.USER else "model"
             parts = []
 
-            # Add text content
+            # Add text content - ensure it's a string
             if msg.content:
-                parts.append({"text": msg.content})
+                content_str = str(msg.content) if msg.content else ""
+                logger.info(f"DEBUG GEMINI _build_history: msg.content={repr(msg.content)}, type={type(msg.content)}, converted={repr(content_str)}")
+                if content_str:
+                    parts.append({"text": content_str})
 
             # Add images from history if available
             if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
@@ -104,10 +115,19 @@ class GeminiClient:
 
     async def _build_current_message(self, user_message: str, media_urls: list[str] | None) -> dict:
         """Build current user message with optional images"""
+        logger.info(f"DEBUG GEMINI _build_current_message: user_message={repr(user_message)}, type={type(user_message)}")
         current_parts = []
 
         if user_message:
-            current_parts.append({"text": user_message})
+            # Ensure it's a string and not duplicated - create a fresh string object
+            text_content = str(user_message) if user_message else ""
+            # Create a new string to avoid any reference issues
+            text_content = f"{text_content}"  # Force new string object
+            logger.info(f"DEBUG GEMINI _build_current_message: text_content after str()={repr(text_content)}, type={type(text_content)}, id={id(text_content)}")
+            # Ensure the dict value is also a fresh string
+            text_part = {"text": str(text_content)}  # Double conversion to be safe
+            logger.info(f"DEBUG GEMINI _build_current_message: Adding text part: {text_part}, text value id={id(text_part['text'])}")
+            current_parts.append(text_part)
 
         # Add current images
         if media_urls:
@@ -136,24 +156,70 @@ class GeminiClient:
     async def _generate_content(self, contents: list[dict]) -> tuple[str, float]:
         """Generate content using Gemini API"""
         logger.info(f"Generating Gemini response with {len(contents)} messages")
+        
+        # Debug: Log the last message (current user message) being sent
+        if contents:
+            last_msg = contents[-1]
+            logger.info(f"DEBUG GEMINI _generate_content: Last message (current user input): {last_msg}")
+            if "parts" in last_msg:
+                for i, part in enumerate(last_msg["parts"]):
+                    if "text" in part:
+                        logger.info(f"DEBUG GEMINI _generate_content: Part {i} text content: {repr(part['text'])}, type: {type(part['text'])}")
 
         generation_config = genai.types.GenerationConfig(
             max_output_tokens=settings.gemini_max_tokens,
             temperature=settings.gemini_temperature
         )
 
+        # Debug: Log the exact structure being sent
+        import json
+        try:
+            contents_json = json.dumps(contents, indent=2, default=str)
+            logger.info(f"DEBUG GEMINI _generate_content: Full contents JSON being sent:\n{contents_json}")
+        except Exception as e:
+            logger.warning(f"DEBUG GEMINI: Could not serialize contents for logging: {e}")
+        
         response = self.model.generate_content(
             contents,
             generation_config=generation_config
         )
 
-        # Extract response text
-        response_text = response.text
+        # Debug: Check for blocking or truncation
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            logger.info(f"DEBUG GEMINI: Response finish_reason: {getattr(candidate, 'finish_reason', 'unknown')}")
+            if hasattr(candidate, 'safety_ratings'):
+                logger.info(f"DEBUG GEMINI: Safety ratings: {candidate.safety_ratings}")
+        
+        # Extract response text - try multiple methods to get full text
+        response_text = ""
+        if hasattr(response, 'text'):
+            response_text = response.text
+        elif hasattr(response, 'candidates') and response.candidates:
+            # Try to extract from candidates
+            candidate = response.candidates[0]
+            if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                text_parts = [part.text for part in candidate.content.parts if hasattr(part, 'text')]
+                response_text = "".join(text_parts)
+        
+        # Check if response was blocked or stopped early
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            finish_reason = getattr(candidate, 'finish_reason', None)
+            if finish_reason and finish_reason != 'STOP':
+                logger.warning(f"Response finished with reason: {finish_reason} (not STOP)")
+                if finish_reason == 'SAFETY':
+                    logger.error("Response was blocked by safety filters!")
+                elif finish_reason == 'MAX_TOKENS':
+                    logger.warning("Response was truncated due to max tokens!")
+                elif finish_reason == 'RECITATION':
+                    logger.warning("Response was blocked due to recitation detection!")
 
         # Estimate token count (rough estimate)
         token_count = len(response_text.split()) * 1.3  # Approximate
 
         logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens")
+        logger.info(f"DEBUG GEMINI: Full response text: {repr(response_text)}")
 
         return response_text, token_count
 

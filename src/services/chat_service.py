@@ -146,6 +146,13 @@ class ChatService:
                 logger.error(f"Transcription failed: {e}")
                 transcribed_content = "[Audio message - transcription failed]"
 
+        # Get conversation history for context BEFORE saving current message
+        # This prevents the current message from appearing twice in history
+        history = await self.message_repo.get_recent_for_context(
+            conversation_id=conversation_id,
+            limit=10
+        )
+
         # Save user message
         user_message = await self.message_repo.create(
             conversation_id=conversation_id,
@@ -158,12 +165,6 @@ class ChatService:
         )
 
         logger.info(f"User message saved: {user_message.id}")
-
-        # Get conversation history for context
-        history = await self.message_repo.get_recent_for_context(
-            conversation_id=conversation_id,
-            limit=10
-        )
 
         # Convert storage keys to presigned URLs in history for Gemini
         if self.storage_service:
@@ -195,8 +196,12 @@ class ChatService:
                         if not msg.audio_url.startswith(("http://", "https://")):
                             msg.audio_url = None  # Can't use storage key as URL
 
-        # Prepare content for AI
-        ai_input_content = str(content or transcribed_content or "What do you think?")
+        # Prepare content for AI - ensure it's a string and not duplicated
+        logger.info(f"DEBUG: content type={type(content)}, value={repr(content)}")
+        logger.info(f"DEBUG: transcribed_content type={type(transcribed_content)}, value={repr(transcribed_content)}")
+        raw_content = content or transcribed_content or "What do you think?"
+        ai_input_content = str(raw_content) if raw_content else "What do you think?"
+        logger.info(f"DEBUG: ai_input_content={repr(ai_input_content)}")
 
         # Enhance system instructions with memories
         enhanced_system_instructions = influencer.system_instructions

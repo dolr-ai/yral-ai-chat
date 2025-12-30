@@ -106,20 +106,29 @@ class SendMessageRequest(BaseModel):
     @classmethod
     def validate_content_before(cls, v):
         """Convert content to string if it's a number or other type"""
+        from loguru import logger
+        logger.info(f"DEBUG VALIDATOR: content before validation type={type(v)}, value={repr(v)}")
         if v is None:
             return None
         # Convert numbers and other types to string
         if not isinstance(v, str):
-            return str(v)
+            result = str(v)
+            logger.info(f"DEBUG VALIDATOR: converted {type(v).__name__} to string: {repr(result)}")
+            return result
+        logger.info(f"DEBUG VALIDATOR: content is already string: {repr(v)}")
         return v
 
     @field_validator("content")
     @classmethod
     def validate_content(cls, v: str | None) -> str:
         """Validate content length"""
+        from loguru import logger
+        logger.info(f"DEBUG VALIDATOR2: content after first validation type={type(v)}, value={repr(v)}")
         if v and len(v) > 4000:
             raise ValueError("content exceeds 4000 characters")
-        return v or ""
+        result = v or ""
+        logger.info(f"DEBUG VALIDATOR2: final content value={repr(result)}")
+        return result
 
     @field_validator("media_urls", mode="before")
     @classmethod
