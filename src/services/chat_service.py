@@ -196,7 +196,7 @@ class ChatService:
                             msg.audio_url = None  # Can't use storage key as URL
 
         # Prepare content for AI
-        ai_input_content = content or transcribed_content or "What do you think?"
+        ai_input_content = str(content or transcribed_content or "What do you think?")
 
         # Enhance system instructions with memories
         enhanced_system_instructions = influencer.system_instructions
