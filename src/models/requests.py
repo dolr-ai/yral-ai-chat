@@ -102,16 +102,16 @@ class SendMessageRequest(BaseModel):
             raise ValueError("Invalid message type")
         return v
 
-    @field_validator("content", mode="before")
-    @classmethod
-    def validate_content_before(cls, v):
-        """Convert content to string if it's a number or other type"""
-        if v is None:
-            return None
-        # Convert numbers and other types to string
-        if not isinstance(v, str):
-            return str(v)
-        return v
+    # @field_validator("content", mode="before")
+    # @classmethod
+    # def validate_content_before(cls, v):
+    #     """Convert content to string if it's a number or other type"""
+    #     if v is None:
+    #         return None
+    #     # Convert numbers and other types to string
+    #     if not isinstance(v, str):
+    #         return str(v)
+    #     return v
 
     @field_validator("content")
     @classmethod
