@@ -45,6 +45,9 @@ class GeminiClient:
             Tuple of (response_text, token_count)
         """
         try:
+            # Ensure user_message is a string
+            user_message_str = str(user_message) if not isinstance(user_message, str) else user_message
+            
             # Build conversation context
             contents = self._build_system_instructions(system_instructions)
             
@@ -54,7 +57,7 @@ class GeminiClient:
                 contents.extend(history_contents)
             
             # Add current message
-            current_message = await self._build_current_message(user_message, media_urls)
+            current_message = await self._build_current_message(user_message_str, media_urls)
             contents.append(current_message)
 
             # Generate response
@@ -89,9 +92,10 @@ class GeminiClient:
             role = "user" if msg.role == MessageRole.USER else "model"
             parts = []
 
-            # Add text content
+            # Add text content - ensure it's a string
             if msg.content:
-                parts.append({"text": msg.content})
+                text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
+                parts.append({"text": text_content})
 
             # Add images from history if available
             if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
@@ -107,7 +111,9 @@ class GeminiClient:
         current_parts = []
 
         if user_message:
-            current_parts.append({"text": user_message})
+            # Ensure user_message is a string
+            text_content = str(user_message) if not isinstance(user_message, str) else user_message
+            current_parts.append({"text": text_content})
 
         # Add current images
         if media_urls:
@@ -149,6 +155,10 @@ class GeminiClient:
 
         # Extract response text
         response_text = response.text
+        
+        # Check finish reason
+        if response.candidates and response.candidates[0].finish_reason != 1:  # 1 = STOP
+            logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (not STOP)")
 
         # Estimate token count (rough estimate)
         token_count = len(response_text.split()) * 1.3  # Approximate
