@@ -18,7 +18,6 @@ from src.models.responses import (
     StatusResponse,
     SystemStatistics,
 )
-from src.services.gemini_client import gemini_client
 
 router = APIRouter(tags=["Health"])
 
@@ -56,19 +55,12 @@ async def health_check():
             error=str(e)
         )
 
-    # Check Gemini API with circuit breaker
-    try:
-        gemini_health = await gemini_client.health_check()
-        gemini_circuit_state = gemini_circuit_breaker.get_state()
-        gemini_health["circuit_breaker"] = gemini_circuit_state["state"]
-        services["gemini_api"] = ServiceHealth(**gemini_health)
-    except Exception as e:
-        logger.error(f"Gemini health check failed: {e}")
-        gemini_circuit_state = gemini_circuit_breaker.get_state()
-        services["gemini_api"] = ServiceHealth(
-            status="down",
-            error=str(e)
-        )
+    # Check Gemini API circuit breaker status (no API ping)
+    gemini_circuit_state = gemini_circuit_breaker.get_state()
+    services["gemini_api"] = ServiceHealth(
+        status="up" if gemini_circuit_state["state"] == "closed" else "degraded",
+        error=None if gemini_circuit_state["state"] == "closed" else f"Circuit breaker {gemini_circuit_state['state']}"
+    )
 
     # Add S3 circuit breaker status
     s3_circuit_state = s3_circuit_breaker.get_state()

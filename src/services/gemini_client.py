@@ -47,6 +47,9 @@ class GeminiClient:
             Tuple of (response_text, token_count)
         """
         try:
+            # Ensure user_message is a string
+            user_message_str = str(user_message) if not isinstance(user_message, str) else user_message
+            
             # Build conversation context
             contents = self._build_system_instructions(system_instructions)
             
@@ -56,7 +59,7 @@ class GeminiClient:
                 contents.extend(history_contents)
             
             # Add current message
-            current_message = await self._build_current_message(user_message, media_urls)
+            current_message = await self._build_current_message(user_message_str, media_urls)
             contents.append(current_message)
 
             # Generate response
@@ -91,9 +94,10 @@ class GeminiClient:
             role = "user" if msg.role == MessageRole.USER else "model"
             parts = []
 
-            # Add text content
+            # Add text content - ensure it's a string
             if msg.content:
-                parts.append({"text": msg.content})
+                text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
+                parts.append({"text": text_content})
 
             # Add images from history if available
             if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
@@ -109,7 +113,9 @@ class GeminiClient:
         current_parts = []
 
         if user_message:
-            current_parts.append({"text": user_message})
+            # Ensure user_message is a string
+            text_content = str(user_message) if not isinstance(user_message, str) else user_message
+            current_parts.append({"text": text_content})
 
         # Add current images
         if media_urls:
@@ -155,6 +161,22 @@ class GeminiClient:
                 "temperature": settings.gemini_temperature
             }
         }
+        generation_config = genai.types.GenerationConfig(
+            max_output_tokens=settings.gemini_max_tokens,
+            temperature=settings.gemini_temperature
+        )
+
+        response = self.model.generate_content(
+            contents,
+            generation_config=generation_config
+        )
+
+        # Extract response text
+        response_text = response.text
+        
+        # Check finish reason
+        if response.candidates and response.candidates[0].finish_reason != 1:  # 1 = STOP
+            logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (not STOP)")
 
         try:
             # True async HTTP request - no thread pool needed!
@@ -291,6 +313,16 @@ class GeminiClient:
                 error_detail = str(e)
             logger.error(f"Audio transcription HTTP error: {error_detail}")
             raise TranscriptionException(f"Failed to transcribe audio: {error_detail}") from e
+            # Use Gemini to transcribe
+            prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
+
+            response = self.model.generate_content([
+                prompt,
+                {"inline_data": audio_data}
+            ])
+
+            transcription = response.text.strip()
+            logger.info(f"Audio transcribed: {len(transcription)} characters")
         except Exception as e:
             logger.error(f"Audio transcription error: {e}")
             raise TranscriptionException(f"Failed to transcribe audio: {e!s}") from e
@@ -418,6 +450,8 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
                 return existing_memories or {}
             
             response_text = parts[0]["text"].strip()
+            response = self.model.generate_content(prompt)
+            response_text = response.text.strip()
             
             # Try to extract JSON from response
             extracted = {}
@@ -489,6 +523,8 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
                 },
                 timeout=10.0
             )
+            # Simple test request
+            self.model.generate_content("Hi")
 
             latency_ms = int((time.time() - start) * 1000)
             

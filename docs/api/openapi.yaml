@@ -524,11 +524,6 @@ components:
           - $ref: '#/components/schemas/LastMessageInfo'
           - type: 'null'
           title: Last Message
-        greeting_message:
-          anyOf:
-          - $ref: '#/components/schemas/LastMessageInfo'
-          - type: 'null'
-          title: Greeting Message
         recent_messages:
           anyOf:
           - type: array

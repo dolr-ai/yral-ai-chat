@@ -159,11 +159,14 @@ class ChatService:
 
         logger.info(f"User message saved: {user_message.id}")
 
-        # Get conversation history for context
-        history = await self.message_repo.get_recent_for_context(
+        # Get conversation history for context (exclude the message we just saved)
+        # We get limit+1 to account for excluding the current message
+        all_recent = await self.message_repo.get_recent_for_context(
             conversation_id=conversation_id,
-            limit=10
+            limit=11
         )
+        # Filter out the message we just saved to avoid duplication
+        history = [msg for msg in all_recent if msg.id != user_message.id][:10]
 
         # Convert storage keys to presigned URLs in history for Gemini
         if self.storage_service:
@@ -196,7 +199,7 @@ class ChatService:
                             msg.audio_url = None  # Can't use storage key as URL
 
         # Prepare content for AI
-        ai_input_content = content or transcribed_content or "What do you think?"
+        ai_input_content = str(content or transcribed_content or "What do you think?")
 
         # Enhance system instructions with memories
         enhanced_system_instructions = influencer.system_instructions
