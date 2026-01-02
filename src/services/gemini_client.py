@@ -2,6 +2,7 @@
 Google Gemini AI Client
 """
 import json
+import re
 import time
 from typing import Any
 
@@ -272,7 +273,7 @@ User: {user_message}
 Assistant: {assistant_response}
 {existing_memories_text}
 
-Return ONLY a JSON object with key-value pairs. Use lowercase keys with underscores (e.g., "height", "weight", "name").
+Return ONLY a JSON object with key-value pairs. Use lowercase keys with underscores (e.g., "height", "weight", "name"). 
 If no new information was provided, return an empty object {{}}.
 If information updates an existing memory, use the new value.
 Format: {{"key1": "value1", "key2": "value2"}}"""
@@ -291,11 +292,11 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
                 brace_count = 0
                 start_idx = -1
                 for i, char in enumerate(response_text):
-                    if char == "{":
+                    if char == '{':
                         if brace_count == 0:
                             start_idx = i
                         brace_count += 1
-                    elif char == "}":
+                    elif char == '}':
                         brace_count -= 1
                         if brace_count == 0 and start_idx != -1:
                             json_str = response_text[start_idx:i+1]

@@ -69,9 +69,6 @@ class Settings(BaseSettings):
     use_whisper: bool = Field(default=False, alias="USE_WHISPER")
     whisper_api_key: str = Field(default="", alias="WHISPER_API_KEY")
 
-    # Replicate API (for NSFW image detection)
-    replicate_api_key: str = Field(default="", alias="REPLICATE_API_KEY")
-
     # CORS
     cors_origins: str = Field(default="*", alias="CORS_ORIGINS")
     cors_allow_credentials: bool = Field(default=True, alias="CORS_ALLOW_CREDENTIALS")
