@@ -2,13 +2,16 @@
 Gradio Chat App for Yral AI
 A streamlined chat interface to talk with AI influencers
 """
+import base64
+import json
+import time
 from datetime import datetime
 
 import gradio as gr
 import requests
 
 # Configuration
-API_BASE_URL = "https://chat.yral.com"
+API_BASE_URL = "http://127.0.0.1:8000"
 
 # Session state
 session_state = {
@@ -18,6 +21,59 @@ session_state = {
     "influencer_name": None,
     "chat_history": []
 }
+
+
+def _encode_jwt(payload: dict) -> str:
+    """Create a dummy ES256-style JWT without real signature verification."""
+    header = {
+        "typ": "JWT",
+        "alg": "ES256",
+        "kid": "default",
+    }
+
+    def b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+    header_b64 = b64url(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    payload_b64 = b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+
+    # Signature is not validated in the backend, so we can use any placeholder
+    signature_b64 = "dummy_signature"
+
+    return f"{header_b64}.{payload_b64}.{signature_b64}"
+
+
+def generate_test_token(user_id: str = None, expires_in_seconds: int = 3600) -> str:
+    """
+    Generate a test JWT token for testing
+
+    Args:
+        user_id: User ID to include in token (mapped to `sub`)
+        expires_in_seconds: Token expiration time in seconds
+
+    Returns:
+        JWT token string
+    """
+    now = int(time.time())
+    user_id = user_id or session_state["user_id"]
+
+    payload = {
+        "sub": user_id,
+        "iss": "https://auth.yral.com",
+        "iat": now,
+        "exp": now + expires_in_seconds,
+    }
+
+    return _encode_jwt(payload)
+
+
+def get_auth_headers() -> dict:
+    """Generate authentication headers with a valid test token"""
+    token = generate_test_token(user_id=session_state["user_id"])
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
 
 
 def get_influencers():
@@ -45,7 +101,7 @@ def start_conversation(influencer_id):
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations",
             json={"influencer_id": influencer_id},
-            headers={"Content-Type": "application/json"}
+            headers=get_auth_headers()
         )
         response.raise_for_status()
         data = response.json()
@@ -57,7 +113,8 @@ def start_conversation(influencer_id):
         # Load initial messages (greeting if any)
         history_response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{data['id']}/messages",
-            params={"limit": 10, "order": "asc"}
+            params={"limit": 10, "order": "asc"},
+            headers={"Authorization": get_auth_headers()["Authorization"]}
         )
         history_response.raise_for_status()
         history_data = history_response.json()
@@ -65,10 +122,11 @@ def start_conversation(influencer_id):
         # Format chat history
         chat_history = []
         for msg in history_data["messages"]:
+            content = msg.get("content") or "(empty message)"
             if msg["role"] == "user":
-                chat_history.append({"role": "user", "content": msg["content"]})
+                chat_history.append({"role": "user", "content": content})
             else:
-                chat_history.append({"role": "assistant", "content": msg["content"]})
+                chat_history.append({"role": "assistant", "content": content})
         
         session_state["chat_history"] = chat_history
         
@@ -97,14 +155,16 @@ def send_message(message, chat_history):
                 "content": message.strip(),
                 "message_type": "text"
             },
-            headers={"Content-Type": "application/json"}
+            headers=get_auth_headers()
         )
         response.raise_for_status()
         data = response.json()
         
         # Update chat history
-        chat_history.append({"role": "user", "content": data["user_message"]["content"]})
-        chat_history.append({"role": "assistant", "content": data["assistant_message"]["content"]})
+        user_content = data["user_message"].get("content") or "(empty message)"
+        assistant_content = data["assistant_message"].get("content") or "(empty message)"
+        chat_history.append({"role": "user", "content": user_content})
+        chat_history.append({"role": "assistant", "content": assistant_content})
         
         session_state["chat_history"] = chat_history
         
@@ -136,11 +196,12 @@ def send_image_message(image, caption, chat_history):
             upload_response = requests.post(
                 f"{API_BASE_URL}/api/v1/media/upload",
                 files=files,
-                data=data
+                data=data,
+                headers={"Authorization": get_auth_headers()["Authorization"]}  # Auth only, no Content-Type for multipart
             )
         upload_response.raise_for_status()
         upload_data = upload_response.json()
-        image_url = upload_data["url"]
+        storage_key = upload_data["storage_key"]  # Use storage_key, not URL
         
         # Send image message
         message_type = "multimodal" if caption and caption.strip() else "image"
@@ -149,9 +210,9 @@ def send_image_message(image, caption, chat_history):
             json={
                 "content": caption or "",
                 "message_type": message_type,
-                "media_urls": [image_url]
+                "media_urls": [storage_key]  # Use storage_key
             },
-            headers={"Content-Type": "application/json"}
+            headers=get_auth_headers()
         )
         response.raise_for_status()
         data = response.json()
@@ -193,11 +254,12 @@ def send_audio_message(audio, chat_history):
             upload_response = requests.post(
                 f"{API_BASE_URL}/api/v1/media/upload",
                 files=files,
-                data=data
+                data=data,
+                headers={"Authorization": get_auth_headers()["Authorization"]}  # Auth only, no Content-Type for multipart
             )
         upload_response.raise_for_status()
         upload_data = upload_response.json()
-        audio_url = upload_data["url"]
+        storage_key = upload_data["storage_key"]  # Use storage_key, not URL
         duration = upload_data.get("duration_seconds", 0)
         
         # Send audio message
@@ -206,18 +268,19 @@ def send_audio_message(audio, chat_history):
             json={
                 "content": "",
                 "message_type": "audio",
-                "audio_url": audio_url,
-                "audio_duration_seconds": duration
+                "audio_url": storage_key,  # Use storage_key
+                "audio_duration_seconds": duration if duration > 0 else None
             },
-            headers={"Content-Type": "application/json"}
+            headers=get_auth_headers()
         )
         response.raise_for_status()
         data = response.json()
         
         # Update chat history
-        transcription = data["user_message"]["content"]
+        transcription = data["user_message"].get("content") or "(transcription failed)"
+        assistant_content = data["assistant_message"].get("content") or "(empty message)"
         chat_history.append({"role": "user", "content": f"🎤 {transcription}"})
-        chat_history.append({"role": "assistant", "content": data["assistant_message"]["content"]})
+        chat_history.append({"role": "assistant", "content": assistant_content})
         
         session_state["chat_history"] = chat_history
         
@@ -244,7 +307,8 @@ def load_conversation_list():
     try:
         response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations",
-            params={"limit": 50}
+            params={"limit": 50},
+            headers={"Authorization": get_auth_headers()["Authorization"]}
         )
         response.raise_for_status()
         data = response.json()
@@ -270,7 +334,8 @@ def load_existing_conversation(conversation_id):
         # Get conversation details
         conv_response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id}/messages",
-            params={"limit": 100, "order": "asc"}
+            params={"limit": 100, "order": "asc"},
+            headers={"Authorization": get_auth_headers()["Authorization"]}
         )
         conv_response.raise_for_status()
         conv_data = conv_response.json()
@@ -305,8 +370,10 @@ def check_api_status():
         response = requests.get(f"{API_BASE_URL}/health", timeout=2)
         response.raise_for_status()
         return "🟢 API Connected"
+    except requests.exceptions.ConnectionError:
+        return "🔴 API Offline - Please start the API server (uvicorn src.main:app)"
     except Exception as e:
-        return f"🔴 API Offline: {e!s}"
+        return f"🔴 API Error: {type(e).__name__}"
 
 
 # Create Gradio Interface

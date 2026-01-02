@@ -1,19 +1,18 @@
 """
 Google Gemini AI Client - True Async Implementation
 """
-import asyncio
 import base64
 import json
-import re
 import time
 from typing import Any
 
 import httpx
+import tiktoken
 from loguru import logger
 
 from src.config import settings
 from src.core.exceptions import AIServiceException, TranscriptionException
-from src.models.entities import Message, MessageRole, MessageType
+from src.models.entities import Message, MessageRole
 
 
 class GeminiClient:
@@ -25,22 +24,29 @@ class GeminiClient:
         self.api_base_url = "https://generativelanguage.googleapis.com/v1beta"
         self.api_key = settings.gemini_api_key
         self.model_name = settings.gemini_model
+        # Initialize tiktoken encoder for token estimation
+        # Using cl100k_base encoding (used by GPT-4, good general-purpose estimate)
+        try:
+            self.tokenizer = tiktoken.get_encoding("cl100k_base")
+        except Exception as e:
+            logger.warning(f"Failed to initialize tiktoken: {e}. Token estimation may be less accurate.")
+            self.tokenizer = None
         logger.info(f"Gemini client initialized with model: {settings.gemini_model} (true async REST API)")
 
     async def generate_response(
         self,
         user_message: str,
         system_instructions: str,
-        conversation_history: list[Message] = None,
-        media_urls: list[str] = None
+        conversation_history: list[Message] | None = None,
+        media_urls: list[str] | None = None
     ) -> tuple[str, int]:
         """
-        Generate AI response
+        Generate AI response - uses last 5 messages for context, dynamically reduces if input too large
         
         Args:
             user_message: Current user message
             system_instructions: AI personality instructions
-            conversation_history: Previous messages for context
+            conversation_history: Previous messages for context (uses last 5, reduces if needed)
             media_urls: Optional image URLs for multimodal input
             
         Returns:
@@ -50,20 +56,97 @@ class GeminiClient:
             # Ensure user_message is a string
             user_message_str = str(user_message) if not isinstance(user_message, str) else user_message
             
-            # Build conversation context
-            contents = self._build_system_instructions(system_instructions)
+            # Build current message first
+            current_message = await self._build_current_message(user_message_str, media_urls)
             
-            # Add conversation history
-            if conversation_history:
-                history_contents = await self._build_history_contents(conversation_history)
+            # Estimate tokens for system instructions and current message
+            max_output_tokens = settings.gemini_max_tokens
+            
+            # CRITICAL: With maxOutputTokens=200, we need to balance input vs output carefully
+            # Strategy: Reserve minimum 100 tokens for output, use rest for input (max 100 tokens for input)
+            # This ensures we always have enough output space to prevent truncation
+            min_output_reserved = min(100, int(max_output_tokens * 0.5))  # Reserve at least 50% for output
+            max_input_tokens = max_output_tokens - min_output_reserved  # Use remaining for input (100 tokens when maxOutput=200)
+            
+            current_message_str = json.dumps(current_message, ensure_ascii=False)
+            current_tokens = self._estimate_tokens(current_message_str)
+            
+            # Estimate system instructions first
+            system_tokens_estimated = self._estimate_tokens(system_instructions) if system_instructions else 0
+            
+            # Calculate what we can afford for system instructions
+            # Reserve: current message + overhead (30 tokens) + small buffer for history (10 tokens)
+            reserved_base = current_tokens + 30 + 10
+            available_for_system = max(0, max_input_tokens - reserved_base)
+            
+            # TRUNCATE system instructions if they exceed what we can afford
+            original_system_instructions = system_instructions
+            if system_instructions and system_tokens_estimated > available_for_system and available_for_system > 0:
+                # Use binary search to find optimal truncation point
+                low, high = 0, len(system_instructions)
+                best_truncated = system_instructions[:available_for_system * 2] + "..."  # Initial guess
+                best_tokens = self._estimate_tokens(best_truncated)
+                
+                for _ in range(15):  # Max 15 iterations for binary search
+                    mid = (low + high) // 2
+                    test_truncated = system_instructions[:mid] + "..."
+                    test_tokens = self._estimate_tokens(test_truncated)
+                    if test_tokens <= available_for_system:
+                        if test_tokens > best_tokens:  # Keep the longest version that fits
+                            best_truncated = test_truncated
+                            best_tokens = test_tokens
+                        low = mid + 1
+                    else:
+                        high = mid - 1
+                    if low > high:
+                        break
+                
+                system_instructions = best_truncated
+                logger.warning(
+                    f"TRUNCATED system instructions: {system_tokens_estimated} tokens -> "
+                    f"{self._estimate_tokens(system_instructions)} tokens "
+                    f"(budget: {available_for_system} tokens, original: {len(original_system_instructions)} chars, "
+                    f"truncated: {len(system_instructions)} chars)"
+                )
+            elif system_instructions and available_for_system <= 0:
+                # No room for system instructions at all - use minimal placeholder
+                system_instructions = "You are a helpful assistant."
+                logger.error(
+                    f"System instructions too large ({system_tokens_estimated} tokens) - no budget available. "
+                    f"Using minimal placeholder. Consider reducing system instructions or increasing maxOutputTokens."
+                )
+            
+            system_tokens = self._estimate_tokens(system_instructions) if system_instructions else 0
+            reserved_tokens = system_tokens + current_tokens + 30
+            available_for_history = max(0, max_input_tokens - reserved_tokens)
+            
+            logger.info(
+                f"Token budget: maxOutput={max_output_tokens}, maxInput={max_input_tokens}, "
+                f"system={system_tokens}, current={current_tokens}, available_for_history={available_for_history}"
+            )
+            
+            # Build conversation context - dynamically select messages based on token budget
+            contents = []
+            
+            # Add conversation history (dynamically limited by token budget)
+            if conversation_history and available_for_history > 10:  # Need at least 10 tokens for any history
+                history_contents = await self._build_history_contents(
+                    conversation_history,
+                    max_tokens=available_for_history
+                )
                 contents.extend(history_contents)
+                logger.info(f"Added {len(history_contents)} messages from history (budget: {available_for_history} tokens)")
+            elif conversation_history:
+                logger.warning(
+                    f"No token budget for history (available={available_for_history}, reserved={reserved_tokens}, "
+                    f"maxInput={max_input_tokens}). Using only current message to prevent truncation."
+                )
             
             # Add current message
-            current_message = await self._build_current_message(user_message_str, media_urls)
             contents.append(current_message)
 
-            # Generate response
-            response_text, token_count = await self._generate_content(contents)
+            # Generate response with systemInstruction parameter (more token-efficient)
+            response_text, token_count = await self._generate_content(contents, system_instructions)
             
             return response_text, int(token_count)
 
@@ -73,35 +156,106 @@ class GeminiClient:
             logger.error(f"Gemini API error: {e}")
             raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
 
+    def _estimate_tokens(self, text: str) -> int:
+        """
+        Estimate token count using tiktoken for more accurate counting
+        
+        Args:
+            text: Text to estimate tokens for
+            
+        Returns:
+            Estimated number of tokens
+        """
+        if not text:
+            return 0
+        
+        if self.tokenizer:
+            try:
+                return len(self.tokenizer.encode(str(text)))
+            except Exception as e:
+                logger.warning(f"tiktoken encoding failed: {e}, falling back to character-based estimate")
+        
+        # Fallback: conservative character-based estimate (~3 chars per token)
+        return max(1, len(str(text)) // 3)
+
     def _build_system_instructions(self, system_instructions: str) -> list[dict]:
         """Build system instruction messages"""
+        # System instructions are already very long, so we add minimal wrapper text
         return [
             {
                 "role": "user",
-                "parts": [{"text": f"""System Instructions: {system_instructions}. Lastly, always answer in the same language as the user's message."""}]
+                "parts": [{"text": f"{system_instructions}\n\nAlways answer in the same language as the user's message."}]
             },
             {
                 "role": "model",
-                "parts": [{"text": "Understood. I will follow these instructions."}]
+                "parts": [{"text": "Understood."}]
             }
         ]
 
-    async def _build_history_contents(self, conversation_history: list[Message]) -> list[dict]:
-        """Build conversation history contents"""
+    async def _build_history_contents(
+        self,
+        conversation_history: list[Message],
+        max_tokens: int | None = None
+    ) -> list[dict]:
+        """
+        Build conversation history contents - uses last 5 messages, dynamically reduces if needed
+
+        Args:
+            conversation_history: List of previous messages
+            max_tokens: Maximum tokens available for history (None = use last 5 messages)
+
+        Returns:
+            List of message dicts for API
+        """
         contents = []
         
-        for msg in conversation_history[-10:]:  # Last 10 messages for context
+        # Start with last 5 messages as requested by user
+        history_to_use = conversation_history[-5:] if len(conversation_history) > 5 else conversation_history
+        
+        # If we have a token budget, dynamically select messages that fit
+        if max_tokens is not None and max_tokens > 0:
+            selected_messages: list[Message] = []
+            total_tokens = 0
+            
+            # Select messages from most recent, staying within token budget
+            for msg in reversed(history_to_use):
+                if msg.content:
+                    text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
+                    # Truncate to 100 chars per message to save tokens
+                    if len(text_content) > 100:
+                        text_content = text_content[:100] + "..."
+                    
+                    # Estimate tokens for this message
+                    msg_dict = {"role": "user" if msg.role == MessageRole.USER else "model", "parts": [{"text": text_content}]}
+                    msg_str = json.dumps(msg_dict, ensure_ascii=False)
+                    msg_tokens = self._estimate_tokens(msg_str)
+                    
+                    if total_tokens + msg_tokens <= max_tokens:
+                        selected_messages.insert(0, msg)  # Insert at beginning to maintain order
+                        total_tokens += msg_tokens
+                    else:
+                        break  # Can't fit more messages
+            
+            history_to_use = selected_messages
+            logger.debug(f"Selected {len(selected_messages)} messages from history (used {total_tokens}/{max_tokens} tokens)")
+        else:
+            # No token budget constraint - use last 5 messages with 100 char truncation
+            logger.debug(f"No token budget constraint - using last {len(history_to_use)} messages")
+        
+        # Build contents from selected messages
+        for msg in history_to_use:
             role = "user" if msg.role == MessageRole.USER else "model"
             parts = []
 
             # Add text content - ensure it's a string
             if msg.content:
                 text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
+                # Truncate long messages to 100 chars to save tokens
+                if len(text_content) > 100:
+                    text_content = text_content[:100] + "..."
                 parts.append({"text": text_content})
 
-            # Add images from history if available
-            if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
-                await self._add_images_to_parts(msg.media_urls[:3], parts, warn_on_error=True)
+            # Skip images from history to save tokens (they consume a lot of tokens)
 
             if parts:
                 contents.append({"role": role, "parts": parts})
@@ -147,9 +301,20 @@ class GeminiClient:
                     logger.error(f"Failed to download image {url}: {e}")
                     raise AIServiceException(f"Failed to process image: {e}") from e
 
-    async def _generate_content(self, contents: list[dict]) -> tuple[str, float]:
+    async def _generate_content(self, contents: list[dict], system_instructions: str | None = None) -> tuple[str, float]:
         """Generate content using Gemini API - True Async Implementation"""
         logger.info(f"Generating Gemini response with {len(contents)} messages")
+        
+        # Log estimated input tokens for debugging (using tiktoken)
+        if self.tokenizer:
+            try:
+                # Estimate tokens for contents (serialize to JSON for estimation)
+                contents_str = json.dumps(contents, ensure_ascii=False)
+                system_instructions_str = system_instructions or ""
+                estimated_input_tokens = self._estimate_tokens(contents_str) + self._estimate_tokens(system_instructions_str)
+                logger.debug(f"Estimated input tokens: ~{estimated_input_tokens} (contents: {len(contents)} messages, system: {len(system_instructions_str)} chars)")
+            except Exception as e:
+                logger.debug(f"Could not estimate input tokens: {e}")
 
         # Build REST API request payload
         url = f"{self.api_base_url}/models/{self.model_name}:generateContent"
@@ -161,22 +326,13 @@ class GeminiClient:
                 "temperature": settings.gemini_temperature
             }
         }
-        generation_config = genai.types.GenerationConfig(
-            max_output_tokens=settings.gemini_max_tokens,
-            temperature=settings.gemini_temperature
-        )
-
-        response = self.model.generate_content(
-            contents,
-            generation_config=generation_config
-        )
-
-        # Extract response text
-        response_text = response.text
         
-        # Check finish reason
-        if response.candidates and response.candidates[0].finish_reason != 1:  # 1 = STOP
-            logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (not STOP)")
+        # Use systemInstruction parameter if available (more token-efficient than including as message)
+        # This reduces input token consumption significantly
+        if system_instructions:
+            payload["systemInstruction"] = {
+                "parts": [{"text": system_instructions}]
+            }
 
         try:
             # True async HTTP request - no thread pool needed!
@@ -201,21 +357,55 @@ class GeminiClient:
             if "content" not in candidate or "parts" not in candidate["content"]:
                 raise AIServiceException("Invalid response structure from Gemini API")
             
+            # Check finish reason to detect truncation
+            finish_reason = candidate.get("finishReason")
+            
             parts = candidate["content"]["parts"]
             if not parts or "text" not in parts[0]:
                 raise AIServiceException("No text in Gemini API response")
             
-            response_text = parts[0]["text"]
+            # Combine all text parts in case of multi-part response
+            response_text = ""
+            for part in parts:
+                if "text" in part:
+                    response_text += part["text"]
             
             # Get token count from response if available
             usage_metadata = result.get("usageMetadata", {})
             token_count = usage_metadata.get("totalTokenCount", 0)
+            prompt_token_count = usage_metadata.get("promptTokenCount", 0)
+            candidates_token_count = usage_metadata.get("candidatesTokenCount", 0)
             
-            # Fallback estimation if not provided
+            # Calculate output tokens (candidatesTokenCount if available, otherwise estimate)
+            output_token_count = candidates_token_count
+            if not output_token_count and token_count and prompt_token_count:
+                output_token_count = token_count - prompt_token_count
+            
+            # Debug logging for truncated responses
+            if finish_reason == "MAX_TOKENS":
+                # Log detailed info about token usage
+                logger.warning(
+                    f"Response truncated (MAX_TOKENS): {len(response_text)} chars, "
+                    f"output_tokens={output_token_count}, prompt_tokens={prompt_token_count}, "
+                    f"total_tokens={token_count}, maxOutputTokens={settings.gemini_max_tokens}, "
+                    f"num_parts={len(parts)}, contents_messages={len(contents)}, "
+                    f"response='{response_text}'"
+                )
+                # If prompt is consuming most tokens, suggest reducing input size
+                if prompt_token_count > settings.gemini_max_tokens * 0.8:
+                    logger.error(
+                        f"INPUT tokens ({prompt_token_count}) consuming >80% of budget. "
+                        f"Consider reducing conversation history or system instructions length."
+                    )
+            elif finish_reason and finish_reason != "STOP":
+                logger.warning(f"Response finished with reason: {finish_reason} (expected STOP)")
+            
+            # Fallback estimation if not provided by API
             if token_count == 0:
-                token_count = len(response_text.split()) * 1.3
+                # Use tiktoken for more accurate estimation
+                token_count = self._estimate_tokens(response_text)
 
-            logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens (true async)")
+            logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens (true async), finish_reason={finish_reason}")
 
             return response_text, float(token_count)
             
@@ -299,7 +489,11 @@ class GeminiClient:
             if not parts or "text" not in parts[0]:
                 raise TranscriptionException("No text in Gemini API response")
             
-            transcription = parts[0]["text"].strip()
+            transcription_text = parts[0].get("text", "")
+            if not isinstance(transcription_text, str):
+                raise TranscriptionException("Invalid transcription text type from Gemini API")
+            
+            transcription = transcription_text.strip()
             logger.info(f"Audio transcribed: {len(transcription)} characters (true async)")
             
             return transcription
@@ -313,16 +507,6 @@ class GeminiClient:
                 error_detail = str(e)
             logger.error(f"Audio transcription HTTP error: {error_detail}")
             raise TranscriptionException(f"Failed to transcribe audio: {error_detail}") from e
-            # Use Gemini to transcribe
-            prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
-
-            response = self.model.generate_content([
-                prompt,
-                {"inline_data": audio_data}
-            ])
-
-            transcription = response.text.strip()
-            logger.info(f"Audio transcribed: {len(transcription)} characters")
         except Exception as e:
             logger.error(f"Audio transcription error: {e}")
             raise TranscriptionException(f"Failed to transcribe audio: {e!s}") from e
@@ -367,7 +551,7 @@ class GeminiClient:
         self,
         user_message: str,
         assistant_response: str,
-        existing_memories: dict[str, str] = None
+        existing_memories: dict[str, str] | None = None
     ) -> dict[str, str]:
         """
         Extract memories (like height, weight, name, preferences) from conversation
@@ -450,8 +634,6 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
                 return existing_memories or {}
             
             response_text = parts[0]["text"].strip()
-            response = self.model.generate_content(prompt)
-            response_text = response.text.strip()
             
             # Try to extract JSON from response
             extracted = {}
@@ -464,11 +646,11 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
                 brace_count = 0
                 start_idx = -1
                 for i, char in enumerate(response_text):
-                    if char == '{':
+                    if char == "{":
                         if brace_count == 0:
                             start_idx = i
                         brace_count += 1
-                    elif char == '}':
+                    elif char == "}":
                         brace_count -= 1
                         if brace_count == 0 and start_idx != -1:
                             json_str = response_text[start_idx:i+1]
@@ -514,7 +696,7 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
                 }
             }
 
-            await self.http_client.post(
+            response = await self.http_client.post(
                 url,
                 json=payload,
                 headers={
@@ -523,8 +705,7 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
                 },
                 timeout=10.0
             )
-            # Simple test request
-            self.model.generate_content("Hi")
+            response.raise_for_status()
 
             latency_ms = int((time.time() - start) * 1000)
             

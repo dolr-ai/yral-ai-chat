@@ -18,7 +18,6 @@ import pytest
 from src.config import settings
 from src.services.gemini_client import GeminiClient
 
-
 # Skip all tests if API key is not available
 pytestmark = pytest.mark.skipif(
     not settings.gemini_api_key,
@@ -138,7 +137,7 @@ class TestGeminiAsyncImplementation:
             f"Background task should run concurrently with API call."
         )
         
-        print(f"\n✅ Event loop not blocked: API call and background task ran concurrently")
+        print("\n✅ Event loop not blocked: API call and background task ran concurrently")
         print(f"   Background iterations: {len(background_iterations)}, Total time: {total_time:.3f}s")
 
     @pytest.mark.asyncio
@@ -245,7 +244,7 @@ class TestGeminiAsyncImplementation:
         assert len(response2) > 0
         assert tokens2 > 0
         
-        print(f"\n✅ Async await chain: Both calls completed successfully")
+        print("\n✅ Async await chain: Both calls completed successfully")
 
     @pytest.mark.asyncio
     async def test_concurrent_health_checks(self, gemini_client):
@@ -322,7 +321,7 @@ class TestGeminiAsyncImplementation:
         assert inspect.iscoroutinefunction(gemini_client._download_audio)
 
         # Verify http_client uses async methods
-        assert hasattr(gemini_client.http_client, 'post')
+        assert hasattr(gemini_client.http_client, "post")
         assert inspect.iscoroutinefunction(gemini_client.http_client.post)
 
     @pytest.mark.asyncio

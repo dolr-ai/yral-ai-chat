@@ -25,7 +25,6 @@ import pytest
 
 from src.config import settings
 
-
 # Expected schema definition
 EXPECTED_TABLES = {
     "ai_influencers": {
@@ -298,7 +297,7 @@ def test_schema_summary(capsys):
         print("DATABASE SCHEMA SUMMARY")
         print("=" * 60)
         
-        for table_name in EXPECTED_TABLES.keys():
+        for table_name in EXPECTED_TABLES:
             columns = get_table_info(conn, table_name)
             indexes = get_indexes(conn, table_name)
             print(f"\n📊 Table: {table_name}")
