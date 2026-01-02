@@ -35,8 +35,7 @@ def test_create_conversation(client, test_influencer_id, auth_headers):
     assert influencer["id"] == test_influencer_id
     assert "name" in influencer
     assert "display_name" in influencer
-    # avatar_url is optional in InfluencerBasicInfo, so it may or may not be present
-    # The model allows None, but Pydantic may omit None fields from serialization
+    assert "avatar_url" in influencer
     assert "suggested_messages" in influencer
     assert isinstance(influencer["suggested_messages"], list)
 
