@@ -1,11 +1,10 @@
 """
 Test for numeric content duplication bug (70 -> 7070, 56 -> 5656)
 
-This test verifies that when sending numeric values like "70", 
+This test verifies that when sending numeric values like "70",
 Gemini does not interpret them as duplicated values like "7070".
 """
 import re
-
 
 # Ahaan Sharma's influencer ID (known to have initial_greeting)
 AHAAN_INFLUENCER_ID = "qg2pi-g3xl4-uprdd-macwr-64q7r-plotv-xm3bg-iayu3-rnpux-7ikkz-hqe"
@@ -13,13 +12,13 @@ AHAAN_INFLUENCER_ID = "qg2pi-g3xl4-uprdd-macwr-64q7r-plotv-xm3bg-iayu3-rnpux-7ik
 
 def test_numeric_content_duplication_bug(client, auth_headers):
     """
-    Test that sending "70" after a conversation does not result in Gemini 
+    Test that sending "70" after a conversation does not result in Gemini
     interpreting it as "7070" or any other duplication.
     
     Flow:
     1. Create conversation with Ahaan
     2. Send "hi" -> wait for response
-    3. Send "fat loss" -> wait for response  
+    3. Send "fat loss" -> wait for response
     4. Send "70" -> analyze response for "7070" duplication
     """
     # Step 1: Create conversation with Ahaan
@@ -49,8 +48,8 @@ def test_numeric_content_duplication_bug(client, auth_headers):
         assert hi_data["user_message"]["content"] == "hi"
         assert hi_data["assistant_message"]["content"]
         hi_assistant_response = hi_data["assistant_message"]["content"]
-        print(f"\n📝 CONVERSATION MESSAGE 1")
-        print(f"👤 User: 'hi'")
+        print("\n📝 CONVERSATION MESSAGE 1")
+        print("👤 User: 'hi'")
         print(f"🤖 Bot: {hi_assistant_response[:100]}...")
         
         # Step 3: Send "fat loss" and wait for response
@@ -69,8 +68,8 @@ def test_numeric_content_duplication_bug(client, auth_headers):
         assert fat_loss_data["user_message"]["content"] == "fat loss"
         assert fat_loss_data["assistant_message"]["content"]
         fat_loss_assistant_response = fat_loss_data["assistant_message"]["content"]
-        print(f"\n📝 CONVERSATION MESSAGE 2")
-        print(f"👤 User: 'fat loss'")
+        print("\n📝 CONVERSATION MESSAGE 2")
+        print("👤 User: 'fat loss'")
         print(f"🤖 Bot: {fat_loss_assistant_response[:100]}...")
         
         # Step 4: Send "70" and analyze response for duplication
@@ -93,8 +92,8 @@ def test_numeric_content_duplication_bug(client, auth_headers):
         assistant_msg = numeric_data["assistant_message"]
         assistant_content = assistant_msg["content"]
         
-        print(f"\n📝 CONVERSATION MESSAGE 3")
-        print(f"📤 Sent numeric value: 70 (as JSON number, not string)")
+        print("\n📝 CONVERSATION MESSAGE 3")
+        print("📤 Sent numeric value: 70 (as JSON number, not string)")
         print(f"💾 User message saved as: '{user_msg['content']}'")
         print(f"👤 User: '{user_msg['content']}'")
         print(f"🤖 Bot (full message):\n   {assistant_content}")
@@ -104,17 +103,17 @@ def test_numeric_content_duplication_bug(client, auth_headers):
         # Check for "7070" (exact duplication)
         has_7070 = "7070" in assistant_content
         # Check for "70 70" (with space)
-        has_70_space_70 = bool(re.search(r'70\s+70', assistant_content))
+        has_70_space_70 = bool(re.search(r"70\s+70", assistant_content))
         # Check for "70kg" or "70 kg" (normal usage - should be OK)
-        has_70_kg = bool(re.search(r'70\s*kg', assistant_content, re.IGNORECASE))
+        has_70_kg = bool(re.search(r"70\s*kg", assistant_content, re.IGNORECASE))
         
         # Check if the response mentions "70" in a way that suggests duplication
         # Look for patterns like "7070 kg", "70 70", etc.
         suspicious_patterns = [
-            r'7070',  # Exact duplication
-            r'70\s+70',  # Space-separated duplication
-            r'70\s*70',  # Any whitespace between
-            r'seventy\s+seventy',  # Word form duplication
+            r"7070",  # Exact duplication
+            r"70\s+70",  # Space-separated duplication
+            r"70\s*70",  # Any whitespace between
+            r"seventy\s+seventy",  # Word form duplication
         ]
         
         found_suspicious = False
@@ -136,7 +135,7 @@ def test_numeric_content_duplication_bug(client, auth_headers):
             f"   Full response: {assistant_content}"
         
         # Log success
-        print(f"\n✅ No duplication detected in bot response")
+        print("\n✅ No duplication detected in bot response")
         print(f"   Bot correctly received: '{user_msg['content']}'")
         print(f"   Bot response (full): {assistant_content}")
         
@@ -222,7 +221,7 @@ def test_numeric_content_duplication_with_string(client, auth_headers):
         # Check for duplication
         assert "7070" not in assistant_content, \
             f"❌ BUG: Response contains '7070': {assistant_content}"
-        assert not re.search(r'70\s+70', assistant_content), \
+        assert not re.search(r"70\s+70", assistant_content), \
             f"❌ BUG: Response contains '70 70': {assistant_content}"
         
     finally:

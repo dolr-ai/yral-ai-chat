@@ -5,6 +5,7 @@ import base64
 import json
 import time
 
+import sentry_sdk
 from fastapi import Header, HTTPException
 from loguru import logger
 
@@ -145,8 +146,13 @@ async def get_current_user(authorization: str | None = Header(None)) -> CurrentU
     token = parts[1]
     payload = decode_jwt(token)
 
+    user_id = payload["sub"]
+    
+    # Set Sentry user context for error tracking
+    sentry_sdk.set_user({"id": user_id})
+
     return CurrentUser(
-        user_id=payload["sub"],
+        user_id=user_id,
         payload=payload,
     )
 

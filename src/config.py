@@ -100,6 +100,37 @@ class Settings(BaseSettings):
     )
     log_format: Literal["json", "text"] = Field(default="json", alias="LOG_FORMAT")
 
+    # Sentry Error Tracking & Performance Monitoring
+    sentry_dsn: str | None = Field(
+        default=None,
+        alias="SENTRY_DSN",
+        description="Sentry DSN URL for error tracking. Format: https://<key>@apm.yral.com/<project_id>"
+    )
+    sentry_traces_sample_rate: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        alias="SENTRY_TRACES_SAMPLE_RATE",
+        description="Performance monitoring sample rate (0.0 to 1.0). Default: 1.0 for production, recommend 0.1 for development"
+    )
+    sentry_profiles_sample_rate: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        alias="SENTRY_PROFILES_SAMPLE_RATE",
+        description="Profiling sample rate (0.0 to 1.0). Default: 0.0 (disabled)"
+    )
+
+    @property
+    def sentry_environment(self) -> str:
+        """Map application environment to Sentry environment"""
+        return self.environment
+
+    @property
+    def sentry_release(self) -> str:
+        """Use app version as Sentry release for deployment tracking"""
+        return self.app_version
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins into a list"""

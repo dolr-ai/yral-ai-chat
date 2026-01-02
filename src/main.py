@@ -1,14 +1,17 @@
 """
 Yral AI Chat API - Main Application
 """
+import os
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from loguru import logger
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 # Import routers
 from src.api.v1 import chat, health, influencers, media
@@ -26,6 +29,31 @@ from src.middleware.logging import RequestLoggingMiddleware
 from src.middleware.rate_limiter import RateLimitMiddleware
 from src.middleware.versioning import APIVersionMiddleware
 from src.services.gemini_client import gemini_client
+
+# Initialize Sentry SDK for error tracking and performance monitoring
+# Only initialize Sentry for production environment to avoid capturing staging/dev/test data
+is_running_tests = os.getenv("PYTEST_CURRENT_TEST") is not None
+if not is_running_tests and settings.sentry_dsn and settings.environment == "production":
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment,
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        profiles_sample_rate=settings.sentry_profiles_sample_rate,
+        release=settings.sentry_release,
+        # Add data like request headers and IP for users
+        # See https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+        send_default_pii=True,
+        integrations=[
+            FastApiIntegration(transaction_style="endpoint"),
+        ],
+    )
+    logger.info(f"Sentry initialized for environment: {settings.sentry_environment}")
+elif is_running_tests:
+    logger.debug("Sentry disabled during test execution")
+elif settings.sentry_dsn and settings.environment != "production":
+    logger.info(f"Sentry DSN configured but disabled for {settings.environment} environment (production only)")
+else:
+    logger.info("Sentry DSN not configured, error tracking disabled")
 
 
 @asynccontextmanager
@@ -245,6 +273,22 @@ async def root():
         "health": "/health",
         "metrics": "/metrics"
     }
+
+
+# Sentry debug endpoint (for testing Sentry integration)
+@app.get("/sentry-debug", tags=["Debug"])
+async def trigger_error():
+    """
+    Debug endpoint to test Sentry error tracking.
+    
+    This endpoint intentionally triggers a division by zero error
+    to verify that Sentry is capturing exceptions correctly.
+    
+    **Warning**: Only use this in production for initial testing,
+    then consider removing or restricting access.
+    """
+    # Intentionally trigger division by zero to test Sentry error capture
+    raise ZeroDivisionError("Intentional error for Sentry testing")
 
 
 if __name__ == "__main__":

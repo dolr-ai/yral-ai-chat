@@ -7,7 +7,6 @@ from loguru import logger
 
 from src.auth.jwt_auth import CurrentUser, get_current_user
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
-from src.models.entities import MessageRole
 from src.models.requests import CreateConversationRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,
@@ -33,7 +32,7 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
     description="""
     Create a new conversation with an AI influencer.
     
-    If a conversation already exists between the user and influencer, 
+    If a conversation already exists between the user and influencer,
     returns the existing conversation instead of creating a new one.
     
     **Response includes:**
@@ -371,7 +370,7 @@ async def list_messages(
     
     Supports multiple message types:
     - **TEXT**: Plain text messages
-    - **IMAGE**: Image-only messages  
+    - **IMAGE**: Image-only messages
     - **MULTIMODAL**: Text with images
     - **AUDIO**: Voice/audio messages
     
