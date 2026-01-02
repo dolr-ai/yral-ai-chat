@@ -25,7 +25,6 @@ import pytest
 
 from src.config import settings
 
-
 # Expected schema definition
 EXPECTED_TABLES = {
     "ai_influencers": {

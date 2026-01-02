@@ -30,7 +30,7 @@ class MessageRepository:
 
         query = """
             INSERT INTO messages (
-                id, conversation_id, role, content, message_type, 
+                id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds, token_count
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -55,7 +55,7 @@ class MessageRepository:
     async def get_by_id(self, message_id: UUID) -> Message | None:
         """Get message by ID"""
         query = """
-            SELECT 
+            SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
                 token_count, created_at, metadata
@@ -77,7 +77,7 @@ class MessageRepository:
         order_clause = "DESC" if order.lower() == "desc" else "ASC"
 
         query = f"""
-            SELECT 
+            SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
                 token_count, created_at, metadata
@@ -97,7 +97,7 @@ class MessageRepository:
     ) -> list[Message]:
         """Get recent messages for AI context (ordered oldest to newest)"""
         query = """
-            SELECT 
+            SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
                 token_count, created_at, metadata
