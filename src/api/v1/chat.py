@@ -7,7 +7,6 @@ from loguru import logger
 
 from src.auth.jwt_auth import CurrentUser, get_current_user
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
-from src.models.entities import MessageRole
 from src.models.requests import CreateConversationRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,

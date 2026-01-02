@@ -14,7 +14,6 @@ import base64
 import json
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -73,8 +72,7 @@ def get_active_influencer(base_url: str) -> str:
         data = response.json()
         if data.get("total", 0) > 0:
             return data["influencers"][0]["id"]
-        else:
-            raise ValueError("No active influencers found")
+        raise ValueError("No active influencers found")
     except Exception as e:
         raise RuntimeError(f"Failed to get influencer: {e}") from e
 
@@ -213,7 +211,7 @@ def main():
     user_id = args.user_id or f"test_user_{int(time.time())}"
     token = generate_test_token(user_id=user_id)
     print(f"   ✅ User ID: {user_id}")
-    print(f"   ✅ Token generated (expires in 1 hour)")
+    print("   ✅ Token generated (expires in 1 hour)")
     print()
 
     # Step 2: Get influencer ID
@@ -360,7 +358,7 @@ def main():
     try:
         delete_result = delete_conversation(args.base_url, token, conversation_id)
         deleted_count = delete_result.get("deleted_messages_count", 0)
-        print(f"   ✅ Conversation deleted successfully!")
+        print("   ✅ Conversation deleted successfully!")
         print(f"   ✅ Deleted {deleted_count} message(s)")
         print()
     except Exception as e:
@@ -375,7 +373,7 @@ def main():
         new_conversation_id = new_conversation_data.get("id")
         new_message_count = new_conversation_data.get("message_count", 0)
         new_user_id = new_conversation_data.get("user_id")
-        print(f"   ✅ New conversation created successfully!")
+        print("   ✅ New conversation created successfully!")
         print(f"   ✅ Conversation ID: {new_conversation_id}")
         print(f"   ✅ User ID: {new_user_id} (same user)")
         print(f"   ✅ Message Count: {new_message_count}")
@@ -421,7 +419,7 @@ def main():
                 break
         
         if found_conv:
-            print(f"✅ Found conversation in list")
+            print("✅ Found conversation in list")
             conv_message_count = found_conv.get("message_count", 0)
             conv_recent = found_conv.get("recent_messages", [])
             print(f"   Message Count: {conv_message_count}")
@@ -453,7 +451,7 @@ def main():
         messages = messages_data.get("messages", [])
         total_messages = messages_data.get("total", 0)
         
-        print(f"✅ Retrieved messages successfully")
+        print("✅ Retrieved messages successfully")
         print(f"   Total messages: {total_messages}")
         print(f"   Messages in response: {len(messages)}")
         

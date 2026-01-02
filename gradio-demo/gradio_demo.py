@@ -2,7 +2,9 @@
 Gradio Demo for Yral AI Chat API
 Tests all endpoints in a user-friendly interface
 """
+import base64
 import json
+import time
 
 import gradio as gr
 import requests
@@ -14,6 +16,58 @@ API_BASE_URL = "http://localhost:8000"
 current_user_id = "demo_user_123"
 current_conversation_id = None
 current_influencer_id = None
+
+
+def _encode_jwt(payload: dict) -> str:
+    """Create a dummy ES256-style JWT without real signature verification."""
+    header = {
+        "typ": "JWT",
+        "alg": "ES256",
+        "kid": "default",
+    }
+
+    def b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+    header_b64 = b64url(json.dumps(header, separators=(",", ":")).encode("utf-8"))
+    payload_b64 = b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+
+    # Signature is not validated in the backend, so we can use any placeholder
+    signature_b64 = "dummy_signature"
+
+    return f"{header_b64}.{payload_b64}.{signature_b64}"
+
+
+def generate_test_token(user_id: str = "demo_user_123", expires_in_seconds: int = 3600) -> str:
+    """
+    Generate a test JWT token for testing
+
+    Args:
+        user_id: User ID to include in token (mapped to `sub`)
+        expires_in_seconds: Token expiration time in seconds
+
+    Returns:
+        JWT token string
+    """
+    now = int(time.time())
+
+    payload = {
+        "sub": user_id,
+        "iss": "https://auth.yral.com",
+        "iat": now,
+        "exp": now + expires_in_seconds,
+    }
+
+    return _encode_jwt(payload)
+
+
+def get_auth_headers(user_id: str | None = None) -> dict:
+    """Generate authentication headers with a valid test token"""
+    token = generate_test_token(user_id=user_id or current_user_id)
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
 
 
 def format_json(data):
@@ -34,8 +88,9 @@ def get_influencers() -> tuple[str, str]:
             influencers_list.append(
                 f"• {inf['display_name']} ({inf['name']})\n"
                 f"  ID: {inf['id']}\n"
-                f"  Category: {inf['category']}\n"
-                f"  {inf['description']}\n"
+                f"  Category: {inf.get('category', 'N/A')}\n"
+                f"  Status: {inf.get('is_active', 'N/A')}\n"
+                f"  {inf.get('description', '')}\n"
             )
 
         return "\n".join(influencers_list), format_json(data)
@@ -48,13 +103,13 @@ def create_conversation(influencer_id: str) -> tuple[str, str, str]:
     global current_conversation_id, current_influencer_id
 
     if not influencer_id.strip():
-        return "Please enter an influencer ID", None, ""
+        return "Please enter an influencer ID", "{}", ""
 
     try:
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations",
             json={"influencer_id": influencer_id.strip()},
-            headers={"Content-Type": "application/json"}
+            headers=get_auth_headers()
         )
         response.raise_for_status()
         data = response.json()
@@ -62,12 +117,17 @@ def create_conversation(influencer_id: str) -> tuple[str, str, str]:
         current_conversation_id = data["id"]
         current_influencer_id = influencer_id.strip()
 
+        # Handle recent_messages if present
+        recent_msg_info = ""
+        if data.get("recent_messages"):
+            recent_msg_info = f"\nRecent messages: {len(data['recent_messages'])} message(s)"
+
         status = (
             f"✓ Conversation Created!\n"
             f"Conversation ID: {data['id']}\n"
             f"User ID: {data['user_id']}\n"
             f"Influencer: {data['influencer']['display_name']}\n"
-            f"Messages: {data['message_count']}"
+            f"Messages: {data['message_count']}{recent_msg_info}"
         )
 
         return status, format_json(data), data["id"]
@@ -78,10 +138,10 @@ def create_conversation(influencer_id: str) -> tuple[str, str, str]:
 def send_text_message(conversation_id: str, message: str) -> tuple[str, str, list]:
     """Step 3: Send text message"""
     if not conversation_id.strip():
-        return "Please create a conversation first", None, []
+        return "Please create a conversation first", "{}", []
 
     if not message.strip():
-        return "Please enter a message", None, []
+        return "Please enter a message", "{}", []
 
     try:
         response = requests.post(
@@ -90,21 +150,21 @@ def send_text_message(conversation_id: str, message: str) -> tuple[str, str, lis
                 "content": message,
                 "message_type": "text"
             },
-            headers={"Content-Type": "application/json"}
+            headers=get_auth_headers()
         )
         response.raise_for_status()
         data = response.json()
 
         # Format chat history - use dict format for Gradio 4.x+
         chat_history = [
-            {"role": "user", "content": data["user_message"]["content"]},
-            {"role": "assistant", "content": data["assistant_message"]["content"]}
+            {"role": "user", "content": data["user_message"]["content"] or "(empty message)"},
+            {"role": "assistant", "content": data["assistant_message"]["content"] or "(empty message)"}
         ]
 
         status = (
             f"✓ Message Sent!\n"
-            f"User: {data['user_message']['content'][:50]}...\n"
-            f"AI Response: {data['assistant_message']['content'][:100]}...\n"
+            f"User: {data['user_message']['content'][:50] if data['user_message']['content'] else '(empty)'}...\n"
+            f"AI Response: {data['assistant_message']['content'][:100] if data['assistant_message']['content'] else '(empty)'}...\n"
             f"Tokens: {data['assistant_message'].get('token_count', 'N/A')}"
         )
 
@@ -113,10 +173,10 @@ def send_text_message(conversation_id: str, message: str) -> tuple[str, str, lis
         return f"Error: {e!s}", "{}", []
 
 
-def upload_media(file, media_type: str) -> tuple[str, str]:
-    """Upload image or audio"""
+def upload_media(file, media_type: str) -> tuple[str, str, str]:
+    """Upload image or audio - returns status, JSON response, and storage_key"""
     if file is None:
-        return "Please select a file", None
+        return "Please select a file", "{}", ""
 
     try:
         with open(file.name, "rb") as f:
@@ -125,7 +185,8 @@ def upload_media(file, media_type: str) -> tuple[str, str]:
             response = requests.post(
                 f"{API_BASE_URL}/api/v1/media/upload",
                 files=files,
-                data=data
+                data=data,
+                headers={"Authorization": get_auth_headers()["Authorization"]}  # Auth only, no Content-Type for multipart
             )
         response.raise_for_status()
         result = response.json()
@@ -133,42 +194,43 @@ def upload_media(file, media_type: str) -> tuple[str, str]:
         status = (
             f"✓ {media_type.capitalize()} Uploaded!\n"
             f"URL: {result['url']}\n"
+            f"Storage Key: {result['storage_key']}\n"
             f"Size: {result['size']} bytes\n"
             f"Type: {result['mime_type']}"
         )
         if result.get("duration_seconds"):
             status += f"\nDuration: {result['duration_seconds']}s"
 
-        return status, result["url"]
+        return status, format_json(result), result["storage_key"]
     except Exception as e:
-        return f"Error: {e!s}", ""
+        return f"Error: {e!s}", "{}", ""
 
 
-def send_image_message(conversation_id: str, image_url: str, caption: str) -> tuple[str, str]:
-    """Send image message"""
+def send_image_message(conversation_id: str, storage_key: str, caption: str) -> tuple[str, str]:
+    """Send image message - uses storage_key from upload"""
     if not conversation_id.strip():
-        return "Please create a conversation first", None
+        return "Please create a conversation first", "{}"
 
-    if not image_url.strip():
-        return "Please upload an image first", None
+    if not storage_key.strip():
+        return "Please upload an image first", "{}"
 
     try:
         message_type = "multimodal" if caption.strip() else "image"
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id.strip()}/messages",
             json={
-                "content": caption,
+                "content": caption if caption.strip() else None,
                 "message_type": message_type,
-                "media_urls": [image_url.strip()]
+                "media_urls": [storage_key.strip()]  # Use storage_key, not URL
             },
-            headers={"Content-Type": "application/json"}
+            headers=get_auth_headers()
         )
         response.raise_for_status()
         data = response.json()
 
         status = (
             f"✓ Image Message Sent!\n"
-            f"AI Response: {data['assistant_message']['content'][:200]}..."
+            f"AI Response: {data['assistant_message']['content'][:200] if data['assistant_message']['content'] else '(empty)'}..."
         )
 
         return status, format_json(data)
@@ -176,13 +238,13 @@ def send_image_message(conversation_id: str, image_url: str, caption: str) -> tu
         return f"Error: {e!s}", "{}"
 
 
-def send_audio_message(conversation_id: str, audio_url: str, duration: int) -> tuple[str, str]:
-    """Send audio message"""
+def send_audio_message(conversation_id: str, storage_key: str, duration: int) -> tuple[str, str]:
+    """Send audio message - uses storage_key from upload"""
     if not conversation_id.strip():
-        return "Please create a conversation first", None
+        return "Please create a conversation first", "{}"
 
-    if not audio_url.strip():
-        return "Please upload audio first", None
+    if not storage_key.strip():
+        return "Please upload audio first", "{}"
 
     try:
         response = requests.post(
@@ -190,18 +252,18 @@ def send_audio_message(conversation_id: str, audio_url: str, duration: int) -> t
             json={
                 "content": "",
                 "message_type": "audio",
-                "audio_url": audio_url.strip(),
-                "audio_duration_seconds": duration
+                "audio_url": storage_key.strip(),  # Use storage_key, not URL
+                "audio_duration_seconds": duration if duration > 0 else None
             },
-            headers={"Content-Type": "application/json"}
+            headers=get_auth_headers()
         )
         response.raise_for_status()
         data = response.json()
 
         status = (
             f"✓ Audio Message Sent!\n"
-            f"Transcription: {data['user_message']['content']}\n"
-            f"AI Response: {data['assistant_message']['content'][:200]}..."
+            f"Transcription: {data['user_message']['content'] or '(transcription failed)'}\n"
+            f"AI Response: {data['assistant_message']['content'][:200] if data['assistant_message']['content'] else '(empty)'}..."
         )
 
         return status, format_json(data)
@@ -212,12 +274,13 @@ def send_audio_message(conversation_id: str, audio_url: str, duration: int) -> t
 def get_message_history(conversation_id: str, limit: int) -> tuple[str, str, list]:
     """Get conversation history"""
     if not conversation_id.strip():
-        return "Please create a conversation first", None, []
+        return "Please create a conversation first", "{}", []
 
     try:
         response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id.strip()}/messages",
-            params={"limit": limit, "order": "asc"}
+            params={"limit": limit, "order": "asc"},
+            headers={"Authorization": get_auth_headers()["Authorization"]}
         )
         response.raise_for_status()
         data = response.json()
@@ -230,19 +293,20 @@ def get_message_history(conversation_id: str, limit: int) -> tuple[str, str, lis
                 "content": msg["content"] or "(empty message)"
             })
 
-        status = f"✓ Loaded {data['total']} messages"
+        status = f"✓ Loaded {data['total']} messages (showing {len(data['messages'])})"
 
         return status, format_json(data), chat_history
     except Exception as e:
         return f"Error: {e!s}", "{}", []
 
 
-def list_conversations(limit: int) -> tuple[str, str]:
+def list_conversations(limit: int, offset: int) -> tuple[str, str]:
     """List all user conversations"""
     try:
         response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations",
-            params={"limit": limit}
+            params={"limit": limit, "offset": offset},
+            headers={"Authorization": get_auth_headers()["Authorization"]}
         )
         response.raise_for_status()
         data = response.json()
@@ -250,16 +314,16 @@ def list_conversations(limit: int) -> tuple[str, str]:
         # Format for display
         conv_list = []
         for conv in data.get("conversations", []):
-            last_msg = conv.get("last_message", {})
+            last_msg = conv.get("recent_messages", [{}])[-1] if conv.get("recent_messages") else conv.get("last_message", {})
             conv_list.append(
                 f"• Conversation with {conv['influencer']['display_name']}\n"
                 f"  ID: {conv['id']}\n"
                 f"  Messages: {conv['message_count']}\n"
-                f"  Last: {last_msg.get('content', 'N/A')[:50]}...\n"
+                f"  Last: {last_msg.get('content', 'N/A')[:50] if last_msg.get('content') else 'N/A'}...\n"
                 f"  Updated: {conv['updated_at']}\n"
             )
 
-        status = f"✓ Found {data['total']} conversations"
+        status = f"✓ Found {data['total']} conversations (showing {len(data['conversations'])})"
 
         return status + "\n\n" + "\n".join(conv_list), format_json(data)
     except Exception as e:
@@ -269,11 +333,12 @@ def list_conversations(limit: int) -> tuple[str, str]:
 def delete_conversation(conversation_id: str) -> tuple[str, str]:
     """Delete a conversation"""
     if not conversation_id.strip():
-        return "Please enter a conversation ID", None
+        return "Please enter a conversation ID", "{}"
 
     try:
         response = requests.delete(
-            f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id.strip()}"
+            f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id.strip()}",
+            headers={"Authorization": get_auth_headers()["Authorization"]}
         )
         response.raise_for_status()
         data = response.json()
@@ -295,13 +360,16 @@ def check_health() -> tuple[str, str]:
         response.raise_for_status()
         data = response.json()
 
-        status = f"✓ API Status: {data['status'].upper()}"
+        status = f"✓ API Status: {data['status'].upper()}\n"
         for service, info in data.get("services", {}).items():
-            status += f"\n{service}: {info['status']}"
-            if "latency_ms" in info:
+            status += f"{service}: {info['status']}"
+            if info.get("latency_ms"):
                 status += f" ({info['latency_ms']}ms)"
+            if info.get("error"):
+                status += f" - {info['error']}"
+            status += "\n"
 
-        return status, format_json(data)
+        return status.strip(), format_json(data)
     except Exception as e:
         return f"Error: {e!s}", "{}"
 
@@ -310,12 +378,13 @@ def check_health() -> tuple[str, str]:
 with gr.Blocks(title="Yral AI Chat API Demo") as demo:
     gr.Markdown("# 🤖 Yral AI Chat API Demo")
     gr.Markdown(f"Testing API at: `{API_BASE_URL}`")
+    gr.Markdown("**Note:** This demo uses test JWT authentication. All requests include Bearer tokens.")
 
     # Health Check
     with gr.Accordion("🏥 Health Check", open=False):
         with gr.Row():
             health_btn = gr.Button("Check API Health", variant="secondary")
-        health_status = gr.Textbox(label="Status", lines=3)
+        health_status = gr.Textbox(label="Status", lines=5)
         health_json = gr.JSON(label="Response")
         health_btn.click(check_health, outputs=[health_status, health_json])
 
@@ -336,7 +405,7 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         with gr.Row():
             inf_id_input = gr.Textbox(label="Influencer ID", placeholder="paste-uuid-here")
             create_conv_btn = gr.Button("Create Conversation", variant="primary")
-        conv_status = gr.Textbox(label="Status", lines=3)
+        conv_status = gr.Textbox(label="Status", lines=4)
         conv_id_output = gr.Textbox(label="Conversation ID (save this!)")
         conv_json = gr.JSON(label="Response")
         create_conv_btn.click(
@@ -370,9 +439,8 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         chatbot = gr.Chatbot(label="Chat History", height=300)
         msg_input = gr.Textbox(label="Your Message", placeholder="Type your message here...")
         send_btn = gr.Button("Send Message", variant="primary")
-        msg_status = gr.Textbox(label="Status", lines=2)
+        msg_status = gr.Textbox(label="Status", lines=3)
         msg_json = gr.JSON(label="Response")
-
         send_btn.click(
             send_text_message,
             inputs=[conv_id_text, msg_input],
@@ -382,15 +450,17 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
     # Step 4: Send Image Messages
     with gr.Accordion("4️⃣ Send Image Messages", open=False):
         gr.Markdown("Upload an image and get AI analysis")
+        gr.Markdown("**Note:** After uploading, use the Storage Key (not the URL) when sending the message.")
         with gr.Row():
             image_file = gr.File(label="Select Image", file_types=["image"])
             upload_img_btn = gr.Button("Upload Image")
-        img_upload_status = gr.Textbox(label="Upload Status", lines=2)
-        img_url_output = gr.Textbox(label="Image URL")
+        img_upload_status = gr.Textbox(label="Upload Status", lines=3)
+        img_storage_key = gr.Textbox(label="Storage Key (use this for sending)", placeholder="Will be filled after upload")
+        img_upload_json = gr.JSON(label="Upload Response")
         upload_img_btn.click(
             upload_media,
             inputs=[image_file, gr.State("image")],
-            outputs=[img_upload_status, img_url_output]
+            outputs=[img_upload_status, img_upload_json, img_storage_key]
         )
 
         gr.Markdown("Now send the image to the AI")
@@ -401,22 +471,24 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         img_msg_json = gr.JSON(label="Response")
         send_img_btn.click(
             send_image_message,
-            inputs=[conv_id_img, img_url_output, img_caption],
+            inputs=[conv_id_img, img_storage_key, img_caption],
             outputs=[img_msg_status, img_msg_json]
         )
 
     # Step 5: Send Audio Messages
     with gr.Accordion("5️⃣ Send Audio Messages", open=False):
         gr.Markdown("Upload audio and get transcription + AI response")
+        gr.Markdown("**Note:** After uploading, use the Storage Key (not the URL) when sending the message.")
         with gr.Row():
             audio_file = gr.File(label="Select Audio", file_types=["audio"])
             upload_audio_btn = gr.Button("Upload Audio")
-        audio_upload_status = gr.Textbox(label="Upload Status", lines=2)
-        audio_url_output = gr.Textbox(label="Audio URL")
+        audio_upload_status = gr.Textbox(label="Upload Status", lines=3)
+        audio_storage_key = gr.Textbox(label="Storage Key (use this for sending)", placeholder="Will be filled after upload")
+        audio_upload_json = gr.JSON(label="Upload Response")
         upload_audio_btn.click(
             upload_media,
             inputs=[audio_file, gr.State("audio")],
-            outputs=[audio_upload_status, audio_url_output]
+            outputs=[audio_upload_status, audio_upload_json, audio_storage_key]
         )
 
         gr.Markdown("Send the audio to the AI")
@@ -427,7 +499,7 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         audio_msg_json = gr.JSON(label="Response")
         send_audio_btn.click(
             send_audio_message,
-            inputs=[conv_id_audio, audio_url_output, audio_duration],
+            inputs=[conv_id_audio, audio_storage_key, audio_duration],
             outputs=[audio_msg_status, audio_msg_json]
         )
 
@@ -451,13 +523,14 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
     with gr.Accordion("7️⃣ List All Conversations", open=False):
         gr.Markdown("See all your conversations")
         with gr.Row():
-            list_limit = gr.Slider(label="Limit", minimum=5, maximum=50, value=20, step=5)
-            list_conv_btn = gr.Button("List Conversations", variant="primary")
+            list_limit = gr.Slider(label="Limit", minimum=5, maximum=100, value=20, step=5)
+            list_offset = gr.Number(label="Offset", value=0, minimum=0)
+        list_conv_btn = gr.Button("List Conversations", variant="primary")
         list_status = gr.Textbox(label="Conversations", lines=15)
         list_json = gr.JSON(label="Response")
         list_conv_btn.click(
             list_conversations,
-            inputs=[list_limit],
+            inputs=[list_limit, list_offset],
             outputs=[list_status, list_json]
         )
 
@@ -480,5 +553,6 @@ if __name__ == "__main__":
     print("🚀 Starting Gradio Demo...")
     print(f"📡 API URL: {API_BASE_URL}")
     print("🌐 Make sure your API server is running!")
+    print("🔐 Using test JWT authentication (Bearer tokens)")
     print("\nStarting demo on http://localhost:7860")
     demo.launch(server_name="0.0.0.0", server_port=7860, share=True)

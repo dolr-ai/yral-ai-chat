@@ -219,6 +219,86 @@ UPDATE ai_influencers
 SET suggested_messages = COALESCE(suggested_messages, '[]')
 WHERE suggested_messages IS NULL;
 
+-- Fix CHECK constraint issue: Recreate table without incorrect CHECK constraint
+-- SQLite doesn't support DROP CONSTRAINT, so we need to recreate the table structure
+-- Temporarily disable foreign keys to allow table recreation
+PRAGMA foreign_keys = OFF;
+
+-- Create temporary table with correct structure (no CHECK constraint, triggers handle validation)
+CREATE TABLE IF NOT EXISTS ai_influencers_new (
+    id TEXT PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    display_name TEXT NOT NULL,
+    avatar_url TEXT,
+    description TEXT,
+    category TEXT,
+    system_instructions TEXT NOT NULL,
+    personality_traits TEXT DEFAULT '{}',
+    initial_greeting TEXT,
+    suggested_messages TEXT DEFAULT '[]',
+    is_active TEXT DEFAULT 'active',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    metadata TEXT DEFAULT '{}'
+);
+
+-- Copy all data from old table to new table, converting 'coming soon' to 'coming_soon'
+INSERT INTO ai_influencers_new 
+SELECT 
+    id, name, display_name, avatar_url, description, category,
+    system_instructions, personality_traits, initial_greeting,
+    suggested_messages,
+    CASE 
+        WHEN is_active = 'coming soon' THEN 'coming_soon'
+        ELSE is_active
+    END as is_active,
+    created_at, updated_at, metadata
+FROM ai_influencers;
+
+-- Drop old table
+DROP TABLE ai_influencers;
+
+-- Rename new table to original name
+ALTER TABLE ai_influencers_new RENAME TO ai_influencers;
+
+-- Recreate indexes
+CREATE INDEX IF NOT EXISTS idx_influencers_name ON ai_influencers(name);
+CREATE INDEX IF NOT EXISTS idx_influencers_category ON ai_influencers(category);
+CREATE INDEX IF NOT EXISTS idx_influencers_active ON ai_influencers(is_active);
+
+-- Recreate triggers (these handle validation and timestamp updates)
+DROP TRIGGER IF EXISTS trigger_validate_influencer_status;
+DROP TRIGGER IF EXISTS trigger_validate_influencer_status_update;
+DROP TRIGGER IF EXISTS trigger_update_influencer_timestamp;
+
+CREATE TRIGGER trigger_validate_influencer_status
+BEFORE INSERT ON ai_influencers
+BEGIN
+    SELECT CASE
+        WHEN NEW.is_active NOT IN ('active', 'coming_soon', 'discontinued') THEN
+            RAISE(ABORT, 'Invalid is_active value. Must be one of: active, coming_soon, discontinued')
+    END;
+END;
+
+CREATE TRIGGER trigger_validate_influencer_status_update
+BEFORE UPDATE ON ai_influencers
+BEGIN
+    SELECT CASE
+        WHEN NEW.is_active NOT IN ('active', 'coming_soon', 'discontinued') THEN
+            RAISE(ABORT, 'Invalid is_active value. Must be one of: active, coming_soon, discontinued')
+    END;
+END;
+
+-- Trigger to update updated_at on ai_influencers when updated
+CREATE TRIGGER trigger_update_influencer_timestamp
+AFTER UPDATE ON ai_influencers
+BEGIN
+    UPDATE ai_influencers SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+-- Re-enable foreign keys
+PRAGMA foreign_keys = ON;
+
 -- Set correct is_active status for influencers
 UPDATE ai_influencers 
 SET is_active = 'active' 
