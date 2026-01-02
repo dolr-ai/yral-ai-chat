@@ -13,16 +13,16 @@ class InfluencerRepository:
     async def list_all(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
         """List all influencers (both active and inactive)"""
         query = """
-            SELECT 
-                id, name, display_name, avatar_url, description, 
+            SELECT
+                id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
                 is_active, created_at, updated_at, metadata
             FROM ai_influencers
-            ORDER BY CASE is_active 
-                WHEN 'active' THEN 1 
-                WHEN 'coming_soon' THEN 2 
-                WHEN 'discontinued' THEN 3 
+            ORDER BY CASE is_active
+                WHEN 'active' THEN 1
+                WHEN 'coming_soon' THEN 2
+                WHEN 'discontinued' THEN 3
             END, created_at DESC
             LIMIT $1 OFFSET $2
         """
@@ -33,8 +33,8 @@ class InfluencerRepository:
     async def get_by_id(self, influencer_id: str) -> AIInfluencer | None:
         """Get influencer by ID"""
         query = """
-            SELECT 
-                id, name, display_name, avatar_url, description, 
+            SELECT
+                id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
                 is_active, created_at, updated_at, metadata
@@ -48,8 +48,8 @@ class InfluencerRepository:
     async def get_by_name(self, name: str) -> AIInfluencer | None:
         """Get influencer by name"""
         query = """
-            SELECT 
-                id, name, display_name, avatar_url, description, 
+            SELECT
+                id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
                 is_active, created_at, updated_at, metadata
@@ -68,8 +68,8 @@ class InfluencerRepository:
     async def get_with_conversation_count(self, influencer_id: str) -> AIInfluencer | None:
         """Get influencer with conversation count"""
         query = """
-            SELECT 
-                i.id, i.name, i.display_name, i.avatar_url, i.description, 
+            SELECT
+                i.id, i.name, i.display_name, i.avatar_url, i.description,
                 i.category, i.system_instructions, i.personality_traits,
                 i.initial_greeting, i.suggested_messages,
                 i.is_active, i.created_at, i.updated_at, i.metadata,
