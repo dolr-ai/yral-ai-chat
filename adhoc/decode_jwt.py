@@ -2,14 +2,15 @@ import base64
 import json
 import sys
 
+
 def base64url_decode(input_str: str) -> bytes:
     # Add required padding
-    padding = '=' * (-len(input_str) % 4)
+    padding = "=" * (-len(input_str) % 4)
     return base64.urlsafe_b64decode(input_str + padding)
 
 def decode_jwt(token: str):
     try:
-        header_b64, payload_b64, signature_b64 = token.split('.')
+        header_b64, payload_b64, signature_b64 = token.split(".")
     except ValueError:
         raise ValueError("Invalid JWT format. Expected header.payload.signature")
 
