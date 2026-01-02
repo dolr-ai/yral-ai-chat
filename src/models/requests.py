@@ -108,7 +108,6 @@ class SendMessageRequest(BaseModel):
         """Convert content to string if it's a number or other type"""
         if v is None:
             return None
-        # Convert numbers and other types to string
         if not isinstance(v, str):
             return str(v)
         return v
@@ -139,7 +138,6 @@ class SendMessageRequest(BaseModel):
         audio_url = self.audio_url
         message_type = self.message_type
 
-        # Validate based on message type
         self._validate_text_message(message_type, content)
         self._validate_image_message(message_type, media_urls)
         self._validate_multimodal_message(message_type, media_urls)

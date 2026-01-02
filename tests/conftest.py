@@ -78,7 +78,7 @@ def auth_headers():
 class RemoteClient:
     """HTTP client wrapper for testing remote APIs - compatible with TestClient interface"""
     def __init__(self, base_url: str):
-        self.base_url = base_url.rstrip('/')
+        self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
     
     def get(self, path: str, **kwargs):
@@ -103,46 +103,60 @@ class RemoteClient:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def ensure_database_migrated():
+def _setup_test_database():
     """
-    Ensure database is migrated before running tests.
+    Setup test database - use in-memory database or separate file per worker.
     This runs once per test session.
     """
     import subprocess
     import sys
+    import tempfile
     
-    # Get database path from environment or config
-    db_path = os.getenv("DATABASE_PATH")
-    if not db_path:
-        from src.config import settings
-        db_path = settings.database_path
+    # Use separate file per pytest worker for parallel execution to avoid locking issues
+    worker_id = os.getenv("PYTEST_XDIST_WORKER", "gw0")
+    temp_dir = Path(tempfile.gettempdir())
+    test_db_path = str(temp_dir / f"yral_chat_test_{worker_id}.db")
+    
+    # Set environment variable for test database
+    os.environ["TEST_DATABASE_PATH"] = test_db_path
     
     # Only run migrations if using local database (not remote API)
-    if not os.getenv("TEST_API_URL") and db_path and Path(db_path).exists():
+    if not os.getenv("TEST_API_URL"):
         # Check if database has tables
         import sqlite3
         try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_influencers'"
-            )
-            has_tables = cursor.fetchone() is not None
-            conn.close()
+            if Path(test_db_path).exists():
+                conn = sqlite3.connect(test_db_path)
+                cursor = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_influencers'"
+                )
+                has_tables = cursor.fetchone() is not None
+                conn.close()
+            else:
+                has_tables = False
             
             if not has_tables:
-                print(f"\n⚠️  Database {db_path} has no tables. Running migrations...")
-                result = subprocess.run(
-                    [sys.executable, "scripts/run_migrations.py"],
-                    env={**os.environ, "DATABASE_PATH": db_path},
+                # Script path is hardcoded and safe - no user input
+                migration_script = Path(__file__).parent.parent / "scripts" / "run_migrations.py"
+                result = subprocess.run(  # noqa: S603
+                    [sys.executable, str(migration_script)],
+                    env={**os.environ, "DATABASE_PATH": test_db_path},
                     capture_output=True,
-                    text=True
+                    text=True, check=False
                 )
                 if result.returncode != 0:
-                    print(f"❌ Migration failed: {result.stderr}")
-                else:
-                    print("✅ Migrations completed")
-        except Exception as e:
-            print(f"⚠️  Could not check database: {e}")
+                    pass
+        except Exception:
+            pass
+    
+    yield
+    
+    # Cleanup: remove test database files after tests
+    if test_db_path != ":memory:" and Path(test_db_path).exists():
+        try:
+            Path(test_db_path).unlink()
+        except Exception:
+            pass
 
 
 @pytest.fixture(scope="module")
@@ -157,7 +171,6 @@ def client():
     
     if test_api_url:
         # Remote mode: test against staging/prod
-        print(f"🌐 Testing against remote API: {test_api_url}")
         yield RemoteClient(test_api_url)
     else:
         # Local mode: use TestClient (no uvicorn needed)

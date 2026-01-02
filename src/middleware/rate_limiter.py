@@ -50,7 +50,6 @@ class TokenBucket:
         now = time.time()
         elapsed = now - self.last_refill
 
-        # Add tokens based on elapsed time
         tokens_to_add = elapsed * self.refill_rate
         self.tokens = min(self.capacity, self.tokens + tokens_to_add)
         self.last_refill = now
@@ -72,7 +71,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app):
         super().__init__(app)
-        # Storage: {identifier: (per_minute_bucket, per_hour_bucket)}
         self.buckets: dict[str, tuple[TokenBucket, TokenBucket]] = defaultdict(
             lambda: (
                 TokenBucket(
@@ -85,10 +83,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 )
             )
         )
-        self.cleanup_interval = 300  # Clean up old buckets every 5 minutes
+        self.cleanup_interval = 300
         self.last_cleanup = time.time()
 
-        # Paths to exclude from rate limiting
         self.excluded_paths = {
             "/health",
             "/docs",
@@ -100,17 +97,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         """Process request with rate limiting"""
 
-        # Skip rate limiting for excluded paths
         if request.url.path in self.excluded_paths:
             return await call_next(request)
 
-        # Get identifier (user_id from token or IP address)
         identifier = self._get_identifier(request)
 
-        # Get or create buckets for this identifier
         minute_bucket, hour_bucket = self.buckets[identifier]
 
-        # Check rate limits
         if not minute_bucket.consume():
             retry_after = minute_bucket.get_retry_after()
             logger.warning(
@@ -145,10 +138,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": str(retry_after)}
             )
 
-        # Periodic cleanup of old buckets
         self._cleanup_buckets()
 
-        # Add rate limit headers to response
         response = await call_next(request)
         response.headers["X-RateLimit-Limit-Minute"] = str(settings.rate_limit_per_minute)
         response.headers["X-RateLimit-Limit-Hour"] = str(settings.rate_limit_per_hour)
@@ -163,17 +154,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         
         Priority: user_id from JWT > IP address
         """
-        # Try to get user_id from request state (set by auth middleware)
         if hasattr(request.state, "user_id"):
             return f"user:{request.state.user_id}"
 
-        # Fall back to IP address
-        # Check for forwarded IP first (behind proxy)
         forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            ip = forwarded.split(",")[0].strip()
-        else:
-            ip = request.client.host if request.client else "unknown"
+        ip = forwarded.split(",")[0].strip() if forwarded else request.client.host if request.client else "unknown"
 
         return f"ip:{ip}"
 
@@ -183,7 +168,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if now - self.last_cleanup < self.cleanup_interval:
             return
 
-        # Remove buckets that haven't been used in the last hour
         inactive_threshold = now - 3600
         identifiers_to_remove = []
 

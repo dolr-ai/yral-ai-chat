@@ -1,7 +1,9 @@
 """
 Domain entity models
 """
-from datetime import datetime
+from __future__ import annotations
+
+from datetime import datetime  # noqa: TCH003
 from enum import Enum
 from typing import Any
 
@@ -20,6 +22,15 @@ class MessageRole(str, Enum):
     """Message role enumeration"""
     USER = "user"
     ASSISTANT = "assistant"
+
+
+class LastMessageInfo(BaseModel):
+    """Last message information for conversation list"""
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+    content: str | None = None
+    role: MessageRole
+    created_at: datetime
 
 
 class InfluencerStatus(str, Enum):
@@ -48,7 +59,6 @@ class AIInfluencer(BaseModel):
     updated_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    # Optional field for conversation count
     conversation_count: int | None = None
 
 
@@ -63,10 +73,9 @@ class Conversation(BaseModel):
     updated_at: datetime
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    # Optional nested fields
     influencer: AIInfluencer | None = None
     message_count: int | None = None
-    last_message: dict[str, Any] | None = None
+    last_message: LastMessageInfo | None = None
 
 
 class Message(BaseModel):

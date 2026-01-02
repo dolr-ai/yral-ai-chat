@@ -3,6 +3,7 @@ Gradio Demo for Yral AI Chat API
 Tests all endpoints in a user-friendly interface
 """
 import json
+from pathlib import Path
 
 import gradio as gr
 import requests
@@ -10,10 +11,12 @@ import requests
 # Configuration
 API_BASE_URL = "http://localhost:8000"
 
-# Global state
-current_user_id = "demo_user_123"
-current_conversation_id = None
-current_influencer_id = None
+# Global state - using dict to avoid global statement warnings
+_state = {
+    "current_user_id": "demo_user_123",
+    "current_conversation_id": None,
+    "current_influencer_id": None
+}
 
 
 def format_json(data):
@@ -24,7 +27,7 @@ def format_json(data):
 def get_influencers() -> tuple[str, str]:
     """Step 1: Get list of influencers"""
     try:
-        response = requests.get(f"{API_BASE_URL}/api/v1/influencers")
+        response = requests.get(f"{API_BASE_URL}/api/v1/influencers", timeout=10)
         response.raise_for_status()
         data = response.json()
 
@@ -45,7 +48,6 @@ def get_influencers() -> tuple[str, str]:
 
 def create_conversation(influencer_id: str) -> tuple[str, str, str]:
     """Step 2: Create or get conversation"""
-    global current_conversation_id, current_influencer_id
 
     if not influencer_id.strip():
         return "Please enter an influencer ID", None, ""
@@ -54,13 +56,14 @@ def create_conversation(influencer_id: str) -> tuple[str, str, str]:
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations",
             json={"influencer_id": influencer_id.strip()},
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
 
-        current_conversation_id = data["id"]
-        current_influencer_id = influencer_id.strip()
+        _state["current_conversation_id"] = data["id"]
+        _state["current_influencer_id"] = influencer_id.strip()
 
         status = (
             f"✓ Conversation Created!\n"
@@ -90,7 +93,8 @@ def send_text_message(conversation_id: str, message: str) -> tuple[str, str, lis
                 "content": message,
                 "message_type": "text"
             },
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -119,13 +123,14 @@ def upload_media(file, media_type: str) -> tuple[str, str]:
         return "Please select a file", None
 
     try:
-        with open(file.name, "rb") as f:
+        with Path(file.name).open("rb") as f:
             files = {"file": f}
             data = {"type": media_type}
             response = requests.post(
                 f"{API_BASE_URL}/api/v1/media/upload",
                 files=files,
-                data=data
+                data=data,
+                timeout=10
             )
         response.raise_for_status()
         result = response.json()
@@ -161,7 +166,8 @@ def send_image_message(conversation_id: str, image_url: str, caption: str) -> tu
                 "message_type": message_type,
                 "media_urls": [image_url.strip()]
             },
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -193,7 +199,8 @@ def send_audio_message(conversation_id: str, audio_url: str, duration: int) -> t
                 "audio_url": audio_url.strip(),
                 "audio_duration_seconds": duration
             },
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -217,7 +224,8 @@ def get_message_history(conversation_id: str, limit: int) -> tuple[str, str, lis
     try:
         response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id.strip()}/messages",
-            params={"limit": limit, "order": "asc"}
+            params={"limit": limit, "order": "asc"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -242,7 +250,8 @@ def list_conversations(limit: int) -> tuple[str, str]:
     try:
         response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations",
-            params={"limit": limit}
+            params={"limit": limit},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -273,7 +282,8 @@ def delete_conversation(conversation_id: str) -> tuple[str, str]:
 
     try:
         response = requests.delete(
-            f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id.strip()}"
+            f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id.strip()}",
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -291,7 +301,7 @@ def delete_conversation(conversation_id: str) -> tuple[str, str]:
 def check_health() -> tuple[str, str]:
     """Check API health"""
     try:
-        response = requests.get(f"{API_BASE_URL}/health")
+        response = requests.get(f"{API_BASE_URL}/health", timeout=10)
         response.raise_for_status()
         data = response.json()
 
@@ -477,8 +487,4 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
 
 
 if __name__ == "__main__":
-    print("🚀 Starting Gradio Demo...")
-    print(f"📡 API URL: {API_BASE_URL}")
-    print("🌐 Make sure your API server is running!")
-    print("\nStarting demo on http://localhost:7860")
     demo.launch(server_name="0.0.0.0", server_port=7860, share=True)

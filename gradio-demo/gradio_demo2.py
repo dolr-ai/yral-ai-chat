@@ -3,6 +3,7 @@ Gradio Chat App for Yral AI
 A streamlined chat interface to talk with AI influencers
 """
 from datetime import datetime
+from pathlib import Path
 
 import gradio as gr
 import requests
@@ -23,15 +24,13 @@ session_state = {
 def get_influencers():
     """Fetch available influencers"""
     try:
-        response = requests.get(f"{API_BASE_URL}/api/v1/influencers")
+        response = requests.get(f"{API_BASE_URL}/api/v1/influencers", timeout=10)
         response.raise_for_status()
         data = response.json()
         
         # Return list of tuples (display_name, id) for dropdown
-        influencers = [(inf["display_name"], inf["id"]) for inf in data.get("influencers", [])]
-        return influencers
-    except Exception as e:
-        print(f"Error fetching influencers: {e}")
+        return [(inf["display_name"], inf["id"]) for inf in data.get("influencers", [])]
+    except Exception:
         return [("Error loading influencers", None)]
 
 
@@ -45,7 +44,8 @@ def start_conversation(influencer_id):
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations",
             json={"influencer_id": influencer_id},
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -57,7 +57,8 @@ def start_conversation(influencer_id):
         # Load initial messages (greeting if any)
         history_response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{data['id']}/messages",
-            params={"limit": 10, "order": "asc"}
+            params={"limit": 10, "order": "asc"},
+            timeout=10
         )
         history_response.raise_for_status()
         history_data = history_response.json()
@@ -77,7 +78,6 @@ def start_conversation(influencer_id):
         
     except Exception as e:
         error_msg = f"❌ Error: {e!s}"
-        print(error_msg)
         return [], error_msg, gr.update(interactive=False)
 
 
@@ -97,6 +97,7 @@ def send_message(message, chat_history):
                 "content": message.strip(),
                 "message_type": "text"
             },
+            timeout=10,
             headers={"Content-Type": "application/json"}
         )
         response.raise_for_status()
@@ -112,7 +113,6 @@ def send_message(message, chat_history):
         
     except Exception as e:
         error_msg = f"Error: {e!s}"
-        print(error_msg)
         # Add error to chat
         chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
         return chat_history, ""
@@ -130,13 +130,14 @@ def send_image_message(image, caption, chat_history):
     
     try:
         # Upload image
-        with open(image, "rb") as f:
+        with Path(image).open("rb") as f:
             files = {"file": f}
             data = {"type": "image"}
             upload_response = requests.post(
                 f"{API_BASE_URL}/api/v1/media/upload",
                 files=files,
-                data=data
+                data=data,
+                timeout=10
             )
         upload_response.raise_for_status()
         upload_data = upload_response.json()
@@ -151,7 +152,8 @@ def send_image_message(image, caption, chat_history):
                 "message_type": message_type,
                 "media_urls": [image_url]
             },
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -170,7 +172,6 @@ def send_image_message(image, caption, chat_history):
         
     except Exception as e:
         error_msg = f"Error uploading image: {e!s}"
-        print(error_msg)
         chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
         return chat_history, None
 
@@ -187,13 +188,14 @@ def send_audio_message(audio, chat_history):
     
     try:
         # Upload audio
-        with open(audio, "rb") as f:
+        with Path(audio).open("rb") as f:
             files = {"file": f}
             data = {"type": "audio"}
             upload_response = requests.post(
                 f"{API_BASE_URL}/api/v1/media/upload",
                 files=files,
-                data=data
+                data=data,
+                timeout=10
             )
         upload_response.raise_for_status()
         upload_data = upload_response.json()
@@ -209,7 +211,8 @@ def send_audio_message(audio, chat_history):
                 "audio_url": audio_url,
                 "audio_duration_seconds": duration
             },
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -225,7 +228,6 @@ def send_audio_message(audio, chat_history):
         
     except Exception as e:
         error_msg = f"Error uploading audio: {e!s}"
-        print(error_msg)
         chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
         return chat_history, None
 
@@ -244,7 +246,8 @@ def load_conversation_list():
     try:
         response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations",
-            params={"limit": 50}
+            params={"limit": 50},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -256,8 +259,7 @@ def load_conversation_list():
             conversations.append((label, conv["id"]))
         
         return gr.update(choices=conversations)
-    except Exception as e:
-        print(f"Error loading conversations: {e}")
+    except Exception:
         return gr.update(choices=[])
 
 
@@ -270,7 +272,8 @@ def load_existing_conversation(conversation_id):
         # Get conversation details
         conv_response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id}/messages",
-            params={"limit": 100, "order": "asc"}
+            params={"limit": 100, "order": "asc"},
+            timeout=10
         )
         conv_response.raise_for_status()
         conv_data = conv_response.json()
@@ -295,7 +298,6 @@ def load_existing_conversation(conversation_id):
         
     except Exception as e:
         error_msg = f"❌ Error loading conversation: {e!s}"
-        print(error_msg)
         return [], error_msg, gr.update(interactive=False)
 
 
@@ -466,8 +468,4 @@ with gr.Blocks(title="Yral AI Chat", theme=gr.themes.Soft()) as demo:
 
 
 if __name__ == "__main__":
-    print("🚀 Starting Yral AI Chat App...")
-    print(f"📡 API URL: {API_BASE_URL}")
-    print("🌐 Make sure your API server is running!")
-    print("\nStarting chat app on http://localhost:7861")
     demo.launch(server_name="0.0.0.0", server_port=7861, share=False)

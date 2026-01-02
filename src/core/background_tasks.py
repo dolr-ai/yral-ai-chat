@@ -3,6 +3,7 @@ Background task utilities for non-blocking operations
 """
 from loguru import logger
 
+from src.core.cache import cache, invalidate_cache_pattern
 from src.core.metrics import ai_tokens_used_total
 
 
@@ -22,10 +23,8 @@ async def log_ai_usage(
         conversation_id: Conversation identifier
     """
     try:
-        # Update metrics
         ai_tokens_used_total.labels(model=model).inc(tokens)
 
-        # Log usage for analytics
         logger.info(
             "AI usage recorded",
             extra={
@@ -47,8 +46,6 @@ async def update_conversation_stats(conversation_id: str):
         conversation_id: Conversation identifier
     """
     try:
-        # Update conversation timestamp, message counts, etc.
-        # This would typically involve database updates
         logger.debug(f"Updated stats for conversation: {conversation_id}")
     except Exception as e:
         logger.error(f"Failed to update conversation stats: {e}")
@@ -62,9 +59,6 @@ async def invalidate_cache_for_user(user_id: str):
         user_id: User identifier
     """
     try:
-        from src.core.cache import invalidate_cache_pattern
-
-        # Invalidate conversation list cache for this user
         invalidate_cache_pattern(f"conversations:{user_id}")
 
         logger.debug(f"Invalidated cache for user: {user_id}")
@@ -77,14 +71,12 @@ async def cleanup_old_cache_entries():
     Background task to clean up expired cache entries
     """
     try:
-        from src.core.cache import cache
-
         cache.cleanup_expired()
         stats = cache.get_stats()
 
         logger.info(
             "Cache cleanup completed",
-            extra=stats
+            extra=stats.model_dump()
         )
     except Exception as e:
         logger.error(f"Failed to cleanup cache: {e}")

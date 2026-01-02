@@ -33,7 +33,6 @@ class InfluencerService:
         return influencer
 
 
-# Global influencer service instance
 influencer_service = InfluencerService()
 
 
