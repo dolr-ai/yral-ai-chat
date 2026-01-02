@@ -2,22 +2,87 @@
 Gradio Chat App for Yral AI
 A streamlined chat interface to talk with AI influencers
 """
+import base64
+import json
+import time
 from datetime import datetime
 
 import gradio as gr
 import requests
 
 # Configuration
-API_BASE_URL = "https://chat.yral.com"
+API_BASE_URL = "http://127.0.0.1:8000"
+
+
+def base64url_encode(data: bytes) -> str:
+    """Encode bytes to base64url string without padding"""
+    return base64.urlsafe_b64encode(data).decode('utf-8').rstrip('=')
+
+
+def generate_test_jwt(user_id: str, expires_in_hours: int = 24) -> str:
+    """
+    Generate a test JWT token for local development
+    
+    Args:
+        user_id: User ID to use in the 'sub' claim
+        expires_in_hours: Token expiration time in hours (default: 24)
+    
+    Returns:
+        JWT token string
+    """
+    # Calculate expiration time
+    now = int(time.time())
+    exp = now + (expires_in_hours * 3600)
+    
+    # Create header
+    header = {
+        "alg": "HS256",
+        "typ": "JWT"
+    }
+    
+    # Create payload with required claims
+    payload = {
+        "iss": "https://auth.yral.com",  # Required issuer
+        "sub": user_id,  # Required user ID
+        "exp": exp,  # Required expiration
+        "iat": now,  # Issued at (optional but standard)
+        "aud": "yral-ai-chat-api",  # Audience (optional)
+    }
+    
+    # Encode header and payload
+    header_json = json.dumps(header, separators=(',', ':'))
+    payload_json = json.dumps(payload, separators=(',', ':'))
+    
+    header_b64 = base64url_encode(header_json.encode('utf-8'))
+    payload_b64 = base64url_encode(payload_json.encode('utf-8'))
+    
+    # Create a dummy signature (not verified by the auth code)
+    signature = base64url_encode(b"dummy_signature_for_testing")
+    
+    # Combine into JWT token
+    return f"{header_b64}.{payload_b64}.{signature}"
+
+
+# Initialize session state and generate test JWT token
+user_id = "test_user_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+test_jwt_token = generate_test_jwt(user_id, expires_in_hours=24)
 
 # Session state
 session_state = {
-    "user_id": "chat_user_" + datetime.now().strftime("%Y%m%d_%H%M%S"),
+    "user_id": user_id,
     "conversation_id": None,
     "influencer_id": None,
     "influencer_name": None,
-    "chat_history": []
+    "chat_history": [],
+    "jwt_token": test_jwt_token  # Auto-generated test token
 }
+
+
+def get_auth_headers():
+    """Get authorization headers if token is available"""
+    if session_state.get("jwt_token"):
+        return {"Authorization": f"Bearer {session_state['jwt_token']}"}
+    return {}
 
 
 def get_influencers():
@@ -40,12 +105,16 @@ def start_conversation(influencer_id):
     if not influencer_id:
         return [], "Please select an influencer first", gr.update(interactive=False)
     
+    if not session_state.get("jwt_token"):
+        return [], "❌ JWT token required. Set session_state['jwt_token'] programmatically.", gr.update(interactive=False)
+    
     try:
         # Create conversation
+        headers = {"Content-Type": "application/json", **get_auth_headers()}
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations",
             json={"influencer_id": influencer_id},
-            headers={"Content-Type": "application/json"}
+            headers=headers
         )
         response.raise_for_status()
         data = response.json()
@@ -57,7 +126,8 @@ def start_conversation(influencer_id):
         # Load initial messages (greeting if any)
         history_response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{data['id']}/messages",
-            params={"limit": 10, "order": "asc"}
+            params={"limit": 10, "order": "asc"},
+            headers=get_auth_headers()
         )
         history_response.raise_for_status()
         history_data = history_response.json()
@@ -91,13 +161,14 @@ def send_message(message, chat_history):
     
     try:
         # Send message
+        headers = {"Content-Type": "application/json", **get_auth_headers()}
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations/{session_state['conversation_id']}/messages",
             json={
                 "content": message.strip(),
                 "message_type": "text"
             },
-            headers={"Content-Type": "application/json"}
+            headers=headers
         )
         response.raise_for_status()
         data = response.json()
@@ -144,6 +215,7 @@ def send_image_message(image, caption, chat_history):
         
         # Send image message
         message_type = "multimodal" if caption and caption.strip() else "image"
+        headers = {"Content-Type": "application/json", **get_auth_headers()}
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations/{session_state['conversation_id']}/messages",
             json={
@@ -151,7 +223,7 @@ def send_image_message(image, caption, chat_history):
                 "message_type": message_type,
                 "media_urls": [image_url]
             },
-            headers={"Content-Type": "application/json"}
+            headers=headers
         )
         response.raise_for_status()
         data = response.json()
@@ -201,6 +273,7 @@ def send_audio_message(audio, chat_history):
         duration = upload_data.get("duration_seconds", 0)
         
         # Send audio message
+        headers = {"Content-Type": "application/json", **get_auth_headers()}
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations/{session_state['conversation_id']}/messages",
             json={
@@ -209,7 +282,7 @@ def send_audio_message(audio, chat_history):
                 "audio_url": audio_url,
                 "audio_duration_seconds": duration
             },
-            headers={"Content-Type": "application/json"}
+            headers=headers
         )
         response.raise_for_status()
         data = response.json()
@@ -241,10 +314,15 @@ def clear_chat():
 
 def load_conversation_list():
     """Load list of existing conversations"""
+    if not session_state.get("jwt_token"):
+        print("Warning: No JWT token set, cannot load conversations")
+        return gr.update(choices=[])
+    
     try:
         response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations",
-            params={"limit": 50}
+            params={"limit": 50},
+            headers=get_auth_headers()
         )
         response.raise_for_status()
         data = response.json()
@@ -266,11 +344,15 @@ def load_existing_conversation(conversation_id):
     if not conversation_id:
         return [], "Please select a conversation", gr.update(interactive=False)
     
+    if not session_state.get("jwt_token"):
+        return [], "❌ JWT token required. Set session_state['jwt_token'] programmatically.", gr.update(interactive=False)
+    
     try:
         # Get conversation details
         conv_response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id}/messages",
-            params={"limit": 100, "order": "asc"}
+            params={"limit": 100, "order": "asc"},
+            headers=get_auth_headers()
         )
         conv_response.raise_for_status()
         conv_data = conv_response.json()
@@ -302,7 +384,7 @@ def load_existing_conversation(conversation_id):
 def check_api_status():
     """Check if API is available"""
     try:
-        response = requests.get(f"{API_BASE_URL}/health", timeout=2)
+        response = requests.get(f"{API_BASE_URL}/health", timeout=5)
         response.raise_for_status()
         return "🟢 API Connected"
     except Exception as e:

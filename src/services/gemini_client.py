@@ -1,12 +1,12 @@
 """
-Google Gemini AI Client
+Gemini AI Client via OpenRouter (more uncensored)
 """
+import base64
 import json
 import re
 import time
 from typing import Any
 
-import google.generativeai as genai
 import httpx
 from loguru import logger
 
@@ -16,21 +16,30 @@ from src.models.entities import Message, MessageRole, MessageType
 
 
 class GeminiClient:
-    """Google Gemini AI client wrapper"""
+    """Gemini AI client wrapper using OpenRouter API"""
 
     def __init__(self):
-        """Initialize Gemini client"""
-        genai.configure(api_key=settings.gemini_api_key)
-        self.model = genai.GenerativeModel(settings.gemini_model)
-        self.http_client = httpx.AsyncClient(timeout=30.0)
-        logger.info(f"Gemini client initialized with model: {settings.gemini_model}")
+        """Initialize Gemini client via OpenRouter"""
+        self.api_key = settings.openrouter_api_key
+        self.model = settings.openrouter_model
+        self.base_url = settings.openrouter_base_url
+        self.http_client = httpx.AsyncClient(
+            timeout=60.0,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "HTTP-Referer": "https://yral.com",
+                "X-Title": "Yral AI Chat"
+            }
+        )
+        logger.info(f"Gemini client initialized via OpenRouter with model: {self.model}")
 
     async def generate_response(
         self,
         user_message: str,
         system_instructions: str,
-        conversation_history: list[Message] = None,
-        media_urls: list[str] = None
+        conversation_history: list[Message] | None = None,
+        media_urls: list[str] | None = None,
+        safety_settings: list[dict[str, Any]] | None = None
     ) -> tuple[str, int]:
         """
         Generate AI response
@@ -40,6 +49,7 @@ class GeminiClient:
             system_instructions: AI personality instructions
             conversation_history: Previous messages for context
             media_urls: Optional image URLs for multimodal input
+            safety_settings: Optional safety settings for NSFW content
             
         Returns:
             Tuple of (response_text, token_count)
@@ -48,20 +58,16 @@ class GeminiClient:
             # Ensure user_message is a string
             user_message_str = str(user_message) if not isinstance(user_message, str) else user_message
             
-            # Build conversation context
-            contents = self._build_system_instructions(system_instructions)
-            
-            # Add conversation history
-            if conversation_history:
-                history_contents = await self._build_history_contents(conversation_history)
-                contents.extend(history_contents)
-            
-            # Add current message
-            current_message = await self._build_current_message(user_message_str, media_urls)
-            contents.append(current_message)
+            # Build messages in OpenRouter format
+            messages = await self._build_messages_for_openrouter(
+                system_instructions,
+                conversation_history,
+                user_message_str,
+                media_urls
+            )
 
-            # Generate response
-            response_text, token_count = await self._generate_content(contents)
+            # Generate response via OpenRouter
+            response_text, token_count = await self._generate_content_openrouter(messages, safety_settings)
             
             return response_text, int(token_count)
 
@@ -71,105 +77,172 @@ class GeminiClient:
             logger.error(f"Gemini API error: {e}")
             raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
 
-    def _build_system_instructions(self, system_instructions: str) -> list[dict]:
-        """Build system instruction messages"""
-        return [
-            {
-                "role": "user",
-                "parts": [{"text": f"""System Instructions: {system_instructions}. Lastly, always answer in the same language as the user's message."""}]
-            },
-            {
-                "role": "model",
-                "parts": [{"text": "Understood. I will follow these instructions."}]
-            }
-        ]
-
-    async def _build_history_contents(self, conversation_history: list[Message]) -> list[dict]:
-        """Build conversation history contents"""
-        contents = []
+    async def _build_messages_for_openrouter(
+        self,
+        system_instructions: str,
+        conversation_history: list[Message] | None,
+        user_message: str,
+        media_urls: list[str] | None
+    ) -> list[dict]:
+        """Build messages in OpenAI format for OpenRouter"""
+        messages = []
         
-        for msg in conversation_history[-10:]:  # Last 10 messages for context
-            role = "user" if msg.role == MessageRole.USER else "model"
-            parts = []
-
-            # Add text content - ensure it's a string
-            if msg.content:
-                text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
-                parts.append({"text": text_content})
-
-            # Add images from history if available
-            if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
-                await self._add_images_to_parts(msg.media_urls[:3], parts, warn_on_error=True)
-
-            if parts:
-                contents.append({"role": role, "parts": parts})
+        # Add system message
+        messages.append({
+            "role": "system",
+            "content": f"{system_instructions}\n\nAlways answer in the same language as the user's message."
+        })
         
-        return contents
-
-    async def _build_current_message(self, user_message: str, media_urls: list[str] | None) -> dict:
-        """Build current user message with optional images"""
-        current_parts = []
-
+        # Add conversation history
+        if conversation_history:
+            for msg in conversation_history[-10:]:  # Last 10 messages
+                role = "user" if msg.role == MessageRole.USER else "assistant"
+                content_parts = []
+                
+                # Add text content
+                if msg.content:
+                    text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
+                    content_parts.append({
+                        "type": "text",
+                        "text": text_content
+                    })
+                
+                # Add images from history if available
+                if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and msg.media_urls:
+                    for image_url in msg.media_urls[:3]:
+                        try:
+                            image_data = await self._download_image_for_openrouter(image_url)
+                            content_parts.append(image_data)
+                        except Exception as e:
+                            logger.warning(f"Failed to load image from history: {e}")
+                
+                if content_parts:
+                    # If only one text part, use string format; otherwise use array format
+                    if len(content_parts) == 1 and content_parts[0].get("type") == "text":
+                        msg_content: Any = content_parts[0]["text"]
+                    else:
+                        msg_content = content_parts
+                    messages.append({
+                        "role": role,
+                        "content": msg_content
+                    })
+        
+        # Add current user message
+        current_content_parts = []
         if user_message:
-            # Ensure user_message is a string
-            text_content = str(user_message) if not isinstance(user_message, str) else user_message
-            current_parts.append({"text": text_content})
-
+            current_content_parts.append({
+                "type": "text",
+                "text": str(user_message)
+            })
+        
         # Add current images
         if media_urls:
-            await self._add_images_to_parts(media_urls[:5], current_parts, warn_on_error=False)
-
-        return {"role": "user", "parts": current_parts}
-
-    async def _add_images_to_parts(
-        self,
-        image_urls: list[str],
-        parts: list[dict],
-        warn_on_error: bool = False
-    ) -> None:
-        """Add images to message parts"""
-        for url in image_urls:
-            try:
-                image_data = await self._download_image(url)
-                parts.append({"inline_data": image_data})
-            except Exception as e:
-                if warn_on_error:
-                    logger.warning(f"Failed to load image from history: {e}")
-                else:
-                    logger.error(f"Failed to download image {url}: {e}")
+            for image_url in media_urls[:5]:
+                try:
+                    image_data = await self._download_image_for_openrouter(image_url)
+                    current_content_parts.append(image_data)
+                except Exception as e:
+                    logger.error(f"Failed to download image {image_url}: {e}")
                     raise AIServiceException(f"Failed to process image: {e}") from e
-
-    async def _generate_content(self, contents: list[dict]) -> tuple[str, float]:
-        """Generate content using Gemini API"""
-        logger.info(f"Generating Gemini response with {len(contents)} messages")
-
-        generation_config = genai.types.GenerationConfig(
-            max_output_tokens=settings.gemini_max_tokens,
-            temperature=settings.gemini_temperature
-        )
-
-        response = self.model.generate_content(
-            contents,
-            generation_config=generation_config
-        )
-
-        # Extract response text
-        response_text = response.text
         
-        # Check finish reason
-        if response.candidates and response.candidates[0].finish_reason != 1:  # 1 = STOP
-            logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (not STOP)")
+        if current_content_parts:
+            # If only one text part, use string format; otherwise use array format
+            if len(current_content_parts) == 1 and current_content_parts[0].get("type") == "text":
+                user_content: Any = current_content_parts[0]["text"]
+            else:
+                user_content = current_content_parts
+            messages.append({
+                "role": "user",
+                "content": user_content
+            })
+        
+        return messages
 
-        # Estimate token count (rough estimate)
-        token_count = len(response_text.split()) * 1.3  # Approximate
+    async def _download_image_for_openrouter(self, url: str) -> dict:
+        """Download and encode image for OpenRouter (base64 format)"""
+        try:
+            response = await self.http_client.get(url)
+            response.raise_for_status()
+            
+            image_data = response.content
+            mime_type = response.headers.get("content-type", "image/jpeg")
+            
+            # Encode to base64
+            base64_image = base64.b64encode(image_data).decode('utf-8')
+            
+            return {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{mime_type};base64,{base64_image}"
+                }
+            }
+        except Exception as e:
+            logger.error(f"Failed to download image {url}: {e}")
+            raise
 
-        logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens")
+    async def _generate_content_openrouter(
+        self,
+        messages: list[dict],
+        safety_settings: list[dict[str, Any]] | None = None
+    ) -> tuple[str, float]:
+        """Generate content using OpenRouter API"""
+        logger.info(f"Generating Gemini response via OpenRouter with {len(messages)} messages")
+        
+        if safety_settings:
+            logger.info(f"Note: OpenRouter doesn't use safety settings (already uncensored), ignoring: {safety_settings}")
 
-        return response_text, token_count
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": settings.openrouter_max_tokens,
+            "temperature": settings.openrouter_temperature,
+        }
+
+        try:
+            response = await self.http_client.post(
+                f"{self.base_url}/chat/completions",
+                json=payload
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            # Extract response
+            if "choices" not in data or not data["choices"]:
+                raise AIServiceException("No choices returned from OpenRouter API")
+
+            choice = data["choices"][0]
+            response_text = choice["message"]["content"]
+            
+            # Get token usage if available
+            usage = data.get("usage", {})
+            token_count = usage.get("completion_tokens", len(response_text.split()) * 1.3)
+
+            finish_reason = choice.get("finish_reason", "stop")
+            if finish_reason != "stop":
+                logger.warning(f"Response finished with reason: {finish_reason} (not stop)")
+
+            logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens")
+            return response_text, float(token_count)
+
+        except httpx.HTTPStatusError as e:
+            error_msg = f"OpenRouter API error: {e.response.status_code}"
+            if e.response.text:
+                try:
+                    error_data = e.response.json()
+                    error_msg += f" - {error_data.get('error', {}).get('message', e.response.text)}"
+                except Exception:
+                    error_msg += f" - {e.response.text[:200]}"
+            logger.error(error_msg)
+            raise AIServiceException(error_msg) from e
+        except Exception as e:
+            logger.error(f"OpenRouter API error: {e}")
+            raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
+
 
     async def transcribe_audio(self, audio_url: str) -> str:
         """
-        Transcribe audio file using Gemini
+        Transcribe audio file - Note: OpenRouter doesn't support audio transcription yet.
+        This method is kept for compatibility but will raise an error.
         
         Args:
             audio_url: URL to audio file
@@ -177,27 +250,10 @@ class GeminiClient:
         Returns:
             Transcribed text
         """
-        try:
-            logger.info(f"Transcribing audio from {audio_url}")
-
-            # Download audio file
-            audio_data = await self._download_audio(audio_url)
-
-            # Use Gemini to transcribe
-            prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
-
-            response = self.model.generate_content([
-                prompt,
-                {"inline_data": audio_data}
-            ])
-
-            transcription = response.text.strip()
-            logger.info(f"Audio transcribed: {len(transcription)} characters")
-        except Exception as e:
-            logger.error(f"Audio transcription error: {e}")
-            raise TranscriptionException(f"Failed to transcribe audio: {e!s}") from e
-        else:
-            return transcription
+        raise TranscriptionException(
+            "Audio transcription is not yet supported via OpenRouter. "
+            "Please use Whisper API or another transcription service."
+        )
 
     async def _download_image(self, url: str) -> dict[str, Any]:
         """Download and encode image for Gemini"""
@@ -237,7 +293,7 @@ class GeminiClient:
         self,
         user_message: str,
         assistant_response: str,
-        existing_memories: dict[str, str] = None
+        existing_memories: dict[str, str] | None = None
     ) -> dict[str, str]:
         """
         Extract memories (like height, weight, name, preferences) from conversation
