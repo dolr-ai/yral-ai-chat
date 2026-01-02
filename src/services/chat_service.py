@@ -232,13 +232,17 @@ class ChatService:
                 # No storage service available, use as-is (might be URLs already)
                 media_urls_for_ai = media_urls
 
+        # Get safety settings from influencer metadata (for NSFW characters)
+        safety_settings = influencer.metadata.get("safety_settings")
+        
         # Generate AI response
         try:
             response_text, token_count = await gemini_client.generate_response(
                 user_message=ai_input_content,
                 system_instructions=enhanced_system_instructions,
                 conversation_history=history,
-                media_urls=media_urls_for_ai
+                media_urls=media_urls_for_ai,
+                safety_settings=safety_settings
             )
         except Exception as e:
             logger.error(f"AI response generation failed: {e}")

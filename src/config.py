@@ -31,8 +31,15 @@ class Settings(BaseSettings):
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     jwt_issuer: str = Field(default="yral_auth", alias="JWT_ISSUER")
 
-    # Google Gemini API
-    gemini_api_key: str = Field(..., min_length=1, alias="GEMINI_API_KEY")
+    # OpenRouter API (for Gemini 2.5 Flash - more uncensored)
+    openrouter_api_key: str = Field(..., min_length=1, alias="OPENROUTER_API_KEY")
+    openrouter_model: str = Field(default="google/gemini-2.5-flash", alias="OPENROUTER_MODEL")
+    openrouter_max_tokens: int = Field(default=2048, ge=1, le=8192, alias="OPENROUTER_MAX_TOKENS")
+    openrouter_temperature: float = Field(default=0.7, ge=0.0, le=2.0, alias="OPENROUTER_TEMPERATURE")
+    openrouter_base_url: str = Field(default="https://openrouter.ai/api/v1", alias="OPENROUTER_BASE_URL")
+    
+    # Legacy Google Gemini API (kept for backward compatibility, but not used)
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     gemini_max_tokens: int = Field(default=2048, ge=1, le=8192, alias="GEMINI_MAX_TOKENS")
     gemini_temperature: float = Field(default=0.7, ge=0.0, le=2.0, alias="GEMINI_TEMPERATURE")
