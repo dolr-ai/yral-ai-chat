@@ -11,6 +11,7 @@ from src.db.repositories.message_repository import MessageRepository
 from src.services.chat_service import ChatService
 from src.services.gemini_client import GeminiClient
 from src.services.influencer_service import InfluencerService
+from src.services.nsfw_detection_service import NSFWDetectionService
 from src.services.storage_service import StorageService
 
 
@@ -43,6 +44,12 @@ def get_storage_service() -> StorageService:
     return storage_service
 
 
+def get_nsfw_detection_service() -> NSFWDetectionService:
+    """Get NSFW detection service singleton"""
+    from src.services.nsfw_detection_service import nsfw_detection_service
+    return nsfw_detection_service
+
+
 def get_chat_service(
     influencer_repo: Annotated[InfluencerRepository, Depends(get_influencer_repository)],
     conversation_repo: Annotated[ConversationRepository, Depends(get_conversation_repository)],
@@ -71,6 +78,7 @@ ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 InfluencerServiceDep = Annotated[InfluencerService, Depends(get_influencer_service)]
 StorageServiceDep = Annotated[StorageService, Depends(get_storage_service)]
 GeminiClientDep = Annotated[GeminiClient, Depends(get_gemini_client)]
+NSFWDetectionServiceDep = Annotated[NSFWDetectionService, Depends(get_nsfw_detection_service)]
 ConversationRepositoryDep = Annotated[ConversationRepository, Depends(get_conversation_repository)]
 InfluencerRepositoryDep = Annotated[InfluencerRepository, Depends(get_influencer_repository)]
 MessageRepositoryDep = Annotated[MessageRepository, Depends(get_message_repository)]
