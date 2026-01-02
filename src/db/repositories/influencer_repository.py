@@ -91,7 +91,6 @@ class InfluencerRepository:
     def _row_to_influencer(self, row) -> AIInfluencer:
         """Convert database row to AIInfluencer model"""
 
-        # Parse JSONB fields if they're strings
         personality_traits = row["personality_traits"]
         if isinstance(personality_traits, str):
             personality_traits = json.loads(personality_traits)
@@ -109,16 +108,13 @@ class InfluencerRepository:
         if isinstance(metadata, str):
             metadata = json.loads(metadata)
 
-        # Convert is_active string to InfluencerStatus enum
         is_active_value = row["is_active"]
         if isinstance(is_active_value, str):
             try:
                 is_active_enum = InfluencerStatus(is_active_value)
             except ValueError:
-                # Fallback to ACTIVE if invalid value
                 is_active_enum = InfluencerStatus.ACTIVE
         else:
-            # Handle legacy boolean values (should not happen after migration)
             is_active_enum = InfluencerStatus.ACTIVE if is_active_value else InfluencerStatus.DISCONTINUED
 
         return AIInfluencer(

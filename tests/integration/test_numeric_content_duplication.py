@@ -47,10 +47,7 @@ def test_numeric_content_duplication_bug(client, auth_headers):
         # Verify "hi" message was saved correctly
         assert hi_data["user_message"]["content"] == "hi"
         assert hi_data["assistant_message"]["content"]
-        hi_assistant_response = hi_data["assistant_message"]["content"]
-        print("\n📝 CONVERSATION MESSAGE 1")
-        print("👤 User: 'hi'")
-        print(f"🤖 Bot: {hi_assistant_response[:100]}...")
+        hi_data["assistant_message"]["content"]
         
         # Step 3: Send "fat loss" and wait for response
         fat_loss_response = client.post(
@@ -67,10 +64,7 @@ def test_numeric_content_duplication_bug(client, auth_headers):
         # Verify "fat loss" message was saved correctly
         assert fat_loss_data["user_message"]["content"] == "fat loss"
         assert fat_loss_data["assistant_message"]["content"]
-        fat_loss_assistant_response = fat_loss_data["assistant_message"]["content"]
-        print("\n📝 CONVERSATION MESSAGE 2")
-        print("👤 User: 'fat loss'")
-        print(f"🤖 Bot: {fat_loss_assistant_response[:100]}...")
+        fat_loss_data["assistant_message"]["content"]
         
         # Step 4: Send "70" and analyze response for duplication
         numeric_response = client.post(
@@ -92,12 +86,6 @@ def test_numeric_content_duplication_bug(client, auth_headers):
         assistant_msg = numeric_data["assistant_message"]
         assistant_content = assistant_msg["content"]
         
-        print("\n📝 CONVERSATION MESSAGE 3")
-        print("📤 Sent numeric value: 70 (as JSON number, not string)")
-        print(f"💾 User message saved as: '{user_msg['content']}'")
-        print(f"👤 User: '{user_msg['content']}'")
-        print(f"🤖 Bot (full message):\n   {assistant_content}")
-        print(f"📊 Bot response length: {len(assistant_content)} characters")
         
         # Analyze response for duplication patterns
         # Check for "7070" (exact duplication)
@@ -105,7 +93,7 @@ def test_numeric_content_duplication_bug(client, auth_headers):
         # Check for "70 70" (with space)
         has_70_space_70 = bool(re.search(r"70\s+70", assistant_content))
         # Check for "70kg" or "70 kg" (normal usage - should be OK)
-        has_70_kg = bool(re.search(r"70\s*kg", assistant_content, re.IGNORECASE))
+        bool(re.search(r"70\s*kg", assistant_content, re.IGNORECASE))
         
         # Check if the response mentions "70" in a way that suggests duplication
         # Look for patterns like "7070 kg", "70 70", etc.
@@ -116,11 +104,8 @@ def test_numeric_content_duplication_bug(client, auth_headers):
             r"seventy\s+seventy",  # Word form duplication
         ]
         
-        found_suspicious = False
         for pattern in suspicious_patterns:
             if re.search(pattern, assistant_content, re.IGNORECASE):
-                found_suspicious = True
-                print(f"\n⚠️  WARNING: Found suspicious pattern '{pattern}' in response!")
                 break
         
         # The main assertion: "7070" should NOT appear in the response
@@ -135,9 +120,6 @@ def test_numeric_content_duplication_bug(client, auth_headers):
             f"   Full response: {assistant_content}"
         
         # Log success
-        print("\n✅ No duplication detected in bot response")
-        print(f"   Bot correctly received: '{user_msg['content']}'")
-        print(f"   Bot response (full): {assistant_content}")
         
         # Additional verification: Check that the message was stored correctly in DB
         messages_response = client.get(
@@ -159,7 +141,6 @@ def test_numeric_content_duplication_bug(client, auth_headers):
         assert found_70_message["content"] == "70", \
             f"Message stored in DB as '{found_70_message['content']}' but should be '70'"
         
-        print(f"✅ Message correctly stored in database as: '{found_70_message['content']}'")
         
     finally:
         # Cleanup: Delete the conversation

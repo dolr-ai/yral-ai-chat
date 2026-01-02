@@ -9,7 +9,6 @@ from fastapi.responses import Response as FastAPIResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware
 
-# Request metrics
 http_requests_total = Counter(
     "http_requests_total",
     "Total HTTP requests",
@@ -29,7 +28,6 @@ http_requests_in_progress = Gauge(
     ["method", "endpoint"]
 )
 
-# Database metrics
 db_query_duration_seconds = Histogram(
     "db_query_duration_seconds",
     "Database query duration in seconds",
@@ -42,7 +40,6 @@ db_connections_active = Gauge(
     "Number of active database connections"
 )
 
-# Cache metrics
 cache_hits_total = Counter(
     "cache_hits_total",
     "Total cache hits",
@@ -55,7 +52,6 @@ cache_misses_total = Counter(
     ["cache_key_prefix"]
 )
 
-# AI service metrics
 ai_requests_total = Counter(
     "ai_requests_total",
     "Total AI service requests",
@@ -75,7 +71,6 @@ ai_tokens_used_total = Counter(
     ["model"]
 )
 
-# Rate limiting metrics
 rate_limit_exceeded_total = Counter(
     "rate_limit_exceeded_total",
     "Total rate limit violations",
@@ -93,27 +88,22 @@ class MetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         """Collect metrics for each request"""
 
-        # Skip metrics collection for excluded paths
         if request.url.path in self.excluded_paths:
             return await call_next(request)
 
         method = request.method
         endpoint = request.url.path
 
-        # Normalize endpoint to remove IDs (for better cardinality)
         endpoint = self._normalize_endpoint(endpoint)
 
-        # Track in-progress requests
         http_requests_in_progress.labels(method=method, endpoint=endpoint).inc()
 
-        # Time the request
         start_time = time.time()
 
         try:
             response = await call_next(request)
             status_code = response.status_code
 
-            # Record metrics
             duration = time.time() - start_time
             http_request_duration_seconds.labels(
                 method=method,
@@ -136,7 +126,6 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         Normalize endpoint path to reduce cardinality
         Replace UUIDs and numeric IDs with placeholders
         """
-        # Replace UUIDs
         path = re.sub(
             r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
             "{uuid}",
@@ -144,10 +133,8 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             flags=re.IGNORECASE
         )
 
-        # Replace numeric IDs
-        path = re.sub(r"/\d+", "/{id}", path)
+        return re.sub(r"/\d+", "/{id}", path)
 
-        return path
 
 
 async def metrics_endpoint():

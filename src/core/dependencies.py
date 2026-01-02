@@ -9,12 +9,11 @@ from src.db.repositories.conversation_repository import ConversationRepository
 from src.db.repositories.influencer_repository import InfluencerRepository
 from src.db.repositories.message_repository import MessageRepository
 from src.services.chat_service import ChatService
-from src.services.gemini_client import GeminiClient
+from src.services.gemini_client import GeminiClient, gemini_client
 from src.services.influencer_service import InfluencerService
-from src.services.storage_service import StorageService
+from src.services.storage_service import StorageService, storage_service
 
 
-# Repository Dependencies
 def get_conversation_repository() -> ConversationRepository:
     """Get conversation repository instance"""
     return ConversationRepository()
@@ -30,16 +29,13 @@ def get_message_repository() -> MessageRepository:
     return MessageRepository()
 
 
-# Service Dependencies
 def get_gemini_client() -> GeminiClient:
     """Get Gemini client singleton"""
-    from src.services.gemini_client import gemini_client
     return gemini_client
 
 
 def get_storage_service() -> StorageService:
     """Get storage service singleton"""
-    from src.services.storage_service import storage_service
     return storage_service
 
 
@@ -66,7 +62,6 @@ def get_influencer_service(
     return service
 
 
-# Type aliases for cleaner endpoint signatures
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
 InfluencerServiceDep = Annotated[InfluencerService, Depends(get_influencer_service)]
 StorageServiceDep = Annotated[StorageService, Depends(get_storage_service)]

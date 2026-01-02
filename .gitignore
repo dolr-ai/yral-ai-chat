@@ -27,6 +27,9 @@ env/
 ENV/
 .venv
 
+#adhoc
+adhoc/
+
 # Environment Variables
 .env
 .env.local

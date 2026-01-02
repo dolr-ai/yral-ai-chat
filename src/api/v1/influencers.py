@@ -39,7 +39,6 @@ async def list_influencers(
         offset=offset,
     )
 
-    # Convert to response models
     influencer_responses = [
         InfluencerResponse(
             id=inf.id,

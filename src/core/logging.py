@@ -11,10 +11,8 @@ from src.config import settings
 def setup_logging():
     """Configure loguru logging"""
 
-    # Remove default logger
     logger.remove()
 
-    # Add console logger
     log_format = (
         "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
         "<level>{level: <8}</level> | "
@@ -29,7 +27,6 @@ def setup_logging():
         colorize=True
     )
 
-    # Add file logger
     logger.add(
         "logs/yral_ai_chat.log",
         rotation="100 MB",
@@ -41,7 +38,6 @@ def setup_logging():
     logger.info(f"Logging configured: level={settings.log_level}")
 
 
-# Initialize logging
 setup_logging()
 
 

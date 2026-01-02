@@ -3,11 +3,11 @@ Repository for Conversation operations
 """
 import json
 import uuid
-from typing import Any
+from datetime import datetime
 from uuid import UUID
 
 from src.db.base import db
-from src.models.entities import AIInfluencer, Conversation
+from src.models.entities import AIInfluencer, Conversation, LastMessageInfo, MessageRole
 
 
 class ConversationRepository:
@@ -15,7 +15,6 @@ class ConversationRepository:
 
     async def create(self, user_id: str, influencer_id: UUID) -> Conversation:
         """Create a new conversation"""
-        # Generate UUID for SQLite (no uuid-ossp extension)
         conversation_id = str(uuid.uuid4())
 
         query = """
@@ -25,8 +24,10 @@ class ConversationRepository:
 
         await db.execute(query, conversation_id, user_id, str(influencer_id))
 
-        # Fetch the created conversation
-        return await self.get_by_id(UUID(conversation_id))
+        result = await self.get_by_id(UUID(conversation_id))
+        if result is None:
+            raise RuntimeError(f"Failed to create conversation {conversation_id}")
+        return result
 
     async def get_by_id(self, conversation_id: UUID) -> Conversation | None:
         """Get conversation by ID"""
@@ -102,10 +103,18 @@ class ConversationRepository:
         conversations = []
         for row in rows:
             conv = self._row_to_conversation_with_influencer(row)
-            conv.message_count = row["message_count"]
+            message_count_val = row.get("message_count", 0)
+            if isinstance(message_count_val, int):
+                conv.message_count = message_count_val
+            elif isinstance(message_count_val, str):
+                try:
+                    conv.message_count = int(message_count_val)
+                except (ValueError, TypeError):
+                    conv.message_count = 0
+            else:
+                conv.message_count = 0
 
-            # Get last message
-            last_msg = await self._get_last_message(conv.id)
+            last_msg = await self._get_last_message(UUID(conv.id))
             conv.last_message = last_msg
 
             conversations.append(conv)
@@ -116,29 +125,30 @@ class ConversationRepository:
         """Count conversations for a user"""
         if influencer_id:
             query = "SELECT COUNT(*) FROM conversations WHERE user_id = $1 AND influencer_id = $2"
-            return await db.fetchval(query, user_id, str(influencer_id))
+            result = await db.fetchval(query, user_id, str(influencer_id))
+            return int(result) if result is not None and isinstance(result, (int, str)) else 0
         query = "SELECT COUNT(*) FROM conversations WHERE user_id = $1"
-        return await db.fetchval(query, user_id)
+        result = await db.fetchval(query, user_id)
+        return int(result) if result is not None and isinstance(result, (int, str)) else 0
 
     async def delete(self, conversation_id: UUID) -> int:
         """Delete conversation and return count of deleted messages"""
-        # Count messages first
         count_query = "SELECT COUNT(*) FROM messages WHERE conversation_id = $1"
-        message_count = await db.fetchval(count_query, str(conversation_id))
+        result = await db.fetchval(count_query, str(conversation_id))
+        message_count = int(result) if result is not None else 0
 
-        # Delete conversation (messages will cascade)
         delete_query = "DELETE FROM conversations WHERE id = $1"
         await db.execute(delete_query, str(conversation_id))
 
         return message_count
 
-    async def update_metadata(self, conversation_id: UUID, metadata: dict[str, Any]) -> None:
+    async def update_metadata(self, conversation_id: UUID, metadata: dict[str, object]) -> None:
         """Update conversation metadata"""
         metadata_json = json.dumps(metadata)
         query = "UPDATE conversations SET metadata = $1 WHERE id = $2"
         await db.execute(query, metadata_json, str(conversation_id))
 
-    async def _get_last_message(self, conversation_id: UUID) -> dict[str, Any] | None:
+    async def _get_last_message(self, conversation_id: UUID) -> LastMessageInfo | None:
         """Get last message in conversation"""
         query = """
             SELECT content, role, created_at
@@ -150,16 +160,22 @@ class ConversationRepository:
 
         row = await db.fetchone(query, str(conversation_id))
         if row:
-            return {
-                "content": row["content"],
-                "role": row["role"],
-                "created_at": row["created_at"],
-            }
+            content = row.get("content")
+            role_str = row.get("role")
+            created_at_val = row.get("created_at")
+            
+            role = MessageRole(role_str) if isinstance(role_str, str) else MessageRole.USER
+            created_at = created_at_val if isinstance(created_at_val, datetime) else datetime.now()
+            
+            return LastMessageInfo(
+                content=str(content) if content is not None else None,
+                role=role,
+                created_at=created_at,
+            )
         return None
 
     def _row_to_conversation(self, row) -> Conversation:
         """Convert database row to Conversation model"""
-        # Parse JSONB fields if they're strings
         metadata = row["metadata"]
         if isinstance(metadata, str):
             metadata = json.loads(metadata)
@@ -186,7 +202,6 @@ class ConversationRepository:
         elif not isinstance(suggested_messages, list):
             suggested_messages = []
 
-        # Add influencer basic info
         conversation.influencer = AIInfluencer(
             id=row["inf_id"],
             name=row["name"],

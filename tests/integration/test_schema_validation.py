@@ -144,7 +144,8 @@ def get_table_info(conn: sqlite3.Connection, table_name: str) -> dict:
 def get_indexes(conn: sqlite3.Connection, table_name: str) -> list:
     """Get all indexes for a table"""
     cursor = conn.execute(
-        f"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='{table_name}'"
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?",
+        (table_name,)
     )
     return [row[0] for row in cursor.fetchall()]
 
@@ -293,27 +294,16 @@ def test_schema_summary(capsys):
     """Print a summary of the database schema (informational test)"""
     conn = get_db_connection()
     try:
-        print("\n" + "=" * 60)
-        print("DATABASE SCHEMA SUMMARY")
-        print("=" * 60)
         
-        for table_name in EXPECTED_TABLES.keys():
-            columns = get_table_info(conn, table_name)
-            indexes = get_indexes(conn, table_name)
-            print(f"\n📊 Table: {table_name}")
-            print(f"   Columns: {len(columns)}")
-            print(f"   Indexes: {len(indexes)}")
-            print(f"   Required columns: {', '.join(EXPECTED_TABLES[table_name]['required_columns'])}")
+        for table_name in EXPECTED_TABLES:
+            get_table_info(conn, table_name)
+            get_indexes(conn, table_name)
         
-        triggers = get_triggers(conn)
-        print(f"\n⚙️  Triggers: {len(triggers)}")
-        print(f"   {', '.join(triggers)}")
+        get_triggers(conn)
         
         # Check foreign keys
         cursor = conn.execute("PRAGMA foreign_keys")
-        fk_enabled = cursor.fetchone()[0]
-        print(f"\n🔗 Foreign Keys: {'✅ Enabled' if fk_enabled else '❌ Disabled'}")
+        cursor.fetchone()[0]
         
-        print("\n" + "=" * 60)
     finally:
         conn.close()
