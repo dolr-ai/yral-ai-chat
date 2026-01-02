@@ -31,7 +31,7 @@ class ConversationRepository:
     async def get_by_id(self, conversation_id: UUID) -> Conversation | None:
         """Get conversation by ID"""
         query = """
-            SELECT
+            SELECT 
                 c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                 i.id as inf_id, i.name, i.display_name, i.avatar_url,
                 i.suggested_messages
@@ -46,7 +46,7 @@ class ConversationRepository:
     async def get_existing(self, user_id: str, influencer_id: UUID) -> Conversation | None:
         """Check if conversation already exists between user and influencer"""
         query = """
-            SELECT
+            SELECT 
                 c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                 i.id as inf_id, i.name, i.display_name, i.avatar_url,
                 i.suggested_messages
@@ -68,7 +68,7 @@ class ConversationRepository:
         """List conversations for a user"""
         if influencer_id:
             query = """
-                SELECT
+                SELECT 
                     c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                     i.id as inf_id, i.name, i.display_name, i.avatar_url,
                     i.suggested_messages,
@@ -84,7 +84,7 @@ class ConversationRepository:
             rows = await db.fetch(query, user_id, str(influencer_id), limit, offset)
         else:
             query = """
-                SELECT
+                SELECT 
                     c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                     i.id as inf_id, i.name, i.display_name, i.avatar_url,
                     i.suggested_messages,

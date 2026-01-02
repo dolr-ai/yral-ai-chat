@@ -78,7 +78,7 @@ def auth_headers():
 class RemoteClient:
     """HTTP client wrapper for testing remote APIs - compatible with TestClient interface"""
     def __init__(self, base_url: str):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = base_url.rstrip('/')
         self.session = requests.Session()
     
     def get(self, path: str, **kwargs):
@@ -135,7 +135,7 @@ def ensure_database_migrated():
                     [sys.executable, "scripts/run_migrations.py"],
                     env={**os.environ, "DATABASE_PATH": db_path},
                     capture_output=True,
-                    text=True, check=False
+                    text=True
                 )
                 if result.returncode != 0:
                     print(f"❌ Migration failed: {result.stderr}")

@@ -1,13 +1,13 @@
 """
 Media upload endpoints
 """
-from datetime import UTC, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from loguru import logger
 
 from src.auth.jwt_auth import CurrentUser, get_current_user
-from src.core.dependencies import NSFWDetectionServiceDep, StorageServiceDep
+from src.core.dependencies import StorageServiceDep
 from src.models.responses import MediaUploadResponse
 
 router = APIRouter(prefix="/api/v1/media", tags=["Media"])
@@ -43,10 +43,9 @@ router = APIRouter(prefix="/api/v1/media", tags=["Media"])
 )
 async def upload_media(
     file: UploadFile = File(..., description="File to upload"),
-    type: str = Form(..., pattern="^(image|audio)$", description="Type of media: 'image' or 'audio'"),  # noqa: A002
+    type: str = Form(..., pattern="^(image|audio)$", description="Type of media: 'image' or 'audio'"),
     current_user: CurrentUser = Depends(get_current_user),
-    storage_service: StorageServiceDep = None,
-    nsfw_detection: NSFWDetectionServiceDep = None
+    storage_service: StorageServiceDep = None
 ):
     """
     Upload media file (image or audio)
@@ -64,34 +63,12 @@ async def upload_media(
     # Read file content
     file_content = await file.read()
     file_size = len(file_content)
-    
-    # Ensure filename is not None
-    filename = file.filename or "unknown"
 
     # Validate based on type
     if type == "image":
-        storage_service.validate_image(filename, file_size)
-        
-        # Check for NSFW content before saving
-        try:
-            is_nsfw = await nsfw_detection.check_image(file_content)
-            if is_nsfw:
-                logger.warning(f"NSFW content detected in image uploaded by user {current_user.user_id}")
-                raise HTTPException(
-                    status_code=400,
-                    detail="Image contains inappropriate content and cannot be uploaded"
-                )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"NSFW detection error: {e}")
-            # If detection fails, we block the upload for safety
-            raise HTTPException(
-                status_code=400,
-                detail="Unable to verify image content. Please try again or contact support."
-            ) from e
+        storage_service.validate_image(file.filename, file_size)
     elif type == "audio":
-        storage_service.validate_audio(filename, file_size)
+        storage_service.validate_audio(file.filename, file_size)
     else:
         raise HTTPException(status_code=400, detail="Invalid type. Must be 'image' or 'audio'")
 
@@ -99,7 +76,7 @@ async def upload_media(
     try:
         s3_key, mime_type, file_size = await storage_service.save_file(
             file_content=file_content,
-            filename=filename,
+            filename=file.filename,
             user_id=current_user.user_id
         )
     except Exception as e:
@@ -126,7 +103,7 @@ async def upload_media(
         size=file_size,
         mime_type=mime_type,
         duration_seconds=duration_seconds,
-        uploaded_at=datetime.now(UTC)
+        uploaded_at=datetime.utcnow()
     )
 
 
