@@ -12,6 +12,7 @@ from src.core.background_tasks import (
     update_conversation_stats,
 )
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
+from src.models.entities import Message
 from src.models.requests import CreateConversationRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,
@@ -22,9 +23,45 @@ from src.models.responses import (
     MessageResponse,
     SendMessageResponse,
 )
+from src.services.storage_service import StorageService
 
 security = HTTPBearer()
 router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
+
+
+def _convert_message_to_response(msg: Message, storage_service: StorageService) -> MessageResponse:
+    """Convert Message to MessageResponse with presigned URLs"""
+    presigned_media_urls = []
+    for media_key in msg.media_urls:
+        if media_key:
+            s3_key = storage_service.extract_key_from_url(media_key)
+            try:
+                presigned_url = storage_service.generate_presigned_url(s3_key)
+                presigned_media_urls.append(presigned_url)
+            except Exception as e:
+                logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
+                presigned_media_urls.append(media_key)
+
+    presigned_audio_url = None
+    if msg.audio_url:
+        s3_key = storage_service.extract_key_from_url(msg.audio_url)
+        try:
+            presigned_audio_url = storage_service.generate_presigned_url(s3_key)
+        except Exception as e:
+            logger.warning(f"Failed to generate presigned URL for audio {s3_key}: {e}")
+            presigned_audio_url = msg.audio_url
+
+    return MessageResponse(
+        id=msg.id,
+        role=msg.role,
+        content=msg.content,
+        message_type=msg.message_type,
+        media_urls=presigned_media_urls,
+        audio_url=presigned_audio_url,
+        audio_duration_seconds=msg.audio_duration_seconds,
+        token_count=msg.token_count,
+        created_at=msg.created_at,
+    )
 
 
 @router.post(
@@ -99,41 +136,10 @@ async def create_conversation(
             order="desc",
         )
         if recent_messages_list:
-            recent_messages = []
-            for msg in recent_messages_list:
-                presigned_media_urls = []
-                for media_key in msg.media_urls:
-                    if media_key:
-                        s3_key = storage_service.extract_key_from_url(media_key)
-                        try:
-                            presigned_url = storage_service.generate_presigned_url(s3_key)
-                            presigned_media_urls.append(presigned_url)
-                        except Exception as e:
-                            logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
-                            presigned_media_urls.append(media_key)
-
-                presigned_audio_url = None
-                if msg.audio_url:
-                    s3_key = storage_service.extract_key_from_url(msg.audio_url)
-                    try:
-                        presigned_audio_url = storage_service.generate_presigned_url(s3_key)
-                    except Exception as e:
-                        logger.warning(f"Failed to generate presigned URL for audio {s3_key}: {e}")
-                        presigned_audio_url = msg.audio_url
-
-                recent_messages.append(
-                    MessageResponse(
-                        id=msg.id,
-                        role=msg.role,
-                        content=msg.content,
-                        message_type=msg.message_type,
-                        media_urls=presigned_media_urls,
-                        audio_url=presigned_audio_url,
-                        audio_duration_seconds=msg.audio_duration_seconds,
-                        token_count=msg.token_count,
-                        created_at=msg.created_at,
-                    )
-                )
+            recent_messages = [
+                _convert_message_to_response(msg, storage_service)
+                for msg in recent_messages_list
+            ]
 
     return ConversationResponse(
         id=conversation.id,
@@ -200,41 +206,10 @@ async def list_conversations(
         )
         recent_messages: list[MessageResponse] | None = None
         if recent_messages_list:
-            recent_messages = []
-            for msg in recent_messages_list:
-                presigned_media_urls = []
-                for media_key in msg.media_urls:
-                    if media_key:
-                        s3_key = storage_service.extract_key_from_url(media_key)
-                        try:
-                            presigned_url = storage_service.generate_presigned_url(s3_key)
-                            presigned_media_urls.append(presigned_url)
-                        except Exception as e:
-                            logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
-                            presigned_media_urls.append(media_key)
-
-                presigned_audio_url = None
-                if msg.audio_url:
-                    s3_key = storage_service.extract_key_from_url(msg.audio_url)
-                    try:
-                        presigned_audio_url = storage_service.generate_presigned_url(s3_key)
-                    except Exception as e:
-                        logger.warning(f"Failed to generate presigned URL for audio {s3_key}: {e}")
-                        presigned_audio_url = msg.audio_url
-
-                recent_messages.append(
-                    MessageResponse(
-                        id=msg.id,
-                        role=msg.role,
-                        content=msg.content,
-                        message_type=msg.message_type,
-                        media_urls=presigned_media_urls,
-                        audio_url=presigned_audio_url,
-                        audio_duration_seconds=msg.audio_duration_seconds,
-                        token_count=msg.token_count,
-                        created_at=msg.created_at,
-                    )
-                )
+            recent_messages = [
+                _convert_message_to_response(msg, storage_service)
+                for msg in recent_messages_list
+            ]
 
         conversation_responses.append(
             ConversationResponse(
@@ -298,41 +273,10 @@ async def list_messages(
         order=order,
     )
 
-    message_responses = []
-    for msg in messages:
-        presigned_media_urls = []
-        for media_key in msg.media_urls:
-            if media_key:
-                s3_key = storage_service.extract_key_from_url(media_key)
-                try:
-                    presigned_url = storage_service.generate_presigned_url(s3_key)
-                    presigned_media_urls.append(presigned_url)
-                except Exception as e:
-                    logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
-                    presigned_media_urls.append(media_key)
-
-        presigned_audio_url = None
-        if msg.audio_url:
-            s3_key = storage_service.extract_key_from_url(msg.audio_url)
-            try:
-                presigned_audio_url = storage_service.generate_presigned_url(s3_key)
-            except Exception as e:
-                logger.warning(f"Failed to generate presigned URL for audio {s3_key}: {e}")
-                presigned_audio_url = msg.audio_url
-
-        message_responses.append(
-            MessageResponse(
-                id=msg.id,
-                role=msg.role,
-                content=msg.content,
-                message_type=msg.message_type,
-                media_urls=presigned_media_urls,
-                audio_url=presigned_audio_url,
-                audio_duration_seconds=msg.audio_duration_seconds,
-                token_count=msg.token_count,
-                created_at=msg.created_at,
-            )
-        )
+    message_responses = [
+        _convert_message_to_response(msg, storage_service)
+        for msg in messages
+    ]
 
     return ListMessagesResponse(
         conversation_id=conversation_id,
@@ -419,42 +363,9 @@ async def send_message(
         user_id=current_user.user_id,
     )
 
-    def _convert_message_to_response(msg):
-        presigned_media_urls = []
-        for media_key in msg.media_urls:
-            if media_key:
-                s3_key = storage_service.extract_key_from_url(media_key)
-                try:
-                    presigned_url = storage_service.generate_presigned_url(s3_key)
-                    presigned_media_urls.append(presigned_url)
-                except Exception as e:
-                    logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
-                    presigned_media_urls.append(media_key)
-
-        presigned_audio_url = None
-        if msg.audio_url:
-            s3_key = storage_service.extract_key_from_url(msg.audio_url)
-            try:
-                presigned_audio_url = storage_service.generate_presigned_url(s3_key)
-            except Exception as e:
-                logger.warning(f"Failed to generate presigned URL for audio {s3_key}: {e}")
-                presigned_audio_url = msg.audio_url
-
-        return MessageResponse(
-            id=msg.id,
-            role=msg.role,
-            content=msg.content,
-            message_type=msg.message_type,
-            media_urls=presigned_media_urls,
-            audio_url=presigned_audio_url,
-            audio_duration_seconds=msg.audio_duration_seconds,
-            token_count=msg.token_count,
-            created_at=msg.created_at,
-        )
-
     return SendMessageResponse(
-        user_message=_convert_message_to_response(user_msg),
-        assistant_message=_convert_message_to_response(assistant_msg),
+        user_message=_convert_message_to_response(user_msg, storage_service),
+        assistant_message=_convert_message_to_response(assistant_msg, storage_service),
     )
 
 
