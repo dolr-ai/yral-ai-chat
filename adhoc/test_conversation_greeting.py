@@ -14,7 +14,6 @@ import base64
 import json
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 import requests
@@ -213,7 +212,7 @@ def main():
     user_id = args.user_id or f"test_user_{int(time.time())}"
     token = generate_test_token(user_id=user_id)
     print(f"   ✅ User ID: {user_id}")
-    print(f"   ✅ Token generated (expires in 1 hour)")
+    print("   ✅ Token generated (expires in 1 hour)")
     print()
 
     # Step 2: Get influencer ID
@@ -264,13 +263,12 @@ def main():
     print("=" * 70)
 
     message_count = conversation_data.get("message_count", 0)
-    greeting_message = conversation_data.get("greeting_message")
-    recent_messages = conversation_data.get("recent_messages")
+    recent_messages = conversation_data.get("recent_messages", [])
 
     if message_count > 1:
         print(f"ℹ️  This conversation already existed with {message_count} messages.")
         print("   For existing conversations with >1 message, the API returns")
-        print("   'recent_messages' instead of 'greeting_message'.")
+        print("   'recent_messages' array with the last 10 messages.")
         print()
         if recent_messages:
             print(f"   📨 Found {len(recent_messages)} recent messages")
@@ -282,8 +280,9 @@ def main():
         print()
         print("   💡 To test greeting message creation, use a unique user_id:")
         print(f"      python3 {Path(__file__).name} --user-id unique_user_{int(time.time())}")
-    elif greeting_message:
-        print("✅ SUCCESS: Greeting message IS returned!")
+    elif message_count == 1 and recent_messages and len(recent_messages) >= 1:
+        greeting_message = recent_messages[0]
+        print("✅ SUCCESS: Greeting message IS returned in recent_messages!")
         print("   (This is a NEW conversation)")
         print()
         print("Greeting Message Details:")
@@ -311,7 +310,7 @@ def main():
         print("Possible reasons:")
         print("   - Influencer does not have an initial_greeting configured")
         print("   - Error occurred during greeting creation")
-        print("   - Conversation already existed but message_count is 0 or 1")
+        print("   - Conversation already existed but message_count is 0")
 
     print()
 
@@ -338,7 +337,7 @@ def main():
         print("ℹ️  RESULT: Conversation already existed with multiple messages.")
         print("   The greeting message feature appears to be working (check recent_messages).")
         print("   For a clean test, use a unique user_id to create a new conversation.")
-    elif greeting_message:
+    elif message_count == 1 and recent_messages and len(recent_messages) >= 1:
         print("🎉 RESULT: Greeting message feature is working correctly!")
     else:
         print("⚠️  RESULT: No greeting message found - check the reasons above")
@@ -360,7 +359,7 @@ def main():
     try:
         delete_result = delete_conversation(args.base_url, token, conversation_id)
         deleted_count = delete_result.get("deleted_messages_count", 0)
-        print(f"   ✅ Conversation deleted successfully!")
+        print("   ✅ Conversation deleted successfully!")
         print(f"   ✅ Deleted {deleted_count} message(s)")
         print()
     except Exception as e:
@@ -375,7 +374,7 @@ def main():
         new_conversation_id = new_conversation_data.get("id")
         new_message_count = new_conversation_data.get("message_count", 0)
         new_user_id = new_conversation_data.get("user_id")
-        print(f"   ✅ New conversation created successfully!")
+        print("   ✅ New conversation created successfully!")
         print(f"   ✅ Conversation ID: {new_conversation_id}")
         print(f"   ✅ User ID: {new_user_id} (same user)")
         print(f"   ✅ Message Count: {new_message_count}")
@@ -391,14 +390,9 @@ def main():
     print("=" * 70)
     print("📊 Test 1: POST /api/v1/chat/conversations")
     print("=" * 70)
-    post_greeting = new_conversation_data.get("greeting_message")
     post_recent = new_conversation_data.get("recent_messages", [])
     
-    if post_greeting:
-        print("✅ SUCCESS: greeting_message field is present")
-        print(f"   Role: {post_greeting.get('role')}")
-        print(f"   Content preview: {post_greeting.get('content', '')[:80]}...")
-    elif post_recent and len(post_recent) > 0:
+    if post_recent and len(post_recent) > 0:
         first_msg = post_recent[0]
         if first_msg.get("role") == "assistant":
             print("✅ SUCCESS: greeting message found in recent_messages")
@@ -407,7 +401,7 @@ def main():
         else:
             print("⚠️  WARNING: recent_messages exists but first message is not assistant")
     else:
-        print("❌ FAIL: No greeting message found in POST response")
+        print("❌ FAIL: No greeting message found in recent_messages")
     print()
 
     # Step 4: Test GET /conversations endpoint
@@ -426,7 +420,7 @@ def main():
                 break
         
         if found_conv:
-            print(f"✅ Found conversation in list")
+            print("✅ Found conversation in list")
             conv_message_count = found_conv.get("message_count", 0)
             conv_recent = found_conv.get("recent_messages", [])
             print(f"   Message Count: {conv_message_count}")
@@ -458,7 +452,7 @@ def main():
         messages = messages_data.get("messages", [])
         total_messages = messages_data.get("total", 0)
         
-        print(f"✅ Retrieved messages successfully")
+        print("✅ Retrieved messages successfully")
         print(f"   Total messages: {total_messages}")
         print(f"   Messages in response: {len(messages)}")
         

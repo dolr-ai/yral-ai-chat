@@ -6,14 +6,17 @@ from fastapi.security import HTTPBearer
 from loguru import logger
 
 from src.auth.jwt_auth import CurrentUser, get_current_user
+from src.core.background_tasks import (
+    invalidate_cache_for_user,
+    log_ai_usage,
+    update_conversation_stats,
+)
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
-from src.models.entities import MessageRole
 from src.models.requests import CreateConversationRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,
     DeleteConversationResponse,
     InfluencerBasicInfo,
-    LastMessageInfo,
     ListConversationsResponse,
     ListMessagesResponse,
     MessageResponse,
@@ -34,12 +37,12 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
     description="""
     Create a new conversation with an AI influencer.
     
-    If a conversation already exists between the user and influencer, 
+    If a conversation already exists between the user and influencer,
     returns the existing conversation instead of creating a new one.
     
     **Response includes:**
-    - For new conversations: `greeting_message` if the influencer has an initial greeting
-    - For existing conversations with message_count > 1: `recent_messages` (last 10 messages, newest first)
+    - `recent_messages` array containing the last 10 messages (newest first) when message_count >= 1
+    - For new conversations, the greeting message (if any) is included in `recent_messages`
     
     **Authentication required**: JWT token in Authorization header
     """,
@@ -74,7 +77,7 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 )
 async def create_conversation(
     request: CreateConversationRequest,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008  # noqa: B008
     chat_service: ChatServiceDep = None,
     message_repo: MessageRepositoryDep = None,
     storage_service: StorageServiceDep = None,
@@ -85,79 +88,10 @@ async def create_conversation(
         influencer_id=request.influencer_id,
     )
 
-    # If this is a brand new conversation, try to get the greeting message first
-    greeting_message = None
-    if is_new and conversation.influencer and conversation.influencer.initial_greeting:
-        from loguru import logger
-        logger.info(
-            f"New conversation created {conversation.id}. "
-            f"Fetching greeting message. initial_greeting exists: {bool(conversation.influencer.initial_greeting)}"
-        )
-        # For new conversations, fetch the greeting message directly
-        # This handles cases where message_count might be 0 due to timing
-        messages = await message_repo.list_by_conversation(
-            conversation_id=conversation.id,
-            limit=1,
-            offset=0,
-            order="desc",
-        )
-        logger.info(f"Fetched {len(messages)} messages for new conversation {conversation.id}")
-        if messages:
-            msg = messages[0]
-            logger.info(
-                f"First message: role={msg.role}, content_preview={msg.content[:50] if msg.content else 'None'}..."
-            )
-            # Verify it's the greeting (assistant role, matches initial_greeting)
-            if msg.role == MessageRole.ASSISTANT:
-                greeting_message = LastMessageInfo(
-                    content=msg.content,
-                    role=msg.role,
-                    created_at=msg.created_at,
-                )
-                logger.info(f"✅ Greeting message found and added to response for conversation {conversation.id}")
-            else:
-                logger.warning(
-                    f"First message is not assistant role: {msg.role} for conversation {conversation.id}"
-                )
-        # If no messages found but we have initial_greeting, log a warning
-        elif conversation.influencer.initial_greeting:
-            logger.warning(
-                f"⚠️ Initial greeting should exist for conversation {conversation.id} "
-                f"but no messages found. initial_greeting: {conversation.influencer.initial_greeting[:50]}..."
-            )
-
-    # Get message count (recalculate after fetching greeting to ensure accuracy)
     message_count = await message_repo.count_by_conversation(conversation.id)
     
-    # If we found a greeting but count is still 0, set it to 1
-    # This handles race conditions where the count query runs before the greeting is visible
-    if greeting_message and message_count == 0:
-        from loguru import logger
-        logger.warning(
-            f"Greeting message found but message_count is 0 for conversation {conversation.id}. "
-            f"Setting message_count to 1."
-        )
-        message_count = 1
-    
-    # Fallback: if message_count is 1 and we haven't fetched greeting yet, try to get it
-    if not greeting_message and message_count == 1:
-        messages = await message_repo.list_by_conversation(
-            conversation_id=conversation.id,
-            limit=1,
-            offset=0,
-            order="desc",
-        )
-        if messages:
-            msg = messages[0]
-            greeting_message = LastMessageInfo(
-                content=msg.content,
-                role=msg.role,
-                created_at=msg.created_at,
-            )
-
-    # Fetch recent messages (last 10) if message_count > 1
     recent_messages: list[MessageResponse] | None = None
-    if message_count > 1:
+    if message_count >= 1:
         recent_messages_list = await message_repo.list_by_conversation(
             conversation_id=conversation.id,
             limit=10,
@@ -167,21 +101,18 @@ async def create_conversation(
         if recent_messages_list:
             recent_messages = []
             for msg in recent_messages_list:
-                # Convert storage keys to presigned URLs for media
                 presigned_media_urls = []
                 for media_key in msg.media_urls:
                     if media_key:
-                        # Extract key from URL if it's an old public URL (backward compat)
                         s3_key = storage_service.extract_key_from_url(media_key)
                         try:
                             presigned_url = storage_service.generate_presigned_url(s3_key)
                             presigned_media_urls.append(presigned_url)
                         except Exception as e:
-                            # Log error but continue - don't break the response
                             logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
-                            presigned_media_urls.append(media_key)  # Fallback to original
+                            presigned_media_urls.append(media_key)
 
-                # Convert audio storage key to presigned URL
+                presigned_audio_url = None
                 presigned_audio_url = None
                 if msg.audio_url:
                     s3_key = storage_service.extract_key_from_url(msg.audio_url)
@@ -189,7 +120,7 @@ async def create_conversation(
                         presigned_audio_url = storage_service.generate_presigned_url(s3_key)
                     except Exception as e:
                         logger.warning(f"Failed to generate presigned URL for audio {s3_key}: {e}")
-                        presigned_audio_url = msg.audio_url  # Fallback to original
+                        presigned_audio_url = msg.audio_url
 
                 recent_messages.append(
                     MessageResponse(
@@ -220,10 +151,8 @@ async def create_conversation(
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         message_count=message_count,
-        greeting_message=greeting_message,
         recent_messages=recent_messages,
     )
-
 
 @router.get(
     "/conversations",
@@ -243,7 +172,7 @@ async def list_conversations(
     limit: int = Query(default=20, ge=1, le=100, description="Number of conversations to return"),
     offset: int = Query(default=0, ge=0, description="Number of conversations to skip"),
     influencer_id: str | None = Query(default=None, description="Filter by specific influencer ID"),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
     chat_service: ChatServiceDep = None,
     message_repo: MessageRepositoryDep = None,
     storage_service: StorageServiceDep = None,
@@ -260,12 +189,10 @@ async def list_conversations(
         offset=offset,
     )
 
-    # Convert to response models, including last 10 messages per conversation
     conversation_responses: list[ConversationResponse] = []
     for conv in conversations:
         msg_count = conv.message_count or 0
 
-        # Fetch up to the last 10 messages for this conversation (newest first)
         recent_messages_list = await message_repo.list_by_conversation(
             conversation_id=conv.id,
             limit=10,
@@ -276,21 +203,18 @@ async def list_conversations(
         if recent_messages_list:
             recent_messages = []
             for msg in recent_messages_list:
-                # Convert storage keys to presigned URLs for media
                 presigned_media_urls = []
                 for media_key in msg.media_urls:
                     if media_key:
-                        # Extract key from URL if it's an old public URL (backward compat)
                         s3_key = storage_service.extract_key_from_url(media_key)
                         try:
                             presigned_url = storage_service.generate_presigned_url(s3_key)
                             presigned_media_urls.append(presigned_url)
                         except Exception as e:
-                            # Log error but continue - don't break the response
                             logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
-                            presigned_media_urls.append(media_key)  # Fallback to original
+                            presigned_media_urls.append(media_key)
 
-                # Convert audio storage key to presigned URL
+                presigned_audio_url = None
                 presigned_audio_url = None
                 if msg.audio_url:
                     s3_key = storage_service.extract_key_from_url(msg.audio_url)
@@ -298,7 +222,7 @@ async def list_conversations(
                         presigned_audio_url = storage_service.generate_presigned_url(s3_key)
                     except Exception as e:
                         logger.warning(f"Failed to generate presigned URL for audio {s3_key}: {e}")
-                        presigned_audio_url = msg.audio_url  # Fallback to original
+                        presigned_audio_url = msg.audio_url
 
                 recent_messages.append(
                     MessageResponse(
@@ -363,7 +287,7 @@ async def list_messages(
     limit: int = Query(default=50, ge=1, le=200, description="Number of messages to return"),
     offset: int = Query(default=0, ge=0, description="Number of messages to skip"),
     order: str = Query(default="desc", pattern="^(asc|desc)$", description="Sort order: 'asc' or 'desc'"),
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
     chat_service: ChatServiceDep = None,
     storage_service: StorageServiceDep = None,
 ):
@@ -380,24 +304,19 @@ async def list_messages(
         order=order,
     )
 
-    # Convert to response models, converting storage keys to presigned URLs
     message_responses = []
     for msg in messages:
-        # Convert storage keys to presigned URLs for media
         presigned_media_urls = []
         for media_key in msg.media_urls:
             if media_key:
-                # Extract key from URL if it's an old public URL (backward compat)
                 s3_key = storage_service.extract_key_from_url(media_key)
                 try:
                     presigned_url = storage_service.generate_presigned_url(s3_key)
                     presigned_media_urls.append(presigned_url)
                 except Exception as e:
-                    # Log error but continue - don't break the response
                     logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
-                    presigned_media_urls.append(media_key)  # Fallback to original
+                    presigned_media_urls.append(media_key)
 
-        # Convert audio storage key to presigned URL
         presigned_audio_url = None
         if msg.audio_url:
             s3_key = storage_service.extract_key_from_url(msg.audio_url)
@@ -440,7 +359,7 @@ async def list_messages(
     
     Supports multiple message types:
     - **TEXT**: Plain text messages
-    - **IMAGE**: Image-only messages  
+    - **IMAGE**: Image-only messages
     - **MULTIMODAL**: Text with images
     - **AUDIO**: Voice/audio messages
     
@@ -462,7 +381,7 @@ async def send_message(
     conversation_id: str,
     request: SendMessageRequest,
     background_tasks: BackgroundTasks,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
     chat_service: ChatServiceDep = None,
     storage_service: StorageServiceDep = None,
 ):
@@ -487,13 +406,6 @@ async def send_message(
         audio_duration_seconds=request.audio_duration_seconds,
     )
 
-    # Add background tasks for non-critical operations
-    from src.core.background_tasks import (
-        invalidate_cache_for_user,
-        log_ai_usage,
-        update_conversation_stats,
-    )
-
     if assistant_msg.token_count:
         background_tasks.add_task(
             log_ai_usage,
@@ -513,7 +425,6 @@ async def send_message(
         user_id=current_user.user_id,
     )
 
-    # Helper function to convert message media to presigned URLs
     def _convert_message_to_response(msg):
         presigned_media_urls = []
         for media_key in msg.media_urls:
@@ -570,7 +481,7 @@ async def send_message(
 )
 async def delete_conversation(
     conversation_id: str,
-    current_user: CurrentUser = Depends(get_current_user),
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
     chat_service: ChatServiceDep = None,
 ):
     """\

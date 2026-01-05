@@ -44,7 +44,7 @@ def test_create_conversation_with_initial_greeting_sets_message_count_and_greeti
     """New conversation with an influencer that has initial_greeting should:
     - create a greeting message
     - return message_count == 1
-    - include greeting_message in the response
+    - include greeting in recent_messages array
     """
     # Use Ahaan Sharma's influencer ID (known to have initial_greeting)
     influencer_id = "qg2pi-g3xl4-uprdd-macwr-64q7r-plotv-xm3bg-iayu3-rnpux-7ikkz-hqe"
@@ -63,12 +63,18 @@ def test_create_conversation_with_initial_greeting_sets_message_count_and_greeti
     assert "message_count" in data
     assert data["message_count"] == 1
 
-    # 4) greeting_message should be present and structured correctly
-    greeting = data.get("greeting_message")
-    assert greeting is not None
+    # 4) recent_messages should be present and contain the greeting message
+    assert "recent_messages" in data
+    recent_messages = data.get("recent_messages")
+    assert recent_messages is not None
+    assert len(recent_messages) == 1
+    
+    greeting = recent_messages[0]
     assert greeting.get("role") == "assistant"
     assert isinstance(greeting.get("content"), str)
     assert greeting["content"].strip() != ""
+    assert "message_type" in greeting
+    assert "id" in greeting
 
     # 5) created_at of greeting should be a valid ISO timestamp
     assert "created_at" in greeting
@@ -90,8 +96,11 @@ def test_initial_greeting_message_appears_in_conversation_history(client, auth_h
     conversation_data = create_response.json()
     conversation_id = conversation_data["id"]
 
-    # Verify greeting was returned in create response
-    greeting_from_create = conversation_data.get("greeting_message")
+    # Verify greeting was returned in create response in recent_messages
+    recent_messages_from_create = conversation_data.get("recent_messages")
+    assert recent_messages_from_create is not None
+    assert len(recent_messages_from_create) == 1
+    greeting_from_create = recent_messages_from_create[0]
     assert greeting_from_create is not None
     expected_greeting_content = greeting_from_create["content"]
 

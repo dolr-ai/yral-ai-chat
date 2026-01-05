@@ -27,6 +27,9 @@ env/
 ENV/
 .venv
 
+#adhoc
+adhoc/
+
 # Environment Variables
 .env
 .env.local
@@ -86,4 +89,5 @@ gradio-demo/.gradio/
 
 #Addon files
 *.jpg
+*.jpeg
 media_upload.py

@@ -102,6 +102,16 @@ class SendMessageRequest(BaseModel):
             raise ValueError("Invalid message type")
         return v
 
+    @field_validator("content", mode="before")
+    @classmethod
+    def validate_content_before(cls, v):
+        """Convert content to string if it's a number or other type"""
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return str(v)
+        return v
+
     @field_validator("content")
     @classmethod
     def validate_content(cls, v: str | None) -> str:
@@ -128,7 +138,6 @@ class SendMessageRequest(BaseModel):
         audio_url = self.audio_url
         message_type = self.message_type
 
-        # Validate based on message type
         self._validate_text_message(message_type, content)
         self._validate_image_message(message_type, media_urls)
         self._validate_multimodal_message(message_type, media_urls)

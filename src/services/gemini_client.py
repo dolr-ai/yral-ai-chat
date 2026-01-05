@@ -3,9 +3,7 @@ Google Gemini AI Client
 """
 import asyncio
 import json
-import re
 import time
-from typing import Any
 
 import google.generativeai as genai
 import httpx
@@ -14,6 +12,7 @@ from loguru import logger
 from src.config import settings
 from src.core.exceptions import AIServiceException, TranscriptionException
 from src.models.entities import Message, MessageRole, MessageType
+from src.models.internal import GeminiHealth
 
 
 class GeminiClient:
@@ -46,19 +45,17 @@ class GeminiClient:
             Tuple of (response_text, token_count)
         """
         try:
-            # Build conversation context
+            user_message_str = str(user_message) if not isinstance(user_message, str) else user_message
+            
             contents = self._build_system_instructions(system_instructions)
             
-            # Add conversation history
             if conversation_history:
                 history_contents = await self._build_history_contents(conversation_history)
                 contents.extend(history_contents)
             
-            # Add current message
-            current_message = await self._build_current_message(user_message, media_urls)
+            current_message = await self._build_current_message(user_message_str, media_urls)
             contents.append(current_message)
 
-            # Generate response
             response_text, token_count = await self._generate_content(contents)
             
             return response_text, int(token_count)
@@ -90,11 +87,10 @@ class GeminiClient:
             role = "user" if msg.role == MessageRole.USER else "model"
             parts = []
 
-            # Add text content
             if msg.content:
-                parts.append({"text": msg.content})
+                text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
+                parts.append({"text": text_content})
 
-            # Add images from history if available
             if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
                 await self._add_images_to_parts(msg.media_urls[:3], parts, warn_on_error=True)
 
@@ -108,9 +104,9 @@ class GeminiClient:
         current_parts = []
 
         if user_message:
-            current_parts.append({"text": user_message})
+            text_content = str(user_message) if not isinstance(user_message, str) else user_message
+            current_parts.append({"text": text_content})
 
-        # Add current images
         if media_urls:
             await self._add_images_to_parts(media_urls[:5], current_parts, warn_on_error=False)
 
@@ -150,11 +146,12 @@ class GeminiClient:
             generation_config=generation_config
         )
 
-        # Extract response text
         response_text = response.text
+        
+        if response.candidates and response.candidates[0].finish_reason != 1:
+            logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (not STOP)")
 
-        # Estimate token count (rough estimate)
-        token_count = len(response_text.split()) * 1.3  # Approximate
+        token_count = len(response_text.split()) * 1.3
 
         logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens")
 
@@ -173,10 +170,8 @@ class GeminiClient:
         try:
             logger.info(f"Transcribing audio from {audio_url}")
 
-            # Download audio file
             audio_data = await self._download_audio(audio_url)
 
-            # Use Gemini to transcribe (run in thread pool to avoid blocking event loop)
             prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
 
             response = await asyncio.to_thread(
@@ -195,7 +190,7 @@ class GeminiClient:
         else:
             return transcription
 
-    async def _download_image(self, url: str) -> dict[str, Any]:
+    async def _download_image(self, url: str) -> dict[str, object]:
         """Download and encode image for Gemini"""
         try:
             response = await self.http_client.get(url)
@@ -212,7 +207,7 @@ class GeminiClient:
                 "data": image_data
             }
 
-    async def _download_audio(self, url: str) -> dict[str, Any]:
+    async def _download_audio(self, url: str) -> dict[str, object]:
         """Download and encode audio for Gemini"""
         try:
             response = await self.http_client.get(url)
@@ -228,6 +223,28 @@ class GeminiClient:
                 "mime_type": mime_type,
                 "data": audio_data
             }
+
+    def _extract_json_from_response(self, response_text: str) -> dict:
+        """Extract JSON object from response text, handling nested braces"""
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            brace_count = 0
+            start_idx = -1
+            for i, char in enumerate(response_text):
+                if char == "{":
+                    if brace_count == 0:
+                        start_idx = i
+                    brace_count += 1
+                elif char == "}":
+                    brace_count -= 1
+                    if brace_count == 0 and start_idx != -1:
+                        json_str = response_text[start_idx:i+1]
+                        try:
+                            return json.loads(json_str)
+                        except json.JSONDecodeError:
+                            continue
+            return {}
 
     async def extract_memories(
         self,
@@ -249,7 +266,6 @@ class GeminiClient:
         try:
             existing_memories = existing_memories or {}
             
-            # Build prompt to extract memories
             existing_memories_text = ""
             if existing_memories:
                 existing_memories_text = "\n\nCurrent memories:\n" + "\n".join(
@@ -269,7 +285,7 @@ User: {user_message}
 Assistant: {assistant_response}
 {existing_memories_text}
 
-Return ONLY a JSON object with key-value pairs. Use lowercase keys with underscores (e.g., "height", "weight", "name"). 
+Return ONLY a JSON object with key-value pairs. Use lowercase keys with underscores (e.g., "height", "weight", "name").
 If no new information was provided, return an empty object {{}}.
 If information updates an existing memory, use the new value.
 Format: {{"key1": "value1", "key2": "value2"}}"""
@@ -281,72 +297,46 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
             )
             response_text = response.text.strip()
             
-            # Try to extract JSON from response
-            extracted = {}
-            try:
-                # First, try parsing the entire response as JSON
-                extracted = json.loads(response_text)
-            except json.JSONDecodeError:
-                # If that fails, try to find JSON object in the response
-                # Look for content between { and } (handling nested objects)
-                brace_count = 0
-                start_idx = -1
-                for i, char in enumerate(response_text):
-                    if char == '{':
-                        if brace_count == 0:
-                            start_idx = i
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-                        if brace_count == 0 and start_idx != -1:
-                            json_str = response_text[start_idx:i+1]
-                            try:
-                                extracted = json.loads(json_str)
-                                break
-                            except json.JSONDecodeError:
-                                continue
+            extracted = self._extract_json_from_response(response_text)
             
-            # Merge extracted memories with existing ones
             if extracted and isinstance(extracted, dict):
                 existing_memories.update(extracted)
                 logger.info(f"Extracted {len(extracted)} new/updated memories")
-            elif not extracted:
+            else:
                 logger.debug("No new memories extracted from conversation")
                 
             return existing_memories
             
         except Exception as e:
             logger.error(f"Memory extraction failed: {e}")
-            # Return existing memories if extraction fails
             return existing_memories or {}
 
-    async def health_check(self) -> dict:
+    async def health_check(self) -> GeminiHealth:
         """Check Gemini API health"""
         try:
             start = time.time()
 
-            # Simple test request (run in thread pool to avoid blocking event loop)
             await asyncio.to_thread(self.model.generate_content, "Hi")
 
             latency_ms = int((time.time() - start) * 1000)
         except Exception as e:
             logger.error(f"Gemini health check failed: {e}")
-            return {
-                "status": "down",
-                "error": str(e)
-            }
+            return GeminiHealth(
+                status="down",
+                error=str(e),
+                latency_ms=None
+            )
         else:
-            return {
-                "status": "up",
-                "latency_ms": latency_ms
-            }
+            return GeminiHealth(
+                status="up",
+                latency_ms=latency_ms,
+                error=None
+            )
 
     async def close(self):
         """Close HTTP client"""
         await self.http_client.aclose()
 
-
-# Global Gemini client instance
 gemini_client = GeminiClient()
 
 

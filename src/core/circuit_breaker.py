@@ -4,9 +4,10 @@ Circuit breaker pattern implementation for external service calls
 import time
 from collections.abc import Callable
 from enum import Enum
-from typing import Any
 
 from loguru import logger
+
+from src.models.internal import CircuitBreakerState
 
 
 class CircuitState(Enum):
@@ -14,6 +15,10 @@ class CircuitState(Enum):
     CLOSED = "closed"  # Normal operation
     OPEN = "open"  # Failures detected, rejecting calls
     HALF_OPEN = "half_open"  # Testing if service recovered
+
+
+class CircuitBreakerOpenError(Exception):
+    """Raised when circuit breaker is open and rejecting calls"""
 
 
 class CircuitBreaker:
@@ -43,7 +48,7 @@ class CircuitBreaker:
         self.last_failure_time = None
         self.state = CircuitState.CLOSED
 
-    def call(self, func: Callable, *args, **kwargs) -> Any:
+    def call(self, func: Callable, *args, **kwargs) -> object:
         """
         Execute function with circuit breaker protection
         
@@ -56,25 +61,26 @@ class CircuitBreaker:
             Function result
             
         Raises:
-            Exception: If circuit is open or function fails
+            CircuitBreakerOpenError: If circuit is open
+            Exception: If function fails
         """
         if self.state == CircuitState.OPEN:
             if self._should_attempt_reset():
                 self.state = CircuitState.HALF_OPEN
                 logger.info("Circuit breaker entering HALF_OPEN state")
             else:
-                raise Exception("Circuit breaker is OPEN")
+                raise CircuitBreakerOpenError("Circuit breaker is OPEN")
 
         try:
             result = func(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             self._on_failure()
-            raise e
+            raise
         else:
             self._on_success()
             return result
 
-    async def call_async(self, func: Callable, *args, **kwargs) -> Any:
+    async def call_async(self, func: Callable, *args, **kwargs) -> object:
         """
         Execute async function with circuit breaker protection
         
@@ -87,20 +93,21 @@ class CircuitBreaker:
             Function result
             
         Raises:
-            Exception: If circuit is open or function fails
+            CircuitBreakerOpenError: If circuit is open
+            Exception: If function fails
         """
         if self.state == CircuitState.OPEN:
             if self._should_attempt_reset():
                 self.state = CircuitState.HALF_OPEN
                 logger.info("Circuit breaker entering HALF_OPEN state")
             else:
-                raise Exception("Circuit breaker is OPEN")
+                raise CircuitBreakerOpenError("Circuit breaker is OPEN")
 
         try:
             result = await func(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             self._on_failure()
-            raise e
+            raise
         else:
             self._on_success()
             return result
@@ -118,13 +125,12 @@ class CircuitBreaker:
         self.failure_count += 1
         self.last_failure_time = time.time()
 
-        if self.failure_count >= self.failure_threshold:
-            if self.state != CircuitState.OPEN:
-                logger.warning(
-                    f"Circuit breaker entering OPEN state "
-                    f"(failures: {self.failure_count})"
-                )
-                self.state = CircuitState.OPEN
+        if self.failure_count >= self.failure_threshold and self.state != CircuitState.OPEN:
+            logger.warning(
+                f"Circuit breaker entering OPEN state "
+                f"(failures: {self.failure_count})"
+            )
+            self.state = CircuitState.OPEN
 
     def _should_attempt_reset(self) -> bool:
         """Check if enough time has passed to attempt recovery"""
@@ -133,16 +139,15 @@ class CircuitBreaker:
 
         return (time.time() - self.last_failure_time) >= self.timeout
 
-    def get_state(self) -> dict:
+    def get_state(self) -> CircuitBreakerState:
         """Get current circuit breaker state"""
-        return {
-            "state": self.state.value,
-            "failure_count": self.failure_count,
-            "last_failure_time": self.last_failure_time
-        }
+        return CircuitBreakerState(
+            state=self.state.value,
+            failure_count=self.failure_count,
+            last_failure_time=self.last_failure_time
+        )
 
 
-# Global circuit breakers for external services
 gemini_circuit_breaker = CircuitBreaker(
     failure_threshold=3,
     timeout=60,
