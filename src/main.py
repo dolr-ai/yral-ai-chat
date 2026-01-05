@@ -47,11 +47,9 @@ def get_sentry_environment() -> str | None:
     branch = get_git_branch()
     if branch == "main":
         return "production"
-    # For all other cases (staging, feature branches, etc.), use staging
     return "staging"
 
 
-# Initialize Sentry for error tracking (production and staging)
 is_running_tests = os.getenv("PYTEST_CURRENT_TEST") is not None
 sentry_env = get_sentry_environment()
 
@@ -65,7 +63,6 @@ if not is_running_tests and settings.sentry_dsn and sentry_env:
             release=settings.sentry_release,
             send_default_pii=True,
             integrations=[FastApiIntegration(transaction_style="endpoint")],
-            # Enable debug mode in development to troubleshoot issues
             debug=settings.debug,
         )
         logger.info(f"Sentry initialized for {sentry_env}")
@@ -92,8 +89,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Shutting down...")
     await db.disconnect()
-    # Note: GeminiClient instances are created per request via dependency injection
-    # HTTP clients will be cleaned up automatically by Python's garbage collector
+    # GeminiClient instances and HTTP clients are cleaned up automatically
     logger.info("Shutdown complete")
 
 root_path: str | None = "/staging" if settings.environment == "staging" else None

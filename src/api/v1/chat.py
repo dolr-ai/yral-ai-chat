@@ -113,7 +113,6 @@ async def create_conversation(
                             presigned_media_urls.append(media_key)
 
                 presigned_audio_url = None
-                presigned_audio_url = None
                 if msg.audio_url:
                     s3_key = storage_service.extract_key_from_url(msg.audio_url)
                     try:
@@ -215,7 +214,6 @@ async def list_conversations(
                             presigned_media_urls.append(media_key)
 
                 presigned_audio_url = None
-                presigned_audio_url = None
                 if msg.audio_url:
                     s3_key = storage_service.extract_key_from_url(msg.audio_url)
                     try:
@@ -291,11 +289,7 @@ async def list_messages(
     chat_service: ChatServiceDep = None,
     storage_service: StorageServiceDep = None,
 ):
-    """
-    Get conversation message history
-    
-    order: 'asc' for oldest first, 'desc' for newest first
-    """
+    """Get conversation message history"""
     messages, total = await chat_service.list_messages(
         conversation_id=conversation_id,
         user_id=current_user.user_id,
@@ -324,7 +318,7 @@ async def list_messages(
                 presigned_audio_url = storage_service.generate_presigned_url(s3_key)
             except Exception as e:
                 logger.warning(f"Failed to generate presigned URL for audio {s3_key}: {e}")
-                presigned_audio_url = msg.audio_url  # Fallback to original
+                presigned_audio_url = msg.audio_url
 
         message_responses.append(
             MessageResponse(
@@ -484,9 +478,7 @@ async def delete_conversation(
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
     chat_service: ChatServiceDep = None,
 ):
-    """\
-    Delete a conversation and all its messages
-    """
+    """Delete a conversation and all its messages"""
     deleted_messages = await chat_service.delete_conversation(
         conversation_id=conversation_id,
         user_id=current_user.user_id,

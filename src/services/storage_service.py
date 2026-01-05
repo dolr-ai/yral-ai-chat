@@ -175,10 +175,7 @@ class StorageService:
     async def get_audio_duration(self, s3_key: str) -> int:
         """
         Get audio file duration in seconds
-        Note: This is a placeholder. In production, use a library like mutagen or ffprobe
-        For S3 storage, you would need to download the file temporarily or use a streaming approach
+        TODO: Implement using mutagen or ffprobe (requires downloading file from S3)
         """
-        # TODO: Implement actual audio duration detection
-        # For now, return 0 and let the client provide duration
         return 0
 

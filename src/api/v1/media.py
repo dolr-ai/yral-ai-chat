@@ -87,8 +87,6 @@ async def upload_media(
         raise HTTPException(status_code=500, detail="Failed to generate access URL for uploaded file") from e
 
     duration_seconds = None
-    if media_type == "audio":
-        duration_seconds = None
 
     return MediaUploadResponse(
         url=presigned_url,

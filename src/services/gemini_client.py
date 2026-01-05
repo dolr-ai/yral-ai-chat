@@ -31,23 +31,18 @@ T = TypeVar("T")
 
 def _is_retryable_http_error(exception: Exception) -> bool:
     """Check if an exception is a retryable HTTP error"""
-    # Check for httpx HTTP errors
     if isinstance(exception, httpx.HTTPStatusError):
         status_code = exception.response.status_code
-        # Retry on rate limits (429) and server errors (5xx)
         return status_code == 429 or (500 <= status_code < 600)
     
-    # Check for httpx request errors (network issues)
     if isinstance(exception, httpx.RequestError | httpx.TimeoutException | httpx.ConnectError):
         return True
     
-    # Check for google-genai API errors
-    # The google-genai library may raise exceptions with status_code attributes
+    # google-genai library may raise exceptions with status_code attributes
     if hasattr(exception, "status_code"):
         status_code = exception.status_code
         return status_code == 429 or (500 <= status_code < 600)
     
-    # Check error message for common retryable patterns
     error_str = str(exception).lower()
     retryable_patterns = [
         "rate limit",
@@ -84,8 +79,7 @@ class GeminiClient:
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.model_name = settings.gemini_model
         self.http_client = httpx.AsyncClient(timeout=30.0)
-        # Initialize tiktoken encoder for accurate token counting
-        # Using cl100k_base (GPT-4 encoding) as a reasonable approximation for modern LLMs
+        # Initialize tiktoken encoder (cl100k_base) for token counting
         try:
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
         except Exception as e:
@@ -221,7 +215,6 @@ class GeminiClient:
         if self.tokenizer:
             token_count = len(self.tokenizer.encode(response_text))
         else:
-            # Fallback to approximate method if tiktoken is not available
             token_count = int(len(response_text.split()) * 1.3)
             logger.warning("Using approximate token counting (tiktoken not available)")
 

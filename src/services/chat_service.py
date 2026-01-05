@@ -58,10 +58,7 @@ class ChatService:
         logger.info(f"Created new conversation: {conversation.id}")
 
         if influencer.initial_greeting:
-            logger.info(
-                f"Creating initial greeting for conversation {conversation.id}. "
-                f"Greeting content length: {len(influencer.initial_greeting)}"
-            )
+            logger.info(f"Creating initial greeting for conversation {conversation.id}")
             try:
                 greeting_msg = await self.message_repo.create(
                     conversation_id=conversation.id,
@@ -69,20 +66,14 @@ class ChatService:
                     content=influencer.initial_greeting,
                     message_type=MessageType.TEXT
                 )
-                logger.info(
-                    f"Created initial greeting message for conversation: {conversation.id}. "
-                    f"Message ID: {greeting_msg.id}, Content preview: {greeting_msg.content[:50]}..."
-                )
+                logger.info(f"Created initial greeting message {greeting_msg.id} for conversation {conversation.id}")
             except Exception as e:
                 logger.error(
-                    f"❌ Failed to create initial greeting message for conversation {conversation.id}: {e}",
+                    f"Failed to create initial greeting message for conversation {conversation.id}: {e}",
                     exc_info=True
                 )
         else:
-            logger.info(
-                f"No initial_greeting configured for influencer {influencer.id} "
-                f"({influencer.display_name}). initial_greeting value: {influencer.initial_greeting}"
-            )
+            logger.info(f"No initial_greeting configured for influencer {influencer.id} ({influencer.display_name})")
 
         conversation.influencer = influencer
         return conversation, True
