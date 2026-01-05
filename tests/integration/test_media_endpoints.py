@@ -158,3 +158,20 @@ def test_upload_image_success(client, auth_headers):
     assert "url" in data
     assert "storage_key" in data
     assert data["type"] == "image"
+    
+    # Verify the file actually exists in Storj by checking S3
+    storage_key = data["storage_key"]
+    try:
+        # Check if object exists in bucket
+        s3_client.head_object(Bucket=bucket_name, Key=storage_key)
+        
+        # Download and verify the file content matches
+        response_obj = s3_client.get_object(Bucket=bucket_name, Key=storage_key)
+        downloaded_data = response_obj["Body"].read()
+        assert downloaded_data == image_data, "Uploaded file content doesn't match original"
+        assert response_obj["ContentType"] == "image/jpeg", "Content type mismatch"
+    except s3_client.exceptions.ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code == "404":
+            raise AssertionError(f"File was not uploaded to Storj - object {storage_key} not found in bucket {bucket_name}")
+        raise
