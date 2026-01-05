@@ -3,6 +3,7 @@ Database connection management using aiosqlite (SQLite)
 Configured for use with Litestream for real-time S3 backups
 """
 import asyncio
+import os
 import re
 import time
 import uuid
@@ -10,8 +11,6 @@ from pathlib import Path
 
 import aiosqlite
 from loguru import logger
-
-import os
 
 from src.config import settings
 from src.models.internal import DatabaseHealth

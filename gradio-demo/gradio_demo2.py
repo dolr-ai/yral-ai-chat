@@ -73,11 +73,11 @@ def start_conversation(influencer_id):
         
         session_state["chat_history"] = chat_history
         
-        status = f"🎉 Started conversation with {session_state['influencer_name']}"
+        status = f"Started conversation with {session_state['influencer_name']}"
         return chat_history, status, gr.update(interactive=True)
         
     except Exception as e:
-        error_msg = f"❌ Error: {e!s}"
+        error_msg = f"Error: {e!s}"
         return [], error_msg, gr.update(interactive=False)
 
 
@@ -114,7 +114,7 @@ def send_message(message, chat_history):
     except Exception as e:
         error_msg = f"Error: {e!s}"
         # Add error to chat
-        chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
+        chat_history.append({"role": "assistant", "content": f"Error: {error_msg}"})
         return chat_history, ""
 
 
@@ -159,7 +159,7 @@ def send_image_message(image, caption, chat_history):
         data = response.json()
         
         # Update chat history
-        user_msg = "🖼️ [Image]"
+        user_msg = "[Image]"
         if caption:
             user_msg += f" {caption}"
         
@@ -172,7 +172,7 @@ def send_image_message(image, caption, chat_history):
         
     except Exception as e:
         error_msg = f"Error uploading image: {e!s}"
-        chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
+        chat_history.append({"role": "assistant", "content": f"Error: {error_msg}"})
         return chat_history, None
 
 
@@ -219,7 +219,7 @@ def send_audio_message(audio, chat_history):
         
         # Update chat history
         transcription = data["user_message"]["content"]
-        chat_history.append({"role": "user", "content": f"🎤 {transcription}"})
+        chat_history.append({"role": "user", "content": f"[Audio] {transcription}"})
         chat_history.append({"role": "assistant", "content": data["assistant_message"]["content"]})
         
         session_state["chat_history"] = chat_history
@@ -228,7 +228,7 @@ def send_audio_message(audio, chat_history):
         
     except Exception as e:
         error_msg = f"Error uploading audio: {e!s}"
-        chat_history.append({"role": "assistant", "content": f"❌ {error_msg}"})
+        chat_history.append({"role": "assistant", "content": f"Error: {error_msg}"})
         return chat_history, None
 
 
@@ -293,11 +293,11 @@ def load_existing_conversation(conversation_id):
         if conv_data.get("messages"):
             session_state["influencer_name"] = "AI"  # Default name
         
-        status = f"✅ Loaded conversation with {conv_data.get('total', 0)} messages"
+        status = f"Loaded conversation with {conv_data.get('total', 0)} messages"
         return chat_history, status, gr.update(interactive=True)
         
     except Exception as e:
-        error_msg = f"❌ Error loading conversation: {e!s}"
+        error_msg = f"Error loading conversation: {e!s}"
         return [], error_msg, gr.update(interactive=False)
 
 
@@ -306,9 +306,9 @@ def check_api_status():
     try:
         response = requests.get(f"{API_BASE_URL}/health", timeout=2)
         response.raise_for_status()
-        return "🟢 API Connected"
+        return "API Connected"
     except Exception as e:
-        return f"🔴 API Offline: {e!s}"
+        return f"API Offline: {e!s}"
 
 
 # Create Gradio Interface
@@ -317,7 +317,7 @@ with gr.Blocks(title="Yral AI Chat", theme=gr.themes.Soft()) as demo:
     # Header
     gr.Markdown(
         """
-        # 💬 Yral AI Chat
+        # Yral AI Chat
         Chat with AI influencers powered by advanced language models
         """
     )
@@ -333,7 +333,7 @@ with gr.Blocks(title="Yral AI Chat", theme=gr.themes.Soft()) as demo:
     # Main chat interface
     with gr.Row():
         with gr.Column(scale=1):
-            gr.Markdown("### 🎯 Select Influencer")
+            gr.Markdown("### Select Influencer")
             
             # Influencer selector
             influencer_dropdown = gr.Dropdown(
@@ -341,19 +341,19 @@ with gr.Blocks(title="Yral AI Chat", theme=gr.themes.Soft()) as demo:
                 choices=get_influencers(),
                 interactive=True
             )
-            start_btn = gr.Button("🚀 Start New Chat", variant="primary", size="lg")
+            start_btn = gr.Button("Start New Chat", variant="primary", size="lg")
             
-            gr.Markdown("### 📂 Or Load Existing Chat")
+            gr.Markdown("### Or Load Existing Chat")
             conversation_dropdown = gr.Dropdown(
                 label="Your Conversations",
                 choices=[],
                 interactive=True
             )
-            load_conv_btn = gr.Button("📥 Load Chat", variant="secondary")
-            refresh_conv_btn = gr.Button("🔄 Refresh List", size="sm")
+            load_conv_btn = gr.Button("Load Chat", variant="secondary")
+            refresh_conv_btn = gr.Button("Refresh List", size="sm")
             
             # Clear button
-            clear_btn = gr.Button("🗑️ Clear Chat", variant="stop")
+            clear_btn = gr.Button("Clear Chat", variant="stop")
             
             # Status message
             status_msg = gr.Textbox(
@@ -368,7 +368,7 @@ with gr.Blocks(title="Yral AI Chat", theme=gr.themes.Soft()) as demo:
                 label="Chat",
                 height=500,
                 show_label=False,
-                avatar_images=(None, "🤖")
+                avatar_images=(None, None)
             )
             
             # Message input
@@ -380,11 +380,11 @@ with gr.Blocks(title="Yral AI Chat", theme=gr.themes.Soft()) as demo:
                     show_label=False,
                     interactive=False
                 )
-                send_btn = gr.Button("📤 Send", variant="primary", scale=1, interactive=False)
+                send_btn = gr.Button("Send", variant="primary", scale=1, interactive=False)
             
             # Multimodal inputs
-            with gr.Accordion("📎 Send Image or Audio", open=False):
-                with gr.Tab("🖼️ Image"):
+            with gr.Accordion("Send Image or Audio", open=False):
+                with gr.Tab("Image"):
                     image_input = gr.Image(
                         label="Upload Image",
                         type="filepath"
@@ -393,14 +393,14 @@ with gr.Blocks(title="Yral AI Chat", theme=gr.themes.Soft()) as demo:
                         label="Caption (optional)",
                         placeholder="Ask a question about the image..."
                     )
-                    send_image_btn = gr.Button("📤 Send Image", variant="primary")
+                    send_image_btn = gr.Button("Send Image", variant="primary")
                 
-                with gr.Tab("🎤 Audio"):
+                with gr.Tab("Audio"):
                     audio_input = gr.Audio(
                         label="Record or Upload Audio",
                         type="filepath"
                     )
-                    send_audio_btn = gr.Button("📤 Send Audio", variant="primary")
+                    send_audio_btn = gr.Button("Send Audio", variant="primary")
     
     # Footer
     gr.Markdown(

@@ -111,11 +111,11 @@ def _verify_influencers(conn: sqlite3.Connection) -> None:
             for _name, _id_val, is_active in influencers:
                 if not isinstance(is_active, int | bool):
                     status_map = {
-                        "active": "✅ ACTIVE",
-                        "coming_soon": "⏳ COMING SOON",
-                        "discontinued": "⏸️  DISCONTINUED"
+                        "active": "ACTIVE",
+                        "coming_soon": "COMING SOON",
+                        "discontinued": "DISCONTINUED"
                     }
-                    status_map.get(is_active, f"❓ {is_active}")
+                    status_map.get(is_active, f"UNKNOWN: {is_active}")
     except sqlite3.OperationalError:
         pass  # Table doesn't exist yet
 

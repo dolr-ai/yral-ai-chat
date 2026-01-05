@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from datetime import datetime  # noqa: TCH003
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -51,13 +50,13 @@ class AIInfluencer(BaseModel):
     description: str | None = None
     category: str | None = None
     system_instructions: str
-    personality_traits: dict[str, Any] = Field(default_factory=dict)
+    personality_traits: dict[str, object] = Field(default_factory=dict)
     initial_greeting: str | None = None
     suggested_messages: list[str] = Field(default_factory=list)
     is_active: InfluencerStatus = InfluencerStatus.ACTIVE
     created_at: datetime
     updated_at: datetime
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
 
     conversation_count: int | None = None
 
@@ -71,7 +70,7 @@ class Conversation(BaseModel):
     influencer_id: str  # Changed from UUID to str to support IC Principal IDs
     created_at: datetime
     updated_at: datetime
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
 
     influencer: AIInfluencer | None = None
     message_count: int | None = None
@@ -98,6 +97,6 @@ class Message(BaseModel):
     audio_duration_seconds: int | None = None
     token_count: int | None = None
     created_at: datetime
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 

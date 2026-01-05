@@ -3,12 +3,11 @@ Response models for API endpoints
 """
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
+from datetime import datetime  # noqa: TCH003
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.models.entities import InfluencerStatus, LastMessageInfo, MessageRole, MessageType
+from src.models.entities import InfluencerStatus, LastMessageInfo, MessageRole, MessageType  # noqa: TCH001
 
 
 class InfluencerBasicInfo(BaseModel):
@@ -200,6 +199,6 @@ class ErrorResponse(BaseModel):
 
     error: str
     message: str
-    details: dict[str, Any] | None = None
+    details: dict[str, object] | None = None
 
 

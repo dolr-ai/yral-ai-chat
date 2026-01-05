@@ -47,6 +47,3 @@ python-dateutil==2.9.0
 # Testing (dev)
 # Note: Testing dependencies moved to requirements-dev.txt
 
-# Type hints
-typing-extensions>=4.12.2,<5.0
-

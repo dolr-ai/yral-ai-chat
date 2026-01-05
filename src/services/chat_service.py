@@ -62,7 +62,7 @@ class ChatService:
                     message_type=MessageType.TEXT
                 )
                 logger.info(
-                    f"✅ Created initial greeting message for conversation: {conversation.id}. "
+                    f"Created initial greeting message for conversation: {conversation.id}. "
                     f"Message ID: {greeting_msg.id}, Content preview: {greeting_msg.content[:50]}..."
                 )
             except Exception as e:

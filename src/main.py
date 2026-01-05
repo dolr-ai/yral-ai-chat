@@ -2,6 +2,7 @@
 Yral AI Chat API - Main Application
 """
 import os
+import shutil
 import subprocess
 from contextlib import asynccontextmanager
 
@@ -28,8 +29,11 @@ from src.services.gemini_client import gemini_client
 def get_git_branch() -> str | None:
     """Get current git branch name"""
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        git_path = shutil.which("git")
+        if not git_path:
+            return None
+        result = subprocess.run(  # noqa: S603
+            [git_path, "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
             text=True,
             check=True,

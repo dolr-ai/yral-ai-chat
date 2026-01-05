@@ -126,10 +126,10 @@ class ConversationRepository:
         if influencer_id:
             query = "SELECT COUNT(*) FROM conversations WHERE user_id = $1 AND influencer_id = $2"
             result = await db.fetchval(query, user_id, str(influencer_id))
-            return int(result) if result is not None and isinstance(result, (int, str)) else 0
+            return int(result) if result is not None and isinstance(result, int | str) else 0
         query = "SELECT COUNT(*) FROM conversations WHERE user_id = $1"
         result = await db.fetchval(query, user_id)
-        return int(result) if result is not None and isinstance(result, (int, str)) else 0
+        return int(result) if result is not None and isinstance(result, int | str) else 0
 
     async def delete(self, conversation_id: UUID) -> int:
         """Delete conversation and return count of deleted messages"""
