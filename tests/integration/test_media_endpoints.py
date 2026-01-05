@@ -2,7 +2,8 @@
 Tests for media upload endpoints
 """
 import io
-from pathlib import Path
+
+import httpx
 
 
 def test_upload_image_invalid_format(client, auth_headers):
@@ -118,10 +119,12 @@ def test_upload_endpoint_requires_auth(client, auth_headers):
 
 def test_upload_image_success(client, auth_headers):
     """Test uploading an image to Storj storage"""
-    test_image_path = Path(__file__).parent / "0040 (2).jpg"
+    test_image_url = "https://yral-profile.hel1.your-objectstorage.com/users/upzvo-glz6l-actg5-izx2o-bsufp-hacvl-e6yeh-wyxl2-qf2gq-c3ndy-2ae/profile-1767637456.jpg"
     
-    with test_image_path.open("rb") as f:
-        image_data = f.read()
+    with httpx.Client() as http_client:
+        image_response = http_client.get(test_image_url, timeout=10.0)
+        image_response.raise_for_status()
+        image_data = image_response.content
     
     response = client.post(
         "/api/v1/media/upload",
