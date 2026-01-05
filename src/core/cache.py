@@ -15,12 +15,7 @@ from src.models.internal import CacheStats
 
 
 class LRUCache:
-    """
-    LRU cache with TTL support and maximum size limit
-    
-    Combines Least Recently Used eviction with time-based expiry.
-    Thread-safe for async operations through OrderedDict.
-    """
+    """LRU cache with TTL support and maximum size limit"""
 
     def __init__(self, max_size: int = 1000, default_ttl: int = 300):
         """

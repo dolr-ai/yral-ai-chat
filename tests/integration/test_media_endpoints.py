@@ -2,6 +2,7 @@
 Tests for media upload endpoints
 """
 import io
+from pathlib import Path
 
 
 def test_upload_image_invalid_format(client, auth_headers):
@@ -113,3 +114,21 @@ def test_upload_endpoint_requires_auth(client, auth_headers):
 
     # Should either succeed or fail with validation error, not server error
     assert response.status_code in [200, 201, 400, 422]
+
+
+def test_upload_image_success(client, auth_headers):
+    """Test uploading an image to Storj storage"""
+    test_image_path = Path(__file__).parent / "0040 (2).jpg"
+    
+    with test_image_path.open("rb") as f:
+        image_data = f.read()
+    
+    response = client.post(
+        "/api/v1/media/upload",
+        data={"type": "image"},
+        files={"file": ("test_image.jpg", io.BytesIO(image_data), "image/jpeg")},
+        headers=auth_headers
+    )
+    
+    assert response.status_code in [200, 201]
+    assert response.json()["url"]

@@ -120,7 +120,7 @@ async def create_conversation(
     storage_service: StorageServiceDep = None,
 ):
     """Create a new conversation with an AI influencer"""
-    conversation, is_new = await chat_service.create_conversation(
+    conversation, _is_new = await chat_service.create_conversation(
         user_id=current_user.user_id,
         influencer_id=request.influencer_id,
     )
@@ -264,7 +264,7 @@ async def list_messages(
     chat_service: ChatServiceDep = None,
     storage_service: StorageServiceDep = None,
 ):
-    """Get conversation message history"""
+    """Get paginated conversation message history"""
     messages, total = await chat_service.list_messages(
         conversation_id=conversation_id,
         user_id=current_user.user_id,
@@ -389,7 +389,7 @@ async def delete_conversation(
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
     chat_service: ChatServiceDep = None,
 ):
-    """Delete a conversation and all its messages"""
+    """Delete a conversation and all associated messages"""
     deleted_messages = await chat_service.delete_conversation(
         conversation_id=conversation_id,
         user_id=current_user.user_id,

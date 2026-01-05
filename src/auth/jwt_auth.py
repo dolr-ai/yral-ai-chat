@@ -22,7 +22,7 @@ class CurrentUser(BaseModel):
 
 
 def _base64url_decode(input_str: str) -> bytes:
-    """Decode a base64url-encoded string, adding padding if necessary."""
+    """Decode a base64url-encoded string, adding padding if necessary"""
     padding = "=" * (-len(input_str) % 4)
     return base64.urlsafe_b64decode(input_str + padding)
 
@@ -37,14 +37,14 @@ def _raise_auth_error(detail: str) -> None:
 
 def decode_jwt(token: str) -> JWTPayload:
     """
-    Decode and validate JWT token from auth.yral.com (base64url decode, validate issuer/expiration/claims)
-
+    Decode and validate JWT token from auth.yral.com
+    
     Args:
         token: JWT token string
-
+        
     Returns:
         Decoded payload
-
+        
     Raises:
         HTTPException: If token is invalid or expired
     """

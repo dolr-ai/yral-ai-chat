@@ -37,19 +37,8 @@ app_start_time = time.time()
 )
 async def health_check():
     """
-    Health check endpoint - fast and cost-effective
-    
-    This endpoint is designed to be fast and cheap. It only checks:
-    - Database connectivity (local check)
-    - Circuit breaker states (in-memory state, no external calls)
-    
-    We intentionally do NOT ping external APIs (Gemini, S3) to avoid:
-    - Slow response times
-    - API costs accumulating from frequent health checks
-    - Rate limiting issues
-    
-    Circuit breaker states provide sufficient indication of service availability
-    based on recent request patterns.
+    Health check endpoint.
+    Checks database connectivity and circuit breaker states (no external API calls).
     """
     services = {}
 
@@ -68,8 +57,6 @@ async def health_check():
             error=str(e)
         )
 
-    # Check circuit breaker state only (fast, in-memory check - no API call)
-    # This avoids costs and latency from pinging external services
     gemini_circuit_state = gemini_circuit_breaker.get_state()
     services["gemini_api"] = ServiceHealth(
         status="up" if gemini_circuit_state.state == "closed" else "degraded",
@@ -112,11 +99,7 @@ async def system_status(
     message_repo: MessageRepositoryDep = None,
     influencer_repo: InfluencerRepositoryDep = None,
 ):
-    """
-    System status endpoint
-    
-    Returns detailed system information and statistics
-    """
+    """Get detailed system statistics including database info, uptime, and usage metrics"""
     db_health = await db.health_check()
     db_stats = DatabaseStats(
         connected=db_health.status == "up",

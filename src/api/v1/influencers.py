@@ -1,6 +1,4 @@
-"""
-AI Influencer endpoints
-"""
+"""AI Influencer endpoints"""
 from fastapi import APIRouter, Query
 
 from src.core.dependencies import InfluencerServiceDep

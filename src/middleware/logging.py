@@ -131,21 +131,21 @@ def configure_logging():
             """Custom sink for JSON logging"""
             record = message.record
             log_data = {
-                "timestamp": record["time"].isoformat(),
-                "level": record["level"].name,
-                "message": record["message"],
-                "module": record["module"],
-                "function": record["function"],
-                "line": record["line"]
+                "timestamp": record.time.isoformat(),
+                "level": record.level.name,
+                "message": record.message,
+                "module": record.module,
+                "function": record.function,
+                "line": record.line
             }
 
-            if record["extra"]:
-                log_data.update(record["extra"])
+            if record.extra:
+                log_data.update(record.extra)
 
-            if record["exception"]:
+            if record.exception:
                 log_data["exception"] = {
-                    "type": record["exception"].type.__name__,
-                    "value": str(record["exception"].value)
+                    "type": record.exception.type.__name__,
+                    "value": str(record.exception.value)
                 }
 
 
