@@ -1,0 +1,16 @@
+# Temporary nginx.conf wrapper for validation
+# This file wraps the site config with proper http context for validation
+# Used by CI/CD to validate nginx configuration
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    # Include rate limiting zones (must be in http context)
+    include /etc/nginx/conf.d/rate-limit-zones.conf;
+    
+    # Include the site configuration
+    include /etc/nginx/conf.d/default.conf;
+}
+
