@@ -97,7 +97,8 @@ def test_create_conversation_with_invalid_token_format(client, test_influencer_i
 def test_create_conversation_with_invalid_token(client, test_influencer_id):
     """Test creating a conversation with an invalid JWT token"""
     # Malformed token that should fail decoding
-    invalid_token = "invalid.token.value"
+    # Note: This is a test token, not a real password/secret
+    invalid_token = "invalid.token.value"  # noqa: S105
 
     response = client.post(
         "/api/v1/chat/conversations",

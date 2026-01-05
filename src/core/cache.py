@@ -8,9 +8,10 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable
 from functools import wraps
-from typing import Any
 
 from loguru import logger
+
+from src.models.internal import CacheStats
 
 
 class LRUCache:
@@ -29,14 +30,14 @@ class LRUCache:
             max_size: Maximum number of items in cache (default: 1000)
             default_ttl: Default time-to-live in seconds (default: 300)
         """
-        self._cache: OrderedDict[str, tuple[Any, float]] = OrderedDict()
+        self._cache: OrderedDict[str, tuple[object, float]] = OrderedDict()
         self._max_size = max_size
         self._default_ttl = default_ttl
         self._hits = 0
         self._misses = 0
         self._evictions = 0
 
-    def get(self, key: str) -> Any | None:
+    def get(self, key: str) -> object | None:
         """
         Get value from cache (LRU: moves to end)
         
@@ -52,18 +53,16 @@ class LRUCache:
 
         value, expiry = self._cache[key]
 
-        # Check if expired
         if time.time() > expiry:
             del self._cache[key]
             self._misses += 1
             return None
 
-        # Move to end (most recently used)
         self._cache.move_to_end(key)
         self._hits += 1
         return value
 
-    def set(self, key: str, value: Any, ttl: int | None = None):
+    def set(self, key: str, value: object, ttl: int | None = None):
         """
         Set value in cache with TTL and LRU eviction
         
@@ -75,15 +74,12 @@ class LRUCache:
         ttl = ttl or self._default_ttl
         expiry = time.time() + ttl
 
-        # If key exists, remove it first to re-add at end
         if key in self._cache:
             del self._cache[key]
 
         self._cache[key] = (value, expiry)
 
-        # Enforce max size with LRU eviction
         while len(self._cache) > self._max_size:
-            # Remove oldest (first) item
             oldest_key = next(iter(self._cache))
             del self._cache[oldest_key]
             self._evictions += 1
@@ -121,26 +117,23 @@ class LRUCache:
 
         return len(expired_keys)
 
-    def get_stats(self) -> dict[str, Any]:
+    def get_stats(self) -> CacheStats:
         """Get cache statistics"""
         now = time.time()
         active_items = sum(1 for _, expiry in self._cache.values() if now <= expiry)
         hit_rate = self._hits / (self._hits + self._misses) if (self._hits + self._misses) > 0 else 0.0
 
-        return {
-            "total_items": len(self._cache),
-            "active_items": active_items,
-            "expired_items": len(self._cache) - active_items,
-            "max_size": self._max_size,
-            "usage_percent": (len(self._cache) / self._max_size * 100) if self._max_size > 0 else 0,
-            "hits": self._hits,
-            "misses": self._misses,
-            "hit_rate": round(hit_rate, 3),
-            "evictions": self._evictions
-        }
+        return CacheStats(
+            total_items=len(self._cache),
+            active_items=active_items,
+            expired_items=len(self._cache) - active_items,
+            max_size=self._max_size,
+            hits=self._hits,
+            misses=self._misses,
+            hit_rate=round(hit_rate, 3),
+            evictions=self._evictions
+        )
 
-
-# Global cache instance with 1000 item limit
 cache = LRUCache(max_size=1000, default_ttl=300)
 
 
@@ -160,7 +153,7 @@ def cache_key(*args, **kwargs) -> str:
         "kwargs": kwargs
     }
     key_str = json.dumps(key_data, sort_keys=True, default=str)
-    return hashlib.md5(key_str.encode()).hexdigest()
+    return hashlib.sha256(key_str.encode()).hexdigest()
 
 
 def cached(ttl: int = 300, key_prefix: str = ""):
@@ -179,16 +172,13 @@ def cached(ttl: int = 300, key_prefix: str = ""):
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Generate cache key
             key = f"{key_prefix}:{func.__name__}:{cache_key(*args, **kwargs)}"
 
-            # Try to get from cache
             cached_value = cache.get(key)
             if cached_value is not None:
                 logger.debug(f"Cache hit: {key}")
                 return cached_value
 
-            # Call function and cache result
             logger.debug(f"Cache miss: {key}")
             result = await func(*args, **kwargs)
             cache.set(key, result, ttl=ttl)
@@ -207,7 +197,7 @@ def invalidate_cache_pattern(pattern: str):
         pattern: Pattern to match (simple prefix matching)
     """
     keys_to_delete = [
-        key for key in cache._cache.keys()
+        key for key in cache._cache
         if key.startswith(pattern)
     ]
 

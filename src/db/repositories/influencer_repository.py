@@ -13,16 +13,16 @@ class InfluencerRepository:
     async def list_all(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
         """List all influencers (both active and inactive)"""
         query = """
-            SELECT 
-                id, name, display_name, avatar_url, description, 
+            SELECT
+                id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
                 is_active, created_at, updated_at, metadata
             FROM ai_influencers
-            ORDER BY CASE is_active 
-                WHEN 'active' THEN 1 
-                WHEN 'coming_soon' THEN 2 
-                WHEN 'discontinued' THEN 3 
+            ORDER BY CASE is_active
+                WHEN 'active' THEN 1
+                WHEN 'coming_soon' THEN 2
+                WHEN 'discontinued' THEN 3
             END, created_at DESC
             LIMIT $1 OFFSET $2
         """
@@ -33,8 +33,8 @@ class InfluencerRepository:
     async def get_by_id(self, influencer_id: str) -> AIInfluencer | None:
         """Get influencer by ID"""
         query = """
-            SELECT 
-                id, name, display_name, avatar_url, description, 
+            SELECT
+                id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
                 is_active, created_at, updated_at, metadata
@@ -48,8 +48,8 @@ class InfluencerRepository:
     async def get_by_name(self, name: str) -> AIInfluencer | None:
         """Get influencer by name"""
         query = """
-            SELECT 
-                id, name, display_name, avatar_url, description, 
+            SELECT
+                id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
                 is_active, created_at, updated_at, metadata
@@ -68,8 +68,8 @@ class InfluencerRepository:
     async def get_with_conversation_count(self, influencer_id: str) -> AIInfluencer | None:
         """Get influencer with conversation count"""
         query = """
-            SELECT 
-                i.id, i.name, i.display_name, i.avatar_url, i.description, 
+            SELECT
+                i.id, i.name, i.display_name, i.avatar_url, i.description,
                 i.category, i.system_instructions, i.personality_traits,
                 i.initial_greeting, i.suggested_messages,
                 i.is_active, i.created_at, i.updated_at, i.metadata,
@@ -91,7 +91,6 @@ class InfluencerRepository:
     def _row_to_influencer(self, row) -> AIInfluencer:
         """Convert database row to AIInfluencer model"""
 
-        # Parse JSONB fields if they're strings
         personality_traits = row["personality_traits"]
         if isinstance(personality_traits, str):
             personality_traits = json.loads(personality_traits)
@@ -109,16 +108,13 @@ class InfluencerRepository:
         if isinstance(metadata, str):
             metadata = json.loads(metadata)
 
-        # Convert is_active string to InfluencerStatus enum
         is_active_value = row["is_active"]
         if isinstance(is_active_value, str):
             try:
                 is_active_enum = InfluencerStatus(is_active_value)
             except ValueError:
-                # Fallback to ACTIVE if invalid value
                 is_active_enum = InfluencerStatus.ACTIVE
         else:
-            # Handle legacy boolean values (should not happen after migration)
             is_active_enum = InfluencerStatus.ACTIVE if is_active_value else InfluencerStatus.DISCONTINUED
 
         return AIInfluencer(
