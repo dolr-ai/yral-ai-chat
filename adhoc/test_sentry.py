@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import sentry_sdk
 from loguru import logger
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from src.config import settings
 
@@ -28,6 +29,7 @@ def init_sentry():
         profiles_sample_rate=settings.sentry_profiles_sample_rate,
         release=settings.sentry_release,
         send_default_pii=True,
+        integrations=[FastApiIntegration(transaction_style="endpoint")],
     )
     logger.info(f"Sentry initialized for environment: {settings.environment}")
     return True
@@ -37,13 +39,13 @@ def trigger_division_by_zero():
     """Trigger a division by zero error to test Sentry"""
     logger.info("About to trigger division by zero error...")
     
-    # Add some context
-    with sentry_sdk.configure_scope() as scope:
-        scope.set_tag("test_type", "division_by_zero")
-        scope.set_context("test_info", {
-            "script": "test_sentry.py",
-            "purpose": "Testing Sentry error tracking"
-        })
+    # Add some context using the modern Sentry SDK API
+    scope = sentry_sdk.get_current_scope()
+    scope.set_tag("test_type", "division_by_zero")
+    scope.set_context("test_info", {
+        "script": "test_sentry.py",
+        "purpose": "Testing Sentry error tracking"
+    })
     
     # Trigger the error
     numerator = 10
