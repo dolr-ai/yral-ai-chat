@@ -10,8 +10,8 @@ from src.models.entities import AIInfluencer
 class InfluencerService:
     """Service for influencer operations"""
 
-    def __init__(self):
-        self.influencer_repo = InfluencerRepository()
+    def __init__(self, influencer_repo: InfluencerRepository):
+        self.influencer_repo = influencer_repo
 
     @cached(ttl=600, key_prefix="influencers")  # Cache for 10 minutes
     async def list_influencers(
@@ -31,8 +31,4 @@ class InfluencerService:
         if not influencer:
             raise NotFoundException("Influencer not found")
         return influencer
-
-
-influencer_service = InfluencerService()
-
 

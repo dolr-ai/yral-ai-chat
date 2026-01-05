@@ -9,8 +9,8 @@ from loguru import logger
 
 from src.config import settings
 from src.core.circuit_breaker import gemini_circuit_breaker, s3_circuit_breaker
+from src.core.dependencies import InfluencerRepositoryDep, MessageRepositoryDep
 from src.db.base import db
-from src.db.repositories import InfluencerRepository, MessageRepository
 from src.models.responses import (
     DatabaseStats,
     HealthResponse,
@@ -29,7 +29,7 @@ app_start_time = time.time()
     response_model=HealthResponse,
     operation_id="healthCheck",
     summary="Health check",
-    description="Check the health status of all services including database, AI, and storage",
+    description="Fast, lightweight health check. Checks database connectivity and circuit breaker states (no external API calls)",
     responses={
         200: {"description": "Health check completed"},
         500: {"description": "Internal server error"}
@@ -37,9 +37,19 @@ app_start_time = time.time()
 )
 async def health_check():
     """
-    Health check endpoint with circuit breaker status
+    Health check endpoint - fast and cost-effective
     
-    Returns status of database, AI services, and circuit breaker states
+    This endpoint is designed to be fast and cheap. It only checks:
+    - Database connectivity (local check)
+    - Circuit breaker states (in-memory state, no external calls)
+    
+    We intentionally do NOT ping external APIs (Gemini, S3) to avoid:
+    - Slow response times
+    - API costs accumulating from frequent health checks
+    - Rate limiting issues
+    
+    Circuit breaker states provide sufficient indication of service availability
+    based on recent request patterns.
     """
     services = {}
 
@@ -58,6 +68,8 @@ async def health_check():
             error=str(e)
         )
 
+    # Check circuit breaker state only (fast, in-memory check - no API call)
+    # This avoids costs and latency from pinging external services
     gemini_circuit_state = gemini_circuit_breaker.get_state()
     services["gemini_api"] = ServiceHealth(
         status="up" if gemini_circuit_state.state == "closed" else "degraded",
@@ -96,7 +108,10 @@ async def health_check():
         500: {"description": "Internal server error"}
     }
 )
-async def system_status():
+async def system_status(
+    message_repo: MessageRepositoryDep = None,
+    influencer_repo: InfluencerRepositoryDep = None,
+):
     """
     System status endpoint
     
@@ -108,9 +123,6 @@ async def system_status():
         pool_size=db_health.pool_size,
         active_connections=db_health.pool_size if db_health.status == "up" else None
     )
-
-    message_repo = MessageRepository()
-    influencer_repo = InfluencerRepository()
 
     try:
         total_conversations = await db.fetchval("SELECT COUNT(*) FROM conversations")

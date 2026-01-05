@@ -37,11 +37,7 @@ def _raise_auth_error(detail: str) -> None:
 
 def decode_jwt(token: str) -> JWTPayload:
     """
-    Decode and validate JWT token coming from auth.yral.com.
-
-    This function:
-    - base64url decodes the header and payload without verifying the signature
-    - validates issuer, expiration, and required claims
+    Decode and validate JWT token from auth.yral.com (base64url decode, validate issuer/expiration/claims)
 
     Args:
         token: JWT token string

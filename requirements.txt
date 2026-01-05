@@ -13,6 +13,7 @@ cryptography==43.0.0
 # AI/ML
 google-genai>=0.2.0
 openai==1.57.0  # For Whisper API (optional)
+tiktoken>=0.5.0  # For accurate token counting
 
 # Media Processing
 pillow==11.0.0
@@ -32,6 +33,7 @@ pydantic==2.10.0
 pydantic-settings==2.6.0
 python-dotenv==1.0.1
 pyyaml==6.0.2
+tenacity>=8.2.0
 
 # Logging & Monitoring
 loguru==0.7.3
