@@ -3,7 +3,9 @@ Tests for media upload endpoints
 """
 import io
 
-import httpx
+from PIL import Image
+
+from src.services.storage_service import StorageService
 
 
 def test_upload_image_invalid_format(client, auth_headers):
@@ -119,12 +121,30 @@ def test_upload_endpoint_requires_auth(client, auth_headers):
 
 def test_upload_image_success(client, auth_headers):
     """Test uploading an image to Storj storage"""
-    test_image_url = "https://yral-profile.hel1.your-objectstorage.com/users/upzvo-glz6l-actg5-izx2o-bsufp-hacvl-e6yeh-wyxl2-qf2gq-c3ndy-2ae/profile-1767637456.jpg"
+    # Ensure the bucket exists before testing
+    storage_service = StorageService()
+    s3_client = storage_service.s3_client
+    bucket_name = storage_service.bucket
     
-    with httpx.Client() as http_client:
-        image_response = http_client.get(test_image_url, timeout=10.0)
-        image_response.raise_for_status()
-        image_data = image_response.content
+    # Check if bucket exists, create if it doesn't
+    try:
+        s3_client.head_bucket(Bucket=bucket_name)
+    except s3_client.exceptions.ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code in ("404", "NoSuchBucket"):
+            # Bucket doesn't exist, try to create it
+            try:
+                s3_client.create_bucket(Bucket=bucket_name)
+            except Exception:
+                # If creation fails (e.g., no permission or bucket naming conflict),
+                # the upload will fail with a clear error message
+                pass
+    
+    # Create a simple test image in memory using Pillow
+    img = Image.new("RGB", (100, 100), color="red")
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format="JPEG")
+    image_data = img_bytes.getvalue()
     
     response = client.post(
         "/api/v1/media/upload",
@@ -134,4 +154,7 @@ def test_upload_image_success(client, auth_headers):
     )
     
     assert response.status_code in [200, 201]
-    assert response.json()["url"]
+    data = response.json()
+    assert "url" in data
+    assert "storage_key" in data
+    assert data["type"] == "image"
