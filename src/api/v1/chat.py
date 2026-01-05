@@ -114,7 +114,7 @@ def _convert_message_to_response(msg: Message, storage_service: StorageService) 
 )
 async def create_conversation(
     request: CreateConversationRequest,
-    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008  # noqa: B008
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
     chat_service: ChatServiceDep = None,
     message_repo: MessageRepositoryDep = None,
     storage_service: StorageServiceDep = None,

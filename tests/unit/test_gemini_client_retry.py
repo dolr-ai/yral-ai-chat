@@ -94,37 +94,47 @@ class TestRetryableErrorDetection:
         assert _is_retryable_http_error(error) is False
 
 
+@pytest.fixture(scope="function")
+async def gemini_client_mock():
+    """Create a GeminiClient instance with mocked genai client for error simulation"""
+    with patch("src.services.gemini_client.genai.Client") as mock_client_class, \
+         patch("src.services.gemini_client.settings") as mock_settings:
+        
+        mock_settings.gemini_api_key = "test-api-key"
+        mock_settings.gemini_model = "gemini-2.5-flash"
+        mock_settings.gemini_max_tokens = 2048
+        mock_settings.gemini_temperature = 0.7
+        
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+        
+        mock_aio_models = AsyncMock()
+        mock_client.aio = MagicMock()
+        mock_client.aio.models = mock_aio_models
+        
+        client = GeminiClient()
+        # Use httpx MockTransport for http_client instead of AsyncMock
+        # This allows more realistic HTTP error simulation
+        from httpx import AsyncClient, MockTransport, Request, Response
+        
+        async def mock_handler(request: Request) -> Response:
+            """Default mock handler - can be overridden in tests"""
+            return Response(200, content=b"mock data", headers={"content-type": "application/octet-stream"})
+        
+        client.http_client = AsyncClient(transport=MockTransport(mock_handler))
+        client._mock_aio_models = mock_aio_models
+        
+        yield client
+        await client.http_client.aclose()
+
+
 class TestGeminiClientRetry:
     """Test retry logic in Gemini client methods"""
 
-    @pytest.fixture(scope="function")
-    def gemini_client(self):
-        """Create a GeminiClient instance with mocked dependencies"""
-        with patch("src.services.gemini_client.genai.Client") as mock_client_class, \
-             patch("src.services.gemini_client.settings") as mock_settings:
-            
-            mock_settings.gemini_api_key = "test-api-key"
-            mock_settings.gemini_model = "gemini-2.5-flash"
-            mock_settings.gemini_max_tokens = 2048
-            mock_settings.gemini_temperature = 0.7
-            
-            mock_client = MagicMock()
-            mock_client_class.return_value = mock_client
-            
-            mock_aio_models = AsyncMock()
-            mock_client.aio = MagicMock()
-            mock_client.aio.models = mock_aio_models
-            
-            client = GeminiClient()
-            client.http_client = AsyncMock()
-            client._mock_aio_models = mock_aio_models
-            
-            yield client
-
     @pytest.mark.asyncio
-    async def test_generate_content_retries_on_rate_limit(self, gemini_client):
+    async def test_generate_content_retries_on_rate_limit(self, gemini_client_mock):
         """Test that _generate_content retries on rate limit (429)"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         mock_response = MagicMock()
         mock_response.text = "Test response"
@@ -142,15 +152,15 @@ class TestGeminiClientRetry:
             mock_response
         ]
         
-        result = await gemini_client._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
+        result = await gemini_client_mock._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
         
         assert result[0] == "Test response"
         assert mock_aio_models.generate_content.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_generate_content_retries_on_server_error(self, gemini_client):
+    async def test_generate_content_retries_on_server_error(self, gemini_client_mock):
         """Test that _generate_content retries on server error (500)"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         mock_response = MagicMock()
         mock_response.text = "Success after retry"
@@ -167,15 +177,15 @@ class TestGeminiClientRetry:
             mock_response
         ]
         
-        result = await gemini_client._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
+        result = await gemini_client_mock._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
         
         assert result[0] == "Success after retry"
         assert mock_aio_models.generate_content.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_generate_content_retries_on_connection_error(self, gemini_client):
+    async def test_generate_content_retries_on_connection_error(self, gemini_client_mock):
         """Test that _generate_content retries on connection error"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         mock_response = MagicMock()
         mock_response.text = "Connected"
@@ -189,15 +199,15 @@ class TestGeminiClientRetry:
             mock_response
         ]
         
-        result = await gemini_client._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
+        result = await gemini_client_mock._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
         
         assert result[0] == "Connected"
         assert mock_aio_models.generate_content.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_generate_content_no_retry_on_client_error(self, gemini_client):
+    async def test_generate_content_no_retry_on_client_error(self, gemini_client_mock):
         """Test that _generate_content does not retry on client errors (400)"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         response_400 = httpx.HTTPStatusError(
             "Bad request",
@@ -208,14 +218,14 @@ class TestGeminiClientRetry:
         mock_aio_models.generate_content.side_effect = response_400
         
         with pytest.raises(httpx.HTTPStatusError):
-            await gemini_client._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
+            await gemini_client_mock._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
         
         assert mock_aio_models.generate_content.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_generate_content_exponential_backoff(self, gemini_client):
+    async def test_generate_content_exponential_backoff(self, gemini_client_mock):
         """Test that exponential backoff is used between retries"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         mock_response = MagicMock()
         mock_response.text = "Success"
@@ -230,32 +240,33 @@ class TestGeminiClientRetry:
         ]
         
         start_time = time.time()
-        await gemini_client._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
+        await gemini_client_mock._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
         elapsed = time.time() - start_time
         
         assert elapsed >= 2.5
         assert mock_aio_models.generate_content.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_generate_content_max_retries_exceeded(self, gemini_client):
+    async def test_generate_content_max_retries_exceeded(self, gemini_client_mock):
         """Test that after max retries, exception is raised"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         timeout_error = TimeoutError("Timeout")
         
         mock_aio_models.generate_content.side_effect = timeout_error
         
         with pytest.raises(TimeoutError):
-            await gemini_client._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
+            await gemini_client_mock._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
         
         assert mock_aio_models.generate_content.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_transcribe_audio_retries(self, gemini_client):
+    async def test_transcribe_audio_retries(self, gemini_client_mock):
         """Test that transcribe_audio retries on errors"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
-        gemini_client._download_audio = AsyncMock(return_value={"mime_type": "audio/mpeg", "data": b"audio"})
+        # Mock _download_audio to return audio data (using fixture's MockTransport)
+        gemini_client_mock._download_audio = AsyncMock(return_value={"mime_type": "audio/mpeg", "data": b"audio"})
         
         mock_response = MagicMock()
         mock_response.text = "Transcribed text"
@@ -271,15 +282,15 @@ class TestGeminiClientRetry:
             mock_response
         ]
         
-        result = await gemini_client.transcribe_audio("http://example.com/audio.mp3")
+        result = await gemini_client_mock.transcribe_audio("http://example.com/audio.mp3")
         
         assert result == "Transcribed text"
         assert mock_aio_models.generate_content.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_extract_memories_retries(self, gemini_client):
+    async def test_extract_memories_retries(self, gemini_client_mock):
         """Test that extract_memories retries on errors"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         mock_response = MagicMock()
         mock_response.text = '{"name": "John", "age": "30"}'
@@ -291,16 +302,16 @@ class TestGeminiClientRetry:
             mock_response
         ]
         
-        result = await gemini_client.extract_memories("Hello", "Hi there", {})
+        result = await gemini_client_mock.extract_memories("Hello", "Hi there", {})
         
         assert "name" in result
         assert result["name"] == "John"
         assert mock_aio_models.generate_content.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_health_check_retries(self, gemini_client):
+    async def test_health_check_retries(self, gemini_client_mock):
         """Test that health_check retries on errors"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         mock_response = MagicMock()
         mock_response.text = "Hi"
@@ -312,22 +323,22 @@ class TestGeminiClientRetry:
             mock_response
         ]
         
-        result = await gemini_client.health_check()
+        result = await gemini_client_mock.health_check()
         
         assert result.status == "up"
         assert result.latency_ms is not None
         assert mock_aio_models.generate_content.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_health_check_fails_after_max_retries(self, gemini_client):
+    async def test_health_check_fails_after_max_retries(self, gemini_client_mock):
         """Test that health_check returns down status after max retries"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         timeout_error = TimeoutError("Timeout")
         
         mock_aio_models.generate_content.side_effect = timeout_error
         
-        result = await gemini_client.health_check()
+        result = await gemini_client_mock.health_check()
         
         assert result.status == "down"
         assert result.error is not None
@@ -335,9 +346,9 @@ class TestGeminiClientRetry:
         assert mock_aio_models.generate_content.call_count == 3
 
     @pytest.mark.asyncio
-    async def test_success_on_first_attempt_no_retry(self, gemini_client):
+    async def test_success_on_first_attempt_no_retry(self, gemini_client_mock):
         """Test that successful calls don't trigger retries"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         mock_response = MagicMock()
         mock_response.text = "Success"
@@ -345,15 +356,15 @@ class TestGeminiClientRetry:
         
         mock_aio_models.generate_content.return_value = mock_response
         
-        result = await gemini_client._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
+        result = await gemini_client_mock._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
         
         assert result[0] == "Success"
         assert mock_aio_models.generate_content.call_count == 1
 
     @pytest.mark.asyncio
-    async def test_retry_logs_warnings(self, gemini_client):
+    async def test_retry_logs_warnings(self, gemini_client_mock):
         """Test that retry attempts are logged"""
-        mock_aio_models = gemini_client._mock_aio_models
+        mock_aio_models = gemini_client_mock._mock_aio_models
         
         mock_response = MagicMock()
         mock_response.text = "Success"
@@ -374,7 +385,7 @@ class TestGeminiClientRetry:
         handler_id = logger.add(capture_log, level="WARNING", format="{message}")
         
         try:
-            await gemini_client._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
+            await gemini_client_mock._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
         finally:
             logger.remove(handler_id)
         

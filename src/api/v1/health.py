@@ -76,7 +76,6 @@ async def health_check():
         error=None if gemini_circuit_state.state == "closed" else f"Circuit breaker {gemini_circuit_state.state}"
     )
 
-    # Check circuit breaker state only (fast, in-memory check - no API call)
     s3_circuit_state = s3_circuit_breaker.get_state()
     services["s3_storage"] = ServiceHealth(
         status="up" if s3_circuit_state.state == "closed" else "degraded",
