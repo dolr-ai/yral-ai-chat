@@ -4,8 +4,9 @@ Google Gemini AI Client
 import json
 import time
 
-import google.generativeai as genai
 import httpx
+from google import genai
+from google.genai import types
 from loguru import logger
 
 from src.config import settings
@@ -19,8 +20,8 @@ class GeminiClient:
 
     def __init__(self):
         """Initialize Gemini client"""
-        genai.configure(api_key=settings.gemini_api_key)
-        self.model = genai.GenerativeModel(settings.gemini_model)
+        self.client = genai.Client(api_key=settings.gemini_api_key)
+        self.model_name = settings.gemini_model
         self.http_client = httpx.AsyncClient(timeout=30.0)
         logger.info(f"Gemini client initialized with model: {settings.gemini_model}")
 
@@ -133,14 +134,13 @@ class GeminiClient:
         """Generate content using Gemini API"""
         logger.info(f"Generating Gemini response with {len(contents)} messages")
 
-        generation_config = genai.types.GenerationConfig(
+        response = await self.client.aio.models.generate_content(
+            model=self.model_name,
+            contents=contents,
+            config=types.GenerateContentConfig(
             max_output_tokens=settings.gemini_max_tokens,
             temperature=settings.gemini_temperature
         )
-
-        response = self.model.generate_content(
-            contents,
-            generation_config=generation_config
         )
 
         response_text = response.text
@@ -171,10 +171,13 @@ class GeminiClient:
 
             prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
 
-            response = self.model.generate_content([
+            response = await self.client.aio.models.generate_content(
+                model=self.model_name,
+                contents=[
                 prompt,
                 {"inline_data": audio_data}
-            ])
+                ]
+            )
 
             transcription = response.text.strip()
             logger.info(f"Audio transcribed: {len(transcription)} characters")
@@ -284,7 +287,10 @@ If no new information was provided, return an empty object {{}}.
 If information updates an existing memory, use the new value.
 Format: {{"key1": "value1", "key2": "value2"}}"""
 
-            response = self.model.generate_content(prompt)
+            response = await self.client.aio.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
             response_text = response.text.strip()
             
             extracted = self._extract_json_from_response(response_text)
@@ -306,7 +312,10 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
         try:
             start = time.time()
 
-            self.model.generate_content("Hi")
+            await self.client.aio.models.generate_content(
+                model=self.model_name,
+                contents="Hi"
+            )
 
             latency_ms = int((time.time() - start) * 1000)
         except Exception as e:
