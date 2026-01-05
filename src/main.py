@@ -2,6 +2,7 @@
 Yral AI Chat API - Main Application
 """
 import os
+import subprocess
 from contextlib import asynccontextmanager
 
 import sentry_sdk
@@ -24,82 +25,46 @@ from src.middleware.versioning import APIVersionMiddleware
 from src.services.gemini_client import gemini_client
 
 
-# Debug function to log when Sentry captures events
-def sentry_before_send(event, hint):
-    """Callback to log when Sentry captures an event"""
+def get_git_branch() -> str | None:
+    """Get current git branch name"""
     try:
-        # Always log that we got an event
-        logger.info(f"✅ Sentry before_send called - event type: {event.get('type', 'unknown')}")
-        
-        # Log environment tag
-        tags = event.get("tags", {})
-        environment = tags.get("environment", "NOT SET")
-        logger.info(f"   Environment tag: {environment}")
-        
-        # Extract exception info if available
-        exc_type = "unknown"
-        if "exception" in event:
-            exc = event.get("exception", {})
-            values = exc.get("values", [])
-            if values and len(values) > 0:
-                exc_type = values[0].get("type", "unknown")
-        
-        message = event.get("message", "N/A")
-        logger.info(f"   Exception type: {exc_type}, Message: {message}")
-        
-        # Log the event ID if available
-        if "event_id" in event:
-            logger.info(f"   Event ID: {event['event_id']}")
-            
-    except Exception as e:
-        logger.error(f"❌ Error in sentry_before_send: {e}", exc_info=True)
-    return event  # Return event to send it, or None to drop it
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=2,
+        )
+        return result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return None
 
-# Only initialize Sentry for production environment to avoid capturing staging/dev/test data
+
+def get_sentry_environment() -> str | None:
+    """Determine Sentry environment based on git branch"""
+    branch = get_git_branch()
+    if branch == "main":
+        return "production"
+    if branch == "staging":
+        return "staging"
+    return None
+
+
+# Initialize Sentry for error tracking (production and staging)
 is_running_tests = os.getenv("PYTEST_CURRENT_TEST") is not None
-if not is_running_tests and settings.sentry_dsn and settings.environment == "production":
+sentry_env = get_sentry_environment()
+
+if not is_running_tests and settings.sentry_dsn and sentry_env:
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
-        environment=settings.sentry_environment,
+        environment=sentry_env,
         traces_sample_rate=settings.sentry_traces_sample_rate,
         profiles_sample_rate=settings.sentry_profiles_sample_rate,
         release=settings.sentry_release,
-        # Add data like request headers and IP for users
-        # See https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
         send_default_pii=True,
-        integrations=[
-            FastApiIntegration(transaction_style="endpoint"),
-        ],
-        before_send=sentry_before_send,
-        # Enable debug mode to see transport logs
-        debug=True,  # Keep enabled to verify events are being sent
+        integrations=[FastApiIntegration(transaction_style="endpoint")],
     )
-    logger.info(f"Sentry initialized for environment: {settings.sentry_environment}")
-    logger.info(f"Sentry DSN configured: {settings.sentry_dsn[:30]}...")
-    logger.info(f"Sentry release: {settings.sentry_release}")
-    
-    # Test Sentry connection with a test message
-    try:
-        # Set additional tags for debugging
-        sentry_sdk.set_tag("deployment", "manual-test")
-        
-        test_event_id = sentry_sdk.capture_message("Sentry integration test - startup", level="error")
-        logger.info(f"✅ Sentry test message sent: event_id={test_event_id}")
-        logger.info(f"   Environment tag: {settings.sentry_environment}")
-        
-        # Flush with longer timeout
-        if sentry_sdk.flush(timeout=5):
-            logger.info("✅ Sentry events flushed successfully")
-        else:
-            logger.warning("⚠️  Sentry flush timed out - events may still be queued")
-    except Exception as e:
-        logger.warning(f"❌ Failed to send Sentry test message: {e}", exc_info=True)
-elif is_running_tests:
-    logger.debug("Sentry disabled during test execution")
-elif settings.sentry_dsn and settings.environment != "production":
-    logger.info(f"Sentry DSN configured but disabled for {settings.environment} environment (production only)")
-else:
-    logger.info("Sentry DSN not configured, error tracking disabled")
+    logger.info(f"Sentry initialized for {sentry_env}")
 
 
 @asynccontextmanager
@@ -243,8 +208,6 @@ async def api_exception_handler(request: Request, exc: BaseAPIException):
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for unhandled exceptions"""
     logger.error(f"Unhandled exception on {request.url.path}: {exc}", exc_info=True)
-    # Note: Sentry automatically captures exceptions via FastAPI integration,
-    # so we don't need to explicitly call capture_exception here
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -277,23 +240,6 @@ async def root():
         "metrics": "/metrics"
     }
 
-@app.get("/sentry-debug", tags=["Debug"])
-async def trigger_error():
-    """
-    Debug endpoint to test Sentry error tracking.
-    
-    This endpoint intentionally triggers a division by zero error
-    to verify that Sentry is capturing exceptions correctly.
-    
-    **Warning**: Only use this in production for initial testing,
-    then consider removing or restricting access.
-    """
-    # Test Sentry with a unique message to verify it's working
-    import sentry_sdk
-    sentry_sdk.capture_message("Test message from /sentry-debug endpoint", level="error")
-    
-    # Also trigger an exception
-    1 / 0  # noqa: B018
 
 
 if __name__ == "__main__":
