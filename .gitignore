@@ -86,5 +86,4 @@ gradio-demo/.gradio/
 
 #Addon files
 *.jpg
-*.jpeg
 media_upload.py

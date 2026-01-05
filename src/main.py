@@ -23,9 +23,7 @@ from src.db.base import db
 from src.middleware.logging import RequestLoggingMiddleware
 
 # Import middleware
-# Rate limiting is now handled by nginx (see nginx/yral-ai-chat.conf)
-# Disabled to avoid duplication and multi-worker issues with in-memory rate limiting
-# from src.middleware.rate_limiter import RateLimitMiddleware
+from src.middleware.rate_limiter import RateLimitMiddleware
 from src.middleware.versioning import APIVersionMiddleware
 from src.services.gemini_client import gemini_client
 
@@ -122,9 +120,8 @@ app.add_middleware(
 )
 
 # Rate limiting middleware
-# Rate limiting is now handled by nginx (see nginx/yral-ai-chat.conf)
-# Disabled to avoid duplication and multi-worker issues with in-memory rate limiting
-# app.add_middleware(RateLimitMiddleware)
+
+app.add_middleware(RateLimitMiddleware)
 
 # Enhanced request logging middleware
 
