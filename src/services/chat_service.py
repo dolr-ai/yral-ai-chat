@@ -8,18 +8,26 @@ from loguru import logger
 from src.core.exceptions import ForbiddenException, NotFoundException
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
 from src.models.entities import Conversation, Message, MessageRole, MessageType
-from src.services.gemini_client import gemini_client
+from src.services.gemini_client import GeminiClient
 from src.services.storage_service import StorageService
 
 
 class ChatService:
     """Service for chat operations"""
 
-    def __init__(self, storage_service: StorageService | None = None):
-        self.influencer_repo = InfluencerRepository()
-        self.conversation_repo = ConversationRepository()
-        self.message_repo = MessageRepository()
+    def __init__(
+        self,
+        gemini_client: GeminiClient,
+        influencer_repo: InfluencerRepository,
+        conversation_repo: ConversationRepository,
+        message_repo: MessageRepository,
+        storage_service: StorageService | None = None,
+    ):
+        self.influencer_repo = influencer_repo
+        self.conversation_repo = conversation_repo
+        self.message_repo = message_repo
         self.storage_service = storage_service
+        self.gemini_client = gemini_client
 
     async def create_conversation(
         self,
@@ -87,7 +95,7 @@ class ChatService:
                 s3_key = self.storage_service.extract_key_from_url(audio_url)
                 audio_url_for_transcription = self.storage_service.generate_presigned_url(s3_key)
             
-            transcription = await gemini_client.transcribe_audio(audio_url_for_transcription)
+            transcription = await self.gemini_client.transcribe_audio(audio_url_for_transcription)
             transcribed_content = f"[Transcribed: {transcription}]"
             logger.info(f"Audio transcribed: {transcription[:100]}...")
             return transcribed_content
@@ -158,7 +166,7 @@ class ChatService:
     ) -> None:
         """Extract and update memories from conversation"""
         try:
-            updated_memories = await gemini_client.extract_memories(
+            updated_memories = await self.gemini_client.extract_memories(
                 user_message=user_message,
                 assistant_response=assistant_response,
                 existing_memories=memories.copy()
@@ -247,7 +255,7 @@ class ChatService:
             media_urls_for_ai = self._convert_media_urls_for_ai(media_urls)
 
         try:
-            response_text, token_count = await gemini_client.generate_response(
+            response_text, token_count = await self.gemini_client.generate_response(
                 user_message=ai_input_content,
                 system_instructions=enhanced_system_instructions,
                 conversation_history=history,
@@ -350,8 +358,4 @@ class ChatService:
         logger.info(f"Deleted conversation {conversation_id} with {deleted_messages} messages")
 
         return deleted_messages
-
-
-chat_service = ChatService()
-
 

@@ -87,14 +87,37 @@ class Database:
 
     def __init__(self):
         # Use test database path if set (for pytest)
-        self.db_path: str = os.getenv("TEST_DATABASE_PATH", settings.database_path)
+        raw_db_path = os.getenv("TEST_DATABASE_PATH", settings.database_path)
+        # Resolve relative paths to absolute paths
+        self.db_path: str = self._resolve_db_path(raw_db_path)
         self._pool: ConnectionPool | None = None
+
+    @staticmethod
+    def _resolve_db_path(db_path: str) -> str:
+        """Resolve relative database path to absolute path based on project root"""
+        # If path is already absolute, return as-is
+        if Path(db_path).is_absolute():
+            return db_path
+        
+        # Check if we're in a Docker container
+        if Path("/app").exists() and Path("/app/migrations").exists():
+            project_root = Path("/app")
+        else:
+            # Local development: resolve relative to this file's parent (src/db) -> project root
+            project_root = Path(__file__).parent.parent.parent
+        
+        # Resolve the relative path against project root
+        resolved_path = (project_root / db_path).resolve()
+        return str(resolved_path)
 
     async def connect(self) -> None:
         """Create database connection pool"""
         try:
             # Re-read db_path in case TEST_DATABASE_PATH was set after __init__
-            self.db_path = os.getenv("TEST_DATABASE_PATH", settings.database_path)
+            raw_db_path = os.getenv("TEST_DATABASE_PATH", settings.database_path)
+            
+            # Resolve relative paths to absolute paths
+            self.db_path = self._resolve_db_path(raw_db_path)
             
             # Don't create directory for in-memory databases
             if self.db_path != ":memory:":

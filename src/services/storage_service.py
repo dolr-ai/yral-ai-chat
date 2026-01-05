@@ -182,7 +182,3 @@ class StorageService:
         # For now, return 0 and let the client provide duration
         return 0
 
-
-storage_service = StorageService()
-
-

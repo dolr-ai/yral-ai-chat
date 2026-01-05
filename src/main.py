@@ -22,7 +22,6 @@ from src.core.metrics import MetricsMiddleware, metrics_endpoint
 from src.db.base import db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
 from src.middleware.versioning import APIVersionMiddleware
-from src.services.gemini_client import gemini_client
 
 
 def get_git_branch() -> str | None:
@@ -93,7 +92,8 @@ async def lifespan(app: FastAPI):
 
     logger.info("Shutting down...")
     await db.disconnect()
-    await gemini_client.close()
+    # Note: GeminiClient instances are created per request via dependency injection
+    # HTTP clients will be cleaned up automatically by Python's garbage collector
     logger.info("Shutdown complete")
 
 root_path: str | None = "/staging" if settings.environment == "staging" else None

@@ -3,16 +3,77 @@ Google Gemini AI Client
 """
 import json
 import time
+from collections.abc import Callable
+from typing import TypeVar
 
 import httpx
+import tiktoken
 from google import genai
 from google.genai import types
 from loguru import logger
+from tenacity import (
+    after_log,
+    before_sleep_log,
+    retry,
+    retry_if_exception,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from src.config import settings
 from src.core.exceptions import AIServiceException, TranscriptionException
 from src.models.entities import Message, MessageRole, MessageType
 from src.models.internal import GeminiHealth
+
+T = TypeVar("T")
+
+
+def _is_retryable_http_error(exception: Exception) -> bool:
+    """Check if an exception is a retryable HTTP error"""
+    # Check for httpx HTTP errors
+    if isinstance(exception, httpx.HTTPStatusError):
+        status_code = exception.response.status_code
+        # Retry on rate limits (429) and server errors (5xx)
+        return status_code == 429 or (500 <= status_code < 600)
+    
+    # Check for httpx request errors (network issues)
+    if isinstance(exception, httpx.RequestError | httpx.TimeoutException | httpx.ConnectError):
+        return True
+    
+    # Check for google-genai API errors
+    # The google-genai library may raise exceptions with status_code attributes
+    if hasattr(exception, "status_code"):
+        status_code = exception.status_code
+        return status_code == 429 or (500 <= status_code < 600)
+    
+    # Check error message for common retryable patterns
+    error_str = str(exception).lower()
+    retryable_patterns = [
+        "rate limit",
+        "too many requests",
+        "service unavailable",
+        "internal server error",
+        "bad gateway",
+        "gateway timeout",
+        "timeout",
+        "connection",
+        "network",
+    ]
+    return any(pattern in error_str for pattern in retryable_patterns)
+
+
+def _gemini_retry_decorator(func: Callable[..., T]) -> Callable[..., T]:
+    """Retry decorator for Gemini API calls with exponential backoff"""
+    return retry(  # type: ignore[return-value]
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=30),
+        retry=retry_if_exception_type(ConnectionError | TimeoutError | httpx.RequestError)
+        | retry_if_exception(_is_retryable_http_error),
+        before_sleep=before_sleep_log(logger, "WARNING"),
+        after=after_log(logger, "INFO"),
+        reraise=True,
+    )(func)
 
 
 class GeminiClient:
@@ -23,14 +84,21 @@ class GeminiClient:
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.model_name = settings.gemini_model
         self.http_client = httpx.AsyncClient(timeout=30.0)
+        # Initialize tiktoken encoder for accurate token counting
+        # Using cl100k_base (GPT-4 encoding) as a reasonable approximation for modern LLMs
+        try:
+            self.tokenizer = tiktoken.get_encoding("cl100k_base")
+        except Exception as e:
+            logger.warning(f"Failed to initialize tiktoken, falling back to approximate counting: {e}")
+            self.tokenizer = None
         logger.info(f"Gemini client initialized with model: {settings.gemini_model}")
 
     async def generate_response(
         self,
         user_message: str,
         system_instructions: str,
-        conversation_history: list[Message] = None,
-        media_urls: list[str] = None
+        conversation_history: list[Message] | None = None,
+        media_urls: list[str] | None = None
     ) -> tuple[str, int]:
         """
         Generate AI response
@@ -130,8 +198,9 @@ class GeminiClient:
                     logger.error(f"Failed to download image {url}: {e}")
                     raise AIServiceException(f"Failed to process image: {e}") from e
 
-    async def _generate_content(self, contents: list[dict]) -> tuple[str, float]:
-        """Generate content using Gemini API"""
+    @_gemini_retry_decorator
+    async def _generate_content(self, contents: list[dict]) -> tuple[str, int]:
+        """Generate content using Gemini API with retry logic"""
         logger.info(f"Generating Gemini response with {len(contents)} messages")
 
         response = await self.client.aio.models.generate_content(
@@ -148,9 +217,15 @@ class GeminiClient:
         if response.candidates and response.candidates[0].finish_reason != 1:
             logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (not STOP)")
 
-        token_count = len(response_text.split()) * 1.3
+        # Use tiktoken for accurate token counting
+        if self.tokenizer:
+            token_count = len(self.tokenizer.encode(response_text))
+        else:
+            # Fallback to approximate method if tiktoken is not available
+            token_count = int(len(response_text.split()) * 1.3)
+            logger.warning("Using approximate token counting (tiktoken not available)")
 
-        logger.info(f"Generated response: {len(response_text)} chars, ~{int(token_count)} tokens")
+        logger.info(f"Generated response: {len(response_text)} chars, {token_count} tokens")
 
         return response_text, token_count
 
@@ -169,23 +244,27 @@ class GeminiClient:
 
             audio_data = await self._download_audio(audio_url)
 
-            prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
-
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=[
-                prompt,
-                {"inline_data": audio_data}
-                ]
-            )
-
-            transcription = response.text.strip()
+            transcription = await self._transcribe_audio_with_retry(audio_data)
             logger.info(f"Audio transcribed: {len(transcription)} characters")
+            return transcription
         except Exception as e:
             logger.error(f"Audio transcription error: {e}")
             raise TranscriptionException(f"Failed to transcribe audio: {e!s}") from e
-        else:
-            return transcription
+
+    @_gemini_retry_decorator
+    async def _transcribe_audio_with_retry(self, audio_data: dict[str, object]) -> str:
+        """Transcribe audio with retry logic"""
+        prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
+
+        response = await self.client.aio.models.generate_content(
+            model=self.model_name,
+            contents=[
+                prompt,
+                {"inline_data": audio_data}
+            ]
+        )
+
+        return response.text.strip()
 
     async def _download_image(self, url: str) -> dict[str, object]:
         """Download and encode image for Gemini"""
@@ -221,6 +300,15 @@ class GeminiClient:
                 "data": audio_data
             }
 
+    @_gemini_retry_decorator
+    async def _extract_memories_with_retry(self, prompt: str) -> str:
+        """Extract memories with retry logic"""
+        response = await self.client.aio.models.generate_content(
+            model=self.model_name,
+            contents=prompt
+        )
+        return response.text.strip()
+
     def _extract_json_from_response(self, response_text: str) -> dict:
         """Extract JSON object from response text, handling nested braces"""
         try:
@@ -247,7 +335,7 @@ class GeminiClient:
         self,
         user_message: str,
         assistant_response: str,
-        existing_memories: dict[str, str] = None
+        existing_memories: dict[str, str] | None = None
     ) -> dict[str, str]:
         """
         Extract memories (like height, weight, name, preferences) from conversation
@@ -287,11 +375,7 @@ If no new information was provided, return an empty object {{}}.
 If information updates an existing memory, use the new value.
 Format: {{"key1": "value1", "key2": "value2"}}"""
 
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=prompt
-            )
-            response_text = response.text.strip()
+            response_text = await self._extract_memories_with_retry(prompt)
             
             extracted = self._extract_json_from_response(response_text)
             
@@ -312,10 +396,7 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
         try:
             start = time.time()
 
-            await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents="Hi"
-            )
+            await self._health_check_with_retry()
 
             latency_ms = int((time.time() - start) * 1000)
         except Exception as e:
@@ -332,10 +413,15 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
                 error=None
             )
 
+    @_gemini_retry_decorator
+    async def _health_check_with_retry(self) -> None:
+        """Health check with retry logic"""
+        await self.client.aio.models.generate_content(
+            model=self.model_name,
+            contents="Hi"
+        )
+
     async def close(self):
         """Close HTTP client"""
         await self.http_client.aclose()
-
-gemini_client = GeminiClient()
-
 

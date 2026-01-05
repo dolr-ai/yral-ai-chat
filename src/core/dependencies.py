@@ -9,9 +9,9 @@ from src.db.repositories.conversation_repository import ConversationRepository
 from src.db.repositories.influencer_repository import InfluencerRepository
 from src.db.repositories.message_repository import MessageRepository
 from src.services.chat_service import ChatService
-from src.services.gemini_client import GeminiClient, gemini_client
+from src.services.gemini_client import GeminiClient
 from src.services.influencer_service import InfluencerService
-from src.services.storage_service import StorageService, storage_service
+from src.services.storage_service import StorageService
 
 
 def get_conversation_repository() -> ConversationRepository:
@@ -30,13 +30,13 @@ def get_message_repository() -> MessageRepository:
 
 
 def get_gemini_client() -> GeminiClient:
-    """Get Gemini client singleton"""
-    return gemini_client
+    """Get Gemini client instance"""
+    return GeminiClient()
 
 
 def get_storage_service() -> StorageService:
-    """Get storage service singleton"""
-    return storage_service
+    """Get storage service instance"""
+    return StorageService()
 
 
 def get_chat_service(
@@ -44,22 +44,23 @@ def get_chat_service(
     conversation_repo: Annotated[ConversationRepository, Depends(get_conversation_repository)],
     message_repo: Annotated[MessageRepository, Depends(get_message_repository)],
     storage_service: Annotated[StorageService, Depends(get_storage_service)],
+    gemini_client: Annotated[GeminiClient, Depends(get_gemini_client)],
 ) -> ChatService:
     """Get chat service instance with injected dependencies"""
-    service = ChatService(storage_service=storage_service)
-    service.influencer_repo = influencer_repo
-    service.conversation_repo = conversation_repo
-    service.message_repo = message_repo
-    return service
+    return ChatService(
+        gemini_client=gemini_client,
+        influencer_repo=influencer_repo,
+        conversation_repo=conversation_repo,
+        message_repo=message_repo,
+        storage_service=storage_service,
+    )
 
 
 def get_influencer_service(
     influencer_repo: Annotated[InfluencerRepository, Depends(get_influencer_repository)]
 ) -> InfluencerService:
     """Get influencer service instance with injected dependencies"""
-    service = InfluencerService()
-    service.influencer_repo = influencer_repo
-    return service
+    return InfluencerService(influencer_repo=influencer_repo)
 
 
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
