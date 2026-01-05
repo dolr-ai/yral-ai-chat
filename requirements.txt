@@ -1,48 +1,33 @@
-# Core Framework
-fastapi==0.128.0
-uvicorn[standard]==0.30.0
-python-multipart==0.0.12
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
 
-# Database (SQLite with aiosqlite for async support)
 aiosqlite==0.20.0
 
-# Authentication
 pyjwt==2.9.0
-cryptography==43.0.0
+cryptography==43.0.3
 
-# AI/ML
 google-genai>=0.2.0
-openai==1.57.0  # For Whisper API (optional)
-tiktoken>=0.5.0  # For accurate token counting
+openai==1.57.2
+tiktoken>=0.8.0
 
-# Media Processing
-pillow==11.0.0
-python-magic==0.4.27
+pillow==11.1.0
 aiofiles==24.1.0
 
-# S3 Storage
 boto3==1.35.0
 botocore==1.35.0
 
-# HTTP Client
-httpx==0.27.2
-aiohttp==3.11.0
+httpx==0.28.1
 
-# Utilities
-pydantic==2.10.0
-pydantic-settings==2.6.0
+pydantic==2.10.4
+pydantic-settings==2.6.1
 python-dotenv==1.0.1
 pyyaml==6.0.2
-tenacity>=8.2.0
+tenacity>=8.5.0
 
-# Logging & Monitoring
 loguru==0.7.3
 prometheus-client==0.21.0
-sentry-sdk[fastapi]>=1.40.0
+sentry-sdk[fastapi]>=1.47.0
 
-# Date/Time
-python-dateutil==2.9.0
-
-# Testing (dev)
-# Note: Testing dependencies moved to requirements-dev.txt
+python-dateutil==2.9.0.post0
 

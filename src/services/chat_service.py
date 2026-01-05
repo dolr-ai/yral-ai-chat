@@ -34,16 +34,7 @@ class ChatService:
         user_id: str,
         influencer_id: UUID
     ) -> tuple[Conversation, bool]:
-        """
-        Create a new conversation or return existing one
-        
-        Args:
-            user_id: User ID
-            influencer_id: AI Influencer ID
-            
-        Returns:
-            Tuple of (Conversation object, is_new_conversation: bool)
-        """
+        """Create a new conversation or return existing one"""
         influencer = await self.influencer_repo.get_by_id(influencer_id)
         if not influencer:
             raise NotFoundException("Influencer not found")

@@ -74,16 +74,16 @@ class MessageRepository:
         """List messages in a conversation"""
         order_clause = "DESC" if order.lower() == "desc" else "ASC"
 
-        query = f"""
-            SELECT
-                id, conversation_id, role, content, message_type,
-                media_urls, audio_url, audio_duration_seconds,
-                token_count, created_at, metadata
-            FROM messages
-            WHERE conversation_id = $1
-            ORDER BY created_at {order_clause}
-            LIMIT $2 OFFSET $3
-        """
+        query = (
+            "SELECT "
+            "id, conversation_id, role, content, message_type, "
+            "media_urls, audio_url, audio_duration_seconds, "
+            "token_count, created_at, metadata "
+            "FROM messages "
+            "WHERE conversation_id = $1 "
+            "ORDER BY created_at " + order_clause + " "
+            "LIMIT $2 OFFSET $3"
+        )
 
         rows = await db.fetch(query, str(conversation_id), limit, offset)
         return [self._row_to_message(row) for row in rows]

@@ -1,6 +1,4 @@
-"""
-Media upload endpoints
-"""
+"""Media upload endpoints"""
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -48,14 +46,9 @@ async def upload_media(
     storage_service: StorageServiceDep = None
 ):
     """
-    Upload media file (image or audio)
+    Upload media file (image or audio) to cloud storage.
     
-    Args:
-        file: File to upload
-        media_type: Type of file ("image" or "audio")
-    
-    Returns:
-        MediaUploadResponse with presigned URL, storage key and metadata
+    Returns a presigned URL for immediate access and a stable storage_key.
     """
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")

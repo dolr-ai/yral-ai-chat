@@ -3,7 +3,7 @@ Domain entity models
 """
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TCH003
+from datetime import datetime  # noqa: TC003
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field

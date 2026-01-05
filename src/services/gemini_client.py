@@ -58,7 +58,7 @@ def _is_retryable_http_error(exception: Exception) -> bool:
     return any(pattern in error_str for pattern in retryable_patterns)
 
 
-def _gemini_retry_decorator(func: Callable[..., T]) -> Callable[..., T]:
+def _gemini_retry_decorator[T](func: Callable[..., T]) -> Callable[..., T]:
     """Retry decorator for Gemini API calls with exponential backoff"""
     return retry(  # type: ignore[return-value]
         stop=stop_after_attempt(3),
@@ -75,11 +75,10 @@ class GeminiClient:
     """Google Gemini AI client wrapper"""
 
     def __init__(self):
-        """Initialize Gemini client"""
+        """Initialize Gemini client with API key and tokenizer"""
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.model_name = settings.gemini_model
         self.http_client = httpx.AsyncClient(timeout=30.0)
-        # Initialize tiktoken encoder (cl100k_base) for token counting
         try:
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
         except Exception as e:

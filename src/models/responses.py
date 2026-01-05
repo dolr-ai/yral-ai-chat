@@ -3,11 +3,11 @@ Response models for API endpoints
 """
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TCH003
+from datetime import datetime  # noqa: TC003
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.models.entities import InfluencerStatus, LastMessageInfo, MessageRole, MessageType  # noqa: TCH001
+from src.models.entities import InfluencerStatus, LastMessageInfo, MessageRole, MessageType  # noqa: TC001
 
 
 class InfluencerBasicInfo(BaseModel):
