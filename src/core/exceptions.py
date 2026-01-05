@@ -1,8 +1,6 @@
 """
 Custom exceptions with enhanced error details
 """
-from typing import Any
-
 from fastapi import HTTPException
 
 
@@ -14,7 +12,7 @@ class BaseAPIException(HTTPException):
         status_code: int,
         message: str,
         error_code: str,
-        details: dict[str, Any] | None = None
+        details: dict[str, object] | None = None
     ):
         self.error_code = error_code
         self.details = details or {}
@@ -30,7 +28,7 @@ class BaseAPIException(HTTPException):
 
 class NotFoundException(BaseAPIException):
     """Resource not found exception"""
-    def __init__(self, message: str = "Resource not found", details: dict[str, Any] | None = None):
+    def __init__(self, message: str = "Resource not found", details: dict[str, object] | None = None):
         super().__init__(
             status_code=404,
             message=message,
@@ -41,7 +39,7 @@ class NotFoundException(BaseAPIException):
 
 class ForbiddenException(BaseAPIException):
     """Access forbidden exception"""
-    def __init__(self, message: str = "Access forbidden", details: dict[str, Any] | None = None):
+    def __init__(self, message: str = "Access forbidden", details: dict[str, object] | None = None):
         super().__init__(
             status_code=403,
             message=message,
@@ -52,7 +50,7 @@ class ForbiddenException(BaseAPIException):
 
 class BadRequestException(BaseAPIException):
     """Bad request exception"""
-    def __init__(self, message: str = "Bad request", details: dict[str, Any] | None = None):
+    def __init__(self, message: str = "Bad request", details: dict[str, object] | None = None):
         super().__init__(
             status_code=400,
             message=message,
@@ -63,7 +61,7 @@ class BadRequestException(BaseAPIException):
 
 class UnauthorizedException(BaseAPIException):
     """Unauthorized exception"""
-    def __init__(self, message: str = "Unauthorized", details: dict[str, Any] | None = None):
+    def __init__(self, message: str = "Unauthorized", details: dict[str, object] | None = None):
         super().__init__(
             status_code=401,
             message=message,
@@ -74,7 +72,7 @@ class UnauthorizedException(BaseAPIException):
 
 class AIServiceException(BaseAPIException):
     """AI service error exception"""
-    def __init__(self, message: str = "AI service error", details: dict[str, Any] | None = None):
+    def __init__(self, message: str = "AI service error", details: dict[str, object] | None = None):
         super().__init__(
             status_code=500,
             message=message,
@@ -85,7 +83,7 @@ class AIServiceException(BaseAPIException):
 
 class TranscriptionException(BaseAPIException):
     """Audio transcription error exception"""
-    def __init__(self, message: str = "Transcription error", details: dict[str, Any] | None = None):
+    def __init__(self, message: str = "Transcription error", details: dict[str, object] | None = None):
         super().__init__(
             status_code=500,
             message=message,
@@ -96,7 +94,7 @@ class TranscriptionException(BaseAPIException):
 
 class RateLimitException(BaseAPIException):
     """Rate limit exceeded exception"""
-    def __init__(self, message: str = "Rate limit exceeded", details: dict[str, Any] | None = None):
+    def __init__(self, message: str = "Rate limit exceeded", details: dict[str, object] | None = None):
         super().__init__(
             status_code=429,
             message=message,
@@ -107,7 +105,7 @@ class RateLimitException(BaseAPIException):
 
 class ValidationException(BaseAPIException):
     """Validation error exception"""
-    def __init__(self, message: str = "Validation error", details: dict[str, Any] | None = None):
+    def __init__(self, message: str = "Validation error", details: dict[str, object] | None = None):
         super().__init__(
             status_code=422,
             message=message,
@@ -118,7 +116,7 @@ class ValidationException(BaseAPIException):
 
 class DatabaseException(BaseAPIException):
     """Database error exception"""
-    def __init__(self, message: str = "Database error", details: dict[str, Any] | None = None):
+    def __init__(self, message: str = "Database error", details: dict[str, object] | None = None):
         super().__init__(
             status_code=500,
             message=message,

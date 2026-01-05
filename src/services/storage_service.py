@@ -57,18 +57,13 @@ class StorageService:
         Returns:
             Tuple of (s3_key, mime_type, file_size)
         """
-        # Generate unique filename
         file_ext = Path(filename).suffix.lower()
         unique_filename = f"{uuid4()}{file_ext}"
         s3_key = f"{user_id}/{unique_filename}"
 
-        # Get file size
         file_size = len(file_content)
-
-        # Determine mime type
         mime_type = self._get_mime_type(file_ext)
 
-        # Upload to S3 as a private object (run in thread pool to avoid blocking)
         await asyncio.to_thread(
             self.s3_client.put_object,
             Bucket=self.bucket,
@@ -97,7 +92,7 @@ class StorageService:
 
         expiration = expires_in or settings.s3_url_expires_seconds
 
-        url = self.s3_client.generate_presigned_url(
+        return self.s3_client.generate_presigned_url(
             "get_object",
             Params={
                 "Bucket": self.bucket,
@@ -105,7 +100,6 @@ class StorageService:
             },
             ExpiresIn=expiration,
         )
-        return url
 
     def extract_key_from_url(self, url_or_key: str) -> str:
         """
@@ -121,19 +115,13 @@ class StorageService:
         if not url_or_key:
             return url_or_key
 
-        # If it's already just a key (no scheme), return as-is
         if not url_or_key.startswith(("http://", "https://")):
             return url_or_key
 
-        # If it's a full URL, try to extract the key
         public_base = settings.s3_public_url_base.rstrip("/")
         if url_or_key.startswith(public_base):
-            # Extract everything after the base URL
-            key = url_or_key[len(public_base):].lstrip("/")
-            return key
+            return url_or_key[len(public_base):].lstrip("/")
 
-        # If it doesn't match our expected format, log a warning and return as-is
-        # (might be a different URL format or external URL)
         logger.warning(f"Could not extract S3 key from URL: {url_or_key}")
         return url_or_key
 
@@ -195,7 +183,6 @@ class StorageService:
         return 0
 
 
-# Global storage service instance
 storage_service = StorageService()
 
 
