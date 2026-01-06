@@ -17,8 +17,13 @@ if [ "$ENABLE_LITESTREAM" = "true" ]; then
     S3_PATH="yral-ai-chat/$DB_FILENAME"
     
     # Generate dynamic litestream config based on DATABASE_PATH
-    LITESTREAM_CONFIG="/tmp/litestream.yml"
-    cat > "$LITESTREAM_CONFIG" <<EOF
+    # Only enable Litestream if required environment variables are set
+    if [ -z "$LITESTREAM_BUCKET" ] || [ -z "$LITESTREAM_ACCESS_KEY_ID" ] || [ -z "$LITESTREAM_SECRET_ACCESS_KEY" ]; then
+        echo "WARNING: Litestream environment variables not set, disabling Litestream replication"
+        ENABLE_LITESTREAM=false
+    else
+        LITESTREAM_CONFIG="/tmp/litestream.yml"
+        cat > "$LITESTREAM_CONFIG" <<EOF
 # Litestream Configuration (generated dynamically)
 dbs:
   - path: $DATABASE_PATH
@@ -35,25 +40,26 @@ dbs:
         retention-check-interval: 1h
         snapshot-interval: 1h
 EOF
-    echo "Generated Litestream config for database: $DATABASE_PATH"
-    
-    # Check if database exists, if not try to restore from backup
-    if [ ! -f "$DATABASE_PATH" ]; then
-        echo "Database not found at $DATABASE_PATH, attempting to restore from Litestream backup..."
-        if litestream restore -if-db-not-exists -if-replica-exists -config "$LITESTREAM_CONFIG" "$DATABASE_PATH"; then
-            echo "Database restored from backup"
+        echo "Generated Litestream config for database: $DATABASE_PATH"
+        
+        # Check if database exists, if not try to restore from backup
+        if [ ! -f "$DATABASE_PATH" ]; then
+            echo "Database not found at $DATABASE_PATH, attempting to restore from Litestream backup..."
+            if litestream restore -if-db-not-exists -if-replica-exists -config "$LITESTREAM_CONFIG" "$DATABASE_PATH"; then
+                echo "Database restored from backup"
+            else
+                echo "No backup found or restore failed, will create new database"
+            fi
         else
-            echo "No backup found or restore failed, will create new database"
+            echo "Database file exists at $DATABASE_PATH"
         fi
-    else
-        echo "Database file exists at $DATABASE_PATH"
+        
+        # Start Litestream replication in the background
+        echo "Starting Litestream replication..."
+        litestream replicate -config "$LITESTREAM_CONFIG" &
+        LITESTREAM_PID=$!
+        echo "Litestream started with PID: $LITESTREAM_PID"
     fi
-    
-    # Start Litestream replication in the background
-    echo "Starting Litestream replication..."
-    litestream replicate -config "$LITESTREAM_CONFIG" &
-    LITESTREAM_PID=$!
-    echo "Litestream started with PID: $LITESTREAM_PID"
     
     # Function to handle shutdown gracefully
     shutdown() {
@@ -87,8 +93,18 @@ EOF
     APP_PID=$!
     echo "Application started with PID: $APP_PID"
     
+    # Wait a moment and check if the process is still running
+    sleep 2
+    if ! kill -0 "$APP_PID" 2>/dev/null; then
+        echo "ERROR: Application process died immediately after startup"
+        exit 1
+    fi
+    
     # Wait for the application process
     wait "$APP_PID"
+    EXIT_CODE=$?
+    echo "Application exited with code: $EXIT_CODE"
+    exit $EXIT_CODE
     
 else
     echo "Litestream is disabled (ENABLE_LITESTREAM=false)"
