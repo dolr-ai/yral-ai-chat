@@ -217,6 +217,27 @@ jobs:
             echo "[INFO] Starting nginx"
             docker compose up -d --no-deps nginx
             
+            # Step 6.5: Restart nginx to ensure it picks up the latest config
+            echo "[INFO] Restarting nginx to load latest configuration"
+            docker compose restart nginx
+            sleep 2
+            
+            # Step 6.6: Verify nginx config is valid and reloaded
+            echo "[INFO] Verifying nginx configuration"
+            if docker exec yral-ai-chat-nginx nginx -t > /dev/null 2>&1; then
+              echo "[OK] Nginx configuration is valid"
+              # Try graceful reload first
+              if docker exec yral-ai-chat-nginx nginx -s reload > /dev/null 2>&1; then
+                echo "[OK] Nginx configuration reloaded successfully"
+              else
+                echo "[WARN] Nginx reload failed, container was restarted above"
+              fi
+            else
+              echo "[ERROR] Nginx configuration test failed"
+              docker exec yral-ai-chat-nginx nginx -t
+              exit 1
+            fi
+            
             # Step 7: Wait for service to start
             echo "[INFO] Waiting ${SERVICE_START_DELAY}s for service to start"
             sleep $SERVICE_START_DELAY
