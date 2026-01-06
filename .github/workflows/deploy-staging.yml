@@ -205,6 +205,25 @@ jobs:
             systemctl stop yral-ai-chat.service 2>/dev/null || true
             systemctl disable yral-ai-chat.service 2>/dev/null || true
             
+            # Step 3.5: Stop and disable host nginx (docker nginx will handle it)
+            echo "[INFO] Stopping host nginx to allow docker nginx to bind to port 443"
+            systemctl stop nginx 2>/dev/null || true
+            systemctl disable nginx 2>/dev/null || true
+            
+            # Kill any nginx processes that might be holding port 443
+            echo "[INFO] Checking for nginx processes on port 443"
+            if command -v ss > /dev/null 2>&1; then
+              if ss -tuln | grep -q ':443 '; then
+                echo "[WARN] Port 443 is in use, checking what's using it:"
+                ss -tulpn | grep ':443 ' || true
+                echo "[INFO] Attempting to free port 443..."
+                pkill -9 nginx 2>/dev/null || true
+                sleep 2
+              else
+                echo "[OK] Port 443 is free"
+              fi
+            fi
+            
             # Step 4: Build Docker image
             echo "[INFO] Building Docker image for $ENVIRONMENT"
             docker compose build --no-cache "$SERVICE"
@@ -216,6 +235,55 @@ jobs:
             # Step 6: Start nginx (without starting dependencies to avoid affecting production)
             echo "[INFO] Starting nginx"
             docker compose up -d --no-deps nginx
+            
+            # Step 6.5: Restart nginx to ensure it picks up the latest config
+            echo "[INFO] Restarting nginx to load latest configuration"
+            docker compose restart nginx
+            
+            # Wait for nginx container to be fully running
+            echo "[INFO] Waiting for nginx container to be ready..."
+            max_wait=10
+            wait_count=0
+            while [ $wait_count -lt $max_wait ]; do
+              if docker ps --filter "name=yral-ai-chat-nginx" --filter "status=running" --format "{{.Names}}" | grep -q yral-ai-chat-nginx; then
+                sleep 2  # Give it a moment to fully initialize
+                break
+              fi
+              sleep 1
+              wait_count=$((wait_count + 1))
+            done
+            
+            # Step 6.6: Verify nginx config is valid and reloaded
+            echo "[INFO] Verifying nginx configuration"
+            if docker exec yral-ai-chat-nginx nginx -t > /dev/null 2>&1; then
+              echo "[OK] Nginx configuration is valid"
+              # Try graceful reload first
+              if docker exec yral-ai-chat-nginx nginx -s reload > /dev/null 2>&1; then
+                echo "[OK] Nginx configuration reloaded successfully"
+              else
+                echo "[WARN] Nginx reload failed, container was restarted above"
+              fi
+            else
+              echo "[ERROR] Nginx configuration test failed"
+              docker exec yral-ai-chat-nginx nginx -t || true
+              echo "[WARN] Continuing despite nginx test failure (container was restarted)"
+            fi
+            
+            # Step 6.7: Verify nginx is listening on port 443
+            echo "[INFO] Verifying nginx container is listening on port 443"
+            sleep 3  # Give nginx time to fully start
+            if command -v ss > /dev/null 2>&1; then
+              if ss -tuln | grep -q ':443 '; then
+                echo "[OK] Port 443 is in use (nginx should be listening)"
+                ss -tulpn | grep ':443 ' || true
+              else
+                echo "[ERROR] Port 443 is NOT in use - nginx container may not have started properly"
+                echo "[INFO] Checking nginx container status:"
+                docker ps -a | grep nginx || true
+                echo "[INFO] Checking nginx container logs:"
+                docker logs --tail=30 yral-ai-chat-nginx || true
+              fi
+            fi
             
             # Step 7: Wait for service to start
             echo "[INFO] Waiting ${SERVICE_START_DELAY}s for service to start"

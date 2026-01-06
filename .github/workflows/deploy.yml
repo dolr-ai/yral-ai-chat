@@ -81,13 +81,17 @@ jobs:
           ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
             set -e
             
-            echo "🚀 Starting deployment..."
+            echo "Starting deployment..."
             
             # Navigate to project directory
-            cd ~/yral-ai-chat || cd /root/yral-ai-chat || { echo "❌ Project directory not found"; exit 1; }
+            cd ~/yral-ai-chat || cd /root/yral-ai-chat || { echo "Project directory not found"; exit 1; }
+            
+            # Stop and disable host nginx (nginx runs in Docker)
+            sudo systemctl stop nginx || true
+            sudo systemctl disable nginx || true
             
             # Pull latest code
-            echo "📥 Pulling latest code..."
+            echo "Pulling latest code..."
             git fetch origin
             git reset --hard origin/main
             
@@ -104,45 +108,90 @@ jobs:
             fi
             
             # Deploy with docker-compose
-            echo "🐳 Deploying with Docker Compose..."
+            echo "Deploying with Docker Compose..."
             docker-compose down || true
             docker-compose pull || true
             docker-compose build --no-cache || docker-compose build
             docker-compose up -d
             
             # Wait for services to be healthy
-            echo "⏳ Waiting for services to start..."
+            echo "Waiting for services to start..."
             sleep 30
             
-            # Health check
-            echo "🏥 Running health checks..."
-            if curl -f http://localhost:8000/health > /dev/null 2>&1; then
-              echo "✅ Production service is healthy"
+            # Ensure nginx container is running and reload config
+            echo "Configuring nginx container..."
+            # Always restart nginx to ensure it picks up the latest config file
+            echo "Restarting nginx container to pick up latest config..."
+            docker-compose restart nginx || docker-compose up -d nginx
+            sleep 3
+            
+            # Test and reload nginx config
+            echo "Testing nginx config inside container..."
+            if docker exec yral-ai-chat-nginx nginx -t > /dev/null 2>&1; then
+              echo "✅ Nginx config test passed"
+              echo "Reloading nginx inside container..."
+              if docker exec yral-ai-chat-nginx nginx -s reload > /dev/null 2>&1; then
+                echo "✅ Nginx configuration reloaded successfully"
+              else
+                echo "⚠️  Nginx reload failed, restarting container..."
+                docker-compose restart nginx
+                sleep 2
+              fi
             else
-              echo "⚠️  Production service health check failed"
+              echo "⚠️  Nginx config test failed, showing errors:"
+              docker exec yral-ai-chat-nginx nginx -t || true
+              echo "Restarting nginx container..."
+              docker-compose restart nginx
+              sleep 2
+            fi
+            
+            # Health check
+            echo "Running health checks..."
+            if curl -f http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Production service is healthy"
+            else
+              echo "Production service health check failed"
             fi
             
             if curl -f http://localhost:8001/health > /dev/null 2>&1; then
-              echo "✅ Staging service is healthy"
+              echo "Staging service is healthy"
             else
-              echo "⚠️  Staging service health check failed"
+              echo "Staging service health check failed"
             fi
             
             if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
-              echo "✅ Metabase (production) service is healthy"
+              echo "Metabase (production) service is healthy"
             else
-              echo "⚠️  Metabase (production) service health check failed (may still be initializing)"
+              echo "Metabase (production) service health check failed (may still be initializing)"
             fi
             
             if curl -f http://localhost:3001/api/health > /dev/null 2>&1; then
-              echo "✅ Metabase (staging) service is healthy"
+              echo "Metabase (staging) service is healthy"
             else
-              echo "⚠️  Metabase (staging) service health check failed (may still be initializing)"
+              echo "Metabase (staging) service health check failed (may still be initializing)"
+            fi
+            
+            # Verify nginx can reach Metabase directly
+            echo "Verifying nginx can reach Metabase staging..."
+            if docker exec yral-ai-chat-nginx wget -q -O- http://127.0.0.1:3001/api/health > /dev/null 2>&1; then
+              echo "✅ Nginx container can reach Metabase staging on port 3001"
+            else
+              echo "⚠️  Nginx container cannot reach Metabase staging on port 3001"
+            fi
+            
+            # Check staging Metabase via nginx route (best-effort)
+            echo "Testing staging Metabase via nginx route..."
+            if curl -kf https://chat.yral.com/staging/metabase/api/health > /dev/null 2>&1; then
+              echo "✅ Staging Metabase reachable via nginx"
+            else
+              echo "⚠️  Staging Metabase NOT reachable via nginx"
+              echo "   Checking nginx container logs..."
+              docker logs --tail 20 yral-ai-chat-nginx || echo "   Could not get nginx logs"
             fi
             
             # Show container status
             echo ""
-            echo "📊 Container status:"
+            echo "Container status:"
             docker-compose ps
             
             echo ""
