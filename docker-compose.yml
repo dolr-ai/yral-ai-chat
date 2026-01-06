@@ -161,6 +161,8 @@ services:
     restart: unless-stopped
     network_mode: host
     volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/rate-limit-zones.conf:/etc/nginx/conf.d/rate-limit-zones.conf:ro
       - ./nginx/yral-ai-chat.conf:/etc/nginx/conf.d/default.conf:ro
       - /opt/nginx-certs/letsencrypt:/etc/letsencrypt:ro
       - ./logs/nginx:/var/log/nginx
@@ -173,6 +175,9 @@ services:
       timeout: 10s
       retries: 3
 
+  # Metabase BI Dashboard - Production
+  # Accessible at: https://chat.yral.com/metabase/
+  # Reads SQLite databases from ./data directory (read-only)
   metabase:
     image: metabase/metabase:latest
     container_name: yral-ai-chat-metabase
@@ -196,6 +201,9 @@ services:
       retries: 3
       start_period: 60s
 
+  # Metabase BI Dashboard - Staging
+  # Accessible at: https://chat.yral.com/staging/metabase/
+  # Reads SQLite databases from ./data directory (read-only)
   metabase-staging:
     image: metabase/metabase:latest
     container_name: yral-ai-chat-metabase-staging
@@ -220,6 +228,8 @@ services:
       start_period: 60s
 
 volumes:
+  # Metabase metadata storage (dashboards, queries, settings)
+  # Separate volumes for production and staging to keep data isolated
   metabase-data:
     driver: local
   metabase-staging-data:
