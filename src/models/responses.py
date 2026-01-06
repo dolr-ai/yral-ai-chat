@@ -1,12 +1,13 @@
 """
 Response models for API endpoints
 """
-from datetime import datetime
-from typing import Any
+from __future__ import annotations
+
+from datetime import datetime  # noqa: TC003
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.models.entities import InfluencerStatus, MessageRole, MessageType
+from src.models.entities import InfluencerStatus, LastMessageInfo, MessageRole, MessageType  # noqa: TC001
 
 
 class InfluencerBasicInfo(BaseModel):
@@ -41,15 +42,6 @@ class MessageResponse(BaseModel):
     audio_duration_seconds: int | None = Field(None, description="Audio duration in seconds", examples=[None])
     token_count: int | None = Field(None, description="AI tokens used (assistant messages only)", examples=[150])
     created_at: datetime = Field(..., description="Message timestamp")
-
-
-class LastMessageInfo(BaseModel):
-    """Last message information for conversation list"""
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
-
-    content: str | None = None
-    role: MessageRole
-    created_at: datetime
 
 
 class ConversationResponse(BaseModel):
@@ -207,6 +199,6 @@ class ErrorResponse(BaseModel):
 
     error: str
     message: str
-    details: dict[str, Any] | None = None
+    details: dict[str, object] | None = None
 
 

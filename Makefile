@@ -117,47 +117,47 @@ pre-commit-run:
 
 # Combined checks
 all-checks: format-check lint type-check test
-	@echo "\n✅ All checks passed!"
+	@echo "\nAll checks passed!"
 
 # Quick check before commit
 check: format lint test-unit
-	@echo "\n✅ Quick checks passed!"
+	@echo "\nQuick checks passed!"
 
 # Development setup
 setup: install-dev migrate
-	@echo "\n✅ Development environment setup complete!"
+	@echo "\nDevelopment environment setup complete!"
 	@echo "Run 'make run' to start the server"
 
 # Docker commands
 docker-build:
-	@echo "🏗️  Building Docker image..."
+	@echo "Building Docker image..."
 	docker compose build
 
 docker-build-no-cache:
-	@echo "🏗️  Building Docker image (no cache)..."
+	@echo "Building Docker image (no cache)..."
 	docker compose build --no-cache
 
 docker-test:
-	@echo "🧪 Testing Docker build and deployment..."
+	@echo "Testing Docker build and deployment..."
 	./scripts/test_docker_build.sh
 
 docker-gh-test:
-	@echo "🧪 Simulating GitHub Actions deployment locally..."
+	@echo "Simulating GitHub Actions deployment locally..."
 	./scripts/test_github_actions_locally.sh
 
 docker-up:
-	@echo "🚀 Starting Docker containers..."
+	@echo "Starting Docker containers..."
 	docker compose up -d
-	@echo "✅ Containers started!"
-	@echo "📊 Status:"
+	@echo "Containers started!"
+	@echo "Status:"
 	@docker compose ps
 	@echo ""
 	@echo "View logs with: make docker-logs"
 
 docker-down:
-	@echo "🛑 Stopping Docker containers..."
+	@echo "Stopping Docker containers..."
 	docker compose down
-	@echo "✅ Containers stopped"
+	@echo "Containers stopped"
 
 docker-logs:
 	docker compose logs -f yral-ai-chat
@@ -166,15 +166,15 @@ docker-shell:
 	docker compose exec yral-ai-chat /bin/bash
 
 docker-restart:
-	@echo "🔄 Restarting Docker containers..."
+	@echo "Restarting Docker containers..."
 	docker compose restart
-	@echo "✅ Containers restarted"
+	@echo "Containers restarted"
 
 docker-ps:
 	docker compose ps
 
 docker-clean:
-	@echo "🧹 Cleaning up Docker resources..."
+	@echo "Cleaning up Docker resources..."
 	docker compose down -v --remove-orphans
 	docker system prune -f
-	@echo "✅ Docker cleanup complete"
+	@echo "Docker cleanup complete"

@@ -9,8 +9,8 @@ from loguru import logger
 
 from src.config import settings
 from src.core.circuit_breaker import gemini_circuit_breaker, s3_circuit_breaker
+from src.core.dependencies import InfluencerRepositoryDep, MessageRepositoryDep
 from src.db.base import db
-from src.db.repositories import InfluencerRepository, MessageRepository
 from src.models.responses import (
     DatabaseStats,
     HealthResponse,
@@ -21,7 +21,6 @@ from src.models.responses import (
 
 router = APIRouter(tags=["Health"])
 
-# Track app start time
 app_start_time = time.time()
 
 
@@ -30,7 +29,7 @@ app_start_time = time.time()
     response_model=HealthResponse,
     operation_id="healthCheck",
     summary="Health check",
-    description="Check the health status of all services including database, AI, and storage",
+    description="Fast, lightweight health check. Checks database connectivity and circuit breaker states (no external API calls)",
     responses={
         200: {"description": "Health check completed"},
         500: {"description": "Internal server error"}
@@ -38,16 +37,19 @@ app_start_time = time.time()
 )
 async def health_check():
     """
-    Health check endpoint with circuit breaker status
-    
-    Returns status of database, AI services, and circuit breaker states
+    Health check endpoint.
+    Checks database connectivity and circuit breaker states (no external API calls).
     """
     services = {}
 
-    # Check database with circuit breaker awareness
     try:
         db_health = await db.health_check()
-        services["database"] = ServiceHealth(**db_health)
+        services["database"] = ServiceHealth(
+            status=db_health.status,
+            latency_ms=db_health.latency_ms,
+            error=db_health.error,
+            pool_size=db_health.pool_size
+        )
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
         services["database"] = ServiceHealth(
@@ -55,21 +57,18 @@ async def health_check():
             error=str(e)
         )
 
-    # Check Gemini API circuit breaker status (no API ping)
     gemini_circuit_state = gemini_circuit_breaker.get_state()
     services["gemini_api"] = ServiceHealth(
-        status="up" if gemini_circuit_state["state"] == "closed" else "degraded",
-        error=None if gemini_circuit_state["state"] == "closed" else f"Circuit breaker {gemini_circuit_state['state']}"
+        status="up" if gemini_circuit_state.state == "closed" else "degraded",
+        error=None if gemini_circuit_state.state == "closed" else f"Circuit breaker {gemini_circuit_state.state}"
     )
 
-    # Add S3 circuit breaker status
     s3_circuit_state = s3_circuit_breaker.get_state()
     services["s3_storage"] = ServiceHealth(
-        status="up" if s3_circuit_state["state"] == "closed" else "degraded",
-        error=None if s3_circuit_state["state"] == "closed" else f"Circuit breaker {s3_circuit_state['state']}"
+        status="up" if s3_circuit_state.state == "closed" else "degraded",
+        error=None if s3_circuit_state.state == "closed" else f"Circuit breaker {s3_circuit_state.state}"
     )
 
-    # Overall status
     overall_status = "healthy"
     degraded_count = sum(1 for s in services.values() if s.status in ["down", "degraded"])
 
@@ -96,23 +95,17 @@ async def health_check():
         500: {"description": "Internal server error"}
     }
 )
-async def system_status():
-    """
-    System status endpoint
-    
-    Returns detailed system information and statistics
-    """
-    # Get database stats
+async def system_status(
+    message_repo: MessageRepositoryDep = None,
+    influencer_repo: InfluencerRepositoryDep = None,
+):
+    """Get detailed system statistics including database info, uptime, and usage metrics"""
     db_health = await db.health_check()
     db_stats = DatabaseStats(
-        connected=db_health["status"] == "up",
-        pool_size=db_health.get("pool_size"),
-        active_connections=db_health.get("pool_size", 0) - db_health.get("pool_free", 0) if db_health["status"] == "up" else None
+        connected=db_health.status == "up",
+        pool_size=db_health.pool_size,
+        active_connections=db_health.pool_size if db_health.status == "up" else None
     )
-
-    # Get system statistics
-    message_repo = MessageRepository()
-    influencer_repo = InfluencerRepository()
 
     try:
         total_conversations = await db.fetchval("SELECT COUNT(*) FROM conversations")
@@ -129,7 +122,6 @@ async def system_status():
         active_influencers=active_influencers
     )
 
-    # Calculate uptime
     uptime_seconds = int(time.time() - app_start_time)
 
     return StatusResponse(

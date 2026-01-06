@@ -161,6 +161,8 @@ services:
     restart: unless-stopped
     network_mode: host
     volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/rate-limit-zones.conf:/etc/nginx/conf.d/rate-limit-zones.conf:ro
       - ./nginx/yral-ai-chat.conf:/etc/nginx/conf.d/default.conf:ro
       - /opt/nginx-certs/letsencrypt:/etc/letsencrypt:ro
       - ./logs/nginx:/var/log/nginx

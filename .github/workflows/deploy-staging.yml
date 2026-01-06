@@ -165,21 +165,44 @@ jobs:
               local retry_delay=$4
               local attempt=1
               
+              echo "[INFO] Starting health check for $service_name on port $port"
+              
               while [ $attempt -le $max_attempts ]; do
+                echo "[INFO] Health check attempt $attempt/$max_attempts for $service_name"
+                
+                # Check if container is running
+                if ! docker compose ps "$service_name" | grep -q "Up"; then
+                  echo "[ERROR] Container $service_name is not running"
+                  docker compose ps "$service_name"
+                  docker compose logs --tail=50 "$service_name"
+                  return 1
+                fi
+                
+                # Try health check
                 if docker compose exec -T "$service_name" python -c \
                   "import urllib.request; urllib.request.urlopen('http://localhost:$port/health')" \
-                  2>/dev/null; then
+                  2>&1; then
                   echo "[OK] $service_name health check passed"
                   return 0
+                else
+                  echo "[WARN] Health check failed, checking container logs..."
+                  docker compose logs --tail=20 "$service_name"
                 fi
                 
                 if [ $attempt -eq $max_attempts ]; then
                   echo "[ERROR] $service_name health check failed after $max_attempts attempts"
-                  docker compose logs --tail=100 "$service_name"
+                  echo "[ERROR] Container status:"
+                  docker compose ps "$service_name"
+                  echo "[ERROR] Full container logs:"
+                  docker compose logs --tail=200 "$service_name"
+                  echo "[ERROR] Checking if process is running inside container:"
+                  docker compose exec -T "$service_name" ps aux || true
+                  echo "[ERROR] Checking if port is listening:"
+                  docker compose exec -T "$service_name" netstat -tlnp 2>/dev/null || docker compose exec -T "$service_name" ss -tlnp 2>/dev/null || echo "Cannot check ports"
                   return 1
                 fi
                 
-                echo "[INFO] $service_name: Attempt $attempt/$max_attempts... retrying in ${retry_delay}s"
+                echo "[INFO] $service_name: Attempt $attempt/$max_attempts failed, retrying in ${retry_delay}s"
                 sleep $retry_delay
                 attempt=$((attempt + 1))
               done
@@ -194,6 +217,8 @@ jobs:
             # Step 2: Validate nginx configuration
             echo "[INFO] Validating nginx configuration"
             docker run --rm \
+              -v "$(pwd)/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+              -v "$(pwd)/nginx/rate-limit-zones.conf:/etc/nginx/conf.d/rate-limit-zones.conf:ro" \
               -v "$(pwd)/nginx/yral-ai-chat.conf:/etc/nginx/conf.d/default.conf:ro" \
               -v /etc/letsencrypt:/etc/letsencrypt:ro \
               nginx:alpine nginx -t
@@ -211,21 +236,66 @@ jobs:
             echo "[INFO] Starting $ENVIRONMENT service"
             docker compose up -d "$SERVICE"
             
+            # Show container status immediately
+            echo "[INFO] Container status after start:"
+            docker compose ps "$SERVICE" || true
+            
+            # Show initial logs
+            echo "[INFO] Initial container logs:"
+            docker compose logs --tail=50 "$SERVICE" || true
+            
             # Step 6: Start nginx (without starting dependencies to avoid affecting production)
             echo "[INFO] Starting nginx"
             docker compose up -d --no-deps nginx
+            
+            # Debug: Check nginx container status
+            echo "[DEBUG] Nginx container status:"
+            docker compose ps nginx || true
+            echo "[DEBUG] Nginx container logs:"
+            docker compose logs --tail=30 nginx || true
+            
+            # Debug: Check if ports are listening on host
+            echo "[DEBUG] Checking if ports are listening on host:"
+            netstat -tlnp 2>/dev/null | grep -E ":(8000|8001|443|80)" || ss -tlnp 2>/dev/null | grep -E ":(8000|8001|443|80)" || echo "Cannot check ports (netstat/ss not available)"
+            
+            # Debug: Test connectivity from host to services
+            echo "[DEBUG] Testing connectivity to staging service (port 8001):"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:8001/health || echo "Failed to connect to port 8001"
+            echo "[DEBUG] Testing connectivity to production service (port 8000):"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:8000/health || echo "Failed to connect to port 8000"
+            
+            # Debug: Test from inside nginx container
+            echo "[DEBUG] Testing from inside nginx container:"
+            docker compose exec -T nginx wget -qO- --timeout=2 http://127.0.0.1:8001/health 2>&1 | head -5 || echo "Nginx container cannot reach staging service"
+            docker compose exec -T nginx wget -qO- --timeout=2 http://127.0.0.1:8000/health 2>&1 | head -5 || echo "Nginx container cannot reach production service"
+            
+            # Debug: Check nginx config is loaded
+            echo "[DEBUG] Checking nginx config inside container:"
+            docker compose exec -T nginx cat /etc/nginx/conf.d/default.conf | grep -A 5 "location /staging" || echo "Cannot read nginx config"
+            
+            # Debug: Check nginx error logs
+            echo "[DEBUG] Nginx error logs:"
+            docker compose exec -T nginx cat /var/log/nginx/error.log 2>/dev/null | tail -20 || echo "Cannot read nginx error logs"
             
             # Step 7: Wait for service to start
             echo "[INFO] Waiting ${SERVICE_START_DELAY}s for service to start"
             sleep $SERVICE_START_DELAY
             
+            # Show logs again after wait
+            echo "[INFO] Container logs after ${SERVICE_START_DELAY}s wait:"
+            docker compose logs --tail=50 "$SERVICE" || true
+            
             # Step 8: Run database migrations
             echo "[INFO] Running database migrations for $ENVIRONMENT"
-            if ! docker compose exec -T "$SERVICE" python scripts/run_migrations.py; then
+            echo "[INFO] Container logs before migrations:"
+            docker compose logs --tail=30 "$SERVICE" || true
+            if ! docker compose exec -T "$SERVICE" python scripts/run_migrations.py 2>&1; then
               echo "[ERROR] $ENVIRONMENT migrations failed"
-              docker compose logs --tail=50 "$SERVICE"
+              echo "[ERROR] Container logs after migration failure:"
+              docker compose logs --tail=100 "$SERVICE"
               exit 1
             fi
+            echo "[INFO] Migrations completed successfully"
             
             # Step 9: Restart service to load migrated data
             echo "[INFO] Restarting service to load migrated data"
@@ -233,17 +303,32 @@ jobs:
             echo "[INFO] Waiting ${SERVICE_RESTART_DELAY}s for service to restart"
             sleep $SERVICE_RESTART_DELAY
             
+            # Show logs after restart
+            echo "[INFO] Container logs after restart:"
+            docker compose logs --tail=50 "$SERVICE" || true
+            
             # Step 10: Health check
             echo "[INFO] Running health checks for $ENVIRONMENT"
             if ! check_service_health "$SERVICE" "$HEALTH_CHECK_PORT" "$HEALTH_CHECK_MAX_ATTEMPTS" "$HEALTH_CHECK_RETRY_DELAY"; then
               exit 1
             fi
             
-            # Step 11: Deployment summary
+            # Step 11: Final connectivity tests
+            echo "[DEBUG] Final connectivity tests:"
+            echo "[DEBUG] Testing staging health from host:"
+            curl -v http://127.0.0.1:8001/staging/health 2>&1 | head -20 || echo "Failed"
+            echo "[DEBUG] Testing production health from host:"
+            curl -v http://127.0.0.1:8000/health 2>&1 | head -20 || echo "Failed"
+            echo "[DEBUG] Testing via nginx (if accessible):"
+            curl -k -v https://127.0.0.1/staging/health 2>&1 | head -20 || curl -v http://127.0.0.1/staging/health 2>&1 | head -20 || echo "Cannot test via nginx"
+            
+            # Step 12: Deployment summary
             echo ""
             echo "[SUCCESS] $ENVIRONMENT deployment complete"
             echo "[INFO] Service status:"
             docker compose ps "$SERVICE"
+            echo "[INFO] Nginx status:"
+            docker compose ps nginx || true
             echo ""
             echo "[INFO] Recent logs:"
             docker compose logs --tail=20 "$SERVICE"

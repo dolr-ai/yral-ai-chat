@@ -1,7 +1,5 @@
-"""
-Media upload endpoints
-"""
-from datetime import datetime
+"""Media upload endpoints"""
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from loguru import logger
@@ -42,37 +40,29 @@ router = APIRouter(prefix="/api/v1/media", tags=["Media"])
     }
 )
 async def upload_media(
-    file: UploadFile = File(..., description="File to upload"),
-    type: str = Form(..., pattern="^(image|audio)$", description="Type of media: 'image' or 'audio'"),
-    current_user: CurrentUser = Depends(get_current_user),
+    file: UploadFile = File(..., description="File to upload"),  # noqa: B008
+    media_type: str = Form(..., alias="type", pattern="^(image|audio)$", description="Type of media: 'image' or 'audio'"),
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
     storage_service: StorageServiceDep = None
 ):
     """
-    Upload media file (image or audio)
+    Upload media file (image or audio) to cloud storage.
     
-    Args:
-        file: File to upload
-        type: Type of file ("image" or "audio")
-    
-    Returns:
-        MediaUploadResponse with presigned URL, storage key and metadata
+    Returns a presigned URL for immediate access and a stable storage_key.
     """
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    # Read file content
     file_content = await file.read()
     file_size = len(file_content)
 
-    # Validate based on type
-    if type == "image":
+    if media_type == "image":
         storage_service.validate_image(file.filename, file_size)
-    elif type == "audio":
+    elif media_type == "audio":
         storage_service.validate_audio(file.filename, file_size)
     else:
         raise HTTPException(status_code=400, detail="Invalid type. Must be 'image' or 'audio'")
 
-    # Save file
     try:
         s3_key, mime_type, file_size = await storage_service.save_file(
             file_content=file_content,
@@ -83,27 +73,22 @@ async def upload_media(
         logger.error(f"File upload failed: {e}")
         raise HTTPException(status_code=500, detail=f"File upload failed: {e!s}") from e
 
-    # Generate a short-lived presigned URL for immediate access
     try:
         presigned_url = storage_service.generate_presigned_url(s3_key)
     except Exception as e:
         logger.error(f"Failed to generate presigned URL for {s3_key}: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate access URL for uploaded file") from e
 
-    # Get audio duration if applicable (placeholder for now)
     duration_seconds = None
-    if type == "audio":
-        # TODO: Implement actual audio duration detection
-        duration_seconds = None
 
     return MediaUploadResponse(
         url=presigned_url,
         storage_key=s3_key,
-        type=type,
+        type=media_type,
         size=file_size,
         mime_type=mime_type,
         duration_seconds=duration_seconds,
-        uploaded_at=datetime.utcnow()
+        uploaded_at=datetime.now(tz=UTC)
     )
 
 

@@ -24,13 +24,12 @@ class MessageRepository:
         token_count: int | None = None
     ) -> Message:
         """Create a new message"""
-        # Generate UUID for SQLite (no uuid-ossp extension)
         message_id = str(uuid.uuid4())
         media_urls_json = json.dumps(media_urls or [])
 
         query = """
             INSERT INTO messages (
-                id, conversation_id, role, content, message_type, 
+                id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds, token_count
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -49,13 +48,12 @@ class MessageRepository:
             token_count
         )
 
-        # Fetch the created message
         return await self.get_by_id(UUID(message_id))
 
     async def get_by_id(self, message_id: UUID) -> Message | None:
         """Get message by ID"""
         query = """
-            SELECT 
+            SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
                 token_count, created_at, metadata
@@ -76,16 +74,16 @@ class MessageRepository:
         """List messages in a conversation"""
         order_clause = "DESC" if order.lower() == "desc" else "ASC"
 
-        query = f"""
-            SELECT 
-                id, conversation_id, role, content, message_type,
-                media_urls, audio_url, audio_duration_seconds,
-                token_count, created_at, metadata
-            FROM messages
-            WHERE conversation_id = $1
-            ORDER BY created_at {order_clause}
-            LIMIT $2 OFFSET $3
-        """
+        query = (
+            "SELECT "
+            "id, conversation_id, role, content, message_type, "
+            "media_urls, audio_url, audio_duration_seconds, "
+            "token_count, created_at, metadata "
+            "FROM messages "
+            "WHERE conversation_id = $1 "
+            "ORDER BY created_at " + order_clause + " "
+            "LIMIT $2 OFFSET $3"
+        )
 
         rows = await db.fetch(query, str(conversation_id), limit, offset)
         return [self._row_to_message(row) for row in rows]
@@ -97,7 +95,7 @@ class MessageRepository:
     ) -> list[Message]:
         """Get recent messages for AI context (ordered oldest to newest)"""
         query = """
-            SELECT 
+            SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
                 token_count, created_at, metadata
@@ -108,7 +106,6 @@ class MessageRepository:
         """
 
         rows = await db.fetch(query, str(conversation_id), limit)
-        # Reverse to get oldest to newest for AI context
         return [self._row_to_message(row) for row in reversed(rows)]
 
     async def count_by_conversation(self, conversation_id: UUID) -> int:
@@ -123,7 +120,6 @@ class MessageRepository:
 
     def _row_to_message(self, row) -> Message:
         """Convert database row to Message model"""
-        # Parse JSONB fields if they're strings
         media_urls = row["media_urls"]
         if isinstance(media_urls, str):
             media_urls = json.loads(media_urls)

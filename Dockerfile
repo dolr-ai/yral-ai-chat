@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install Litestream
 ARG LITESTREAM_VERSION=v0.3.13
-RUN wget -qO- https://github.com/benbjohnson/litestream/releases/download/${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-arm64.tar.gz | \
+RUN wget -qO- https://github.com/benbjohnson/litestream/releases/download/${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-amd64.tar.gz | \
     tar xvz -C /usr/local/bin
 
 # Copy Python dependencies from builder

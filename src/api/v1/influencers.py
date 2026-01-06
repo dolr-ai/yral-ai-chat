@@ -1,6 +1,4 @@
-"""
-AI Influencer endpoints
-"""
+"""AI Influencer endpoints"""
 from fastapi import APIRouter, Query
 
 from src.core.dependencies import InfluencerServiceDep
@@ -39,7 +37,6 @@ async def list_influencers(
         offset=offset,
     )
 
-    # Convert to response models
     influencer_responses = [
         InfluencerResponse(
             id=inf.id,

@@ -101,7 +101,7 @@ class TestLRUCache:
         assert cache.get("key1") is None
         assert cache.get("key2") is None
         assert cache.get("key3") is None
-        assert cache.get_stats()["total_items"] == 0
+        assert cache.get_stats().total_items == 0
 
     def test_cleanup_expired(self):
         """Test cleanup of expired items"""
@@ -135,13 +135,13 @@ class TestLRUCache:
 
         stats = cache.get_stats()
 
-        assert stats["total_items"] == 2
-        assert stats["active_items"] == 2
-        assert stats["max_size"] == 100
-        assert stats["hits"] == 1
-        assert stats["misses"] == 1
-        assert stats["hit_rate"] == 0.5
-        assert stats["usage_percent"] == 2.0
+        assert stats.total_items == 2
+        assert stats.active_items == 2
+        assert stats.max_size == 100
+        assert stats.hits == 1
+        assert stats.misses == 1
+        assert stats.hit_rate == 0.5
+        assert (stats.total_items / stats.max_size * 100) == 2.0
 
     def test_eviction_count(self):
         """Test that evictions are tracked"""
@@ -152,12 +152,12 @@ class TestLRUCache:
         cache.set("key3", "value3")  # Should evict key1
 
         stats = cache.get_stats()
-        assert stats["evictions"] == 1
+        assert stats.evictions == 1
 
         cache.set("key4", "value4")  # Should evict key2
 
         stats = cache.get_stats()
-        assert stats["evictions"] == 2
+        assert stats.evictions == 2
 
     def test_cache_with_complex_values(self):
         """Test caching complex data types"""
@@ -224,8 +224,8 @@ class TestCacheIntegration:
             cache.set(f"key{i}", f"value{i}")
 
         stats = cache.get_stats()
-        assert stats["total_items"] == 5
-        assert stats["usage_percent"] == 100.0
+        assert stats.total_items == 5
+        assert (stats.total_items / stats.max_size * 100) == 100.0
 
         # Phase 2: Trigger eviction
         cache.set("key5", "value5")
@@ -233,7 +233,7 @@ class TestCacheIntegration:
 
         # Get stats after eviction
         stats = cache.get_stats()
-        assert stats["evictions"] >= 1
+        assert stats.evictions >= 1
 
         # Phase 3: Wait for expiration
         time.sleep(2.1)
@@ -243,4 +243,4 @@ class TestCacheIntegration:
         # Phase 4: Clear
         cache.clear()
         stats = cache.get_stats()
-        assert stats["total_items"] == 0
+        assert stats.total_items == 0

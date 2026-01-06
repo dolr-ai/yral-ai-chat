@@ -41,7 +41,7 @@ Your role is to:
   '
 WHERE name = 'ahaanfitness';
 
--- Update Ananya and Harsh to ensure final values (idempotent)
+-- Update Ananya and Arun to ensure final values (idempotent)
 UPDATE ai_influencers
 SET 
     display_name = 'Ananya Khanna',
@@ -86,10 +86,10 @@ WHERE name = 'ananya_dating';
 UPDATE ai_influencers
 SET 
    description = 'Astrologer and Spiritual Guide 🕉️',
-   initial_greeting = 'Namaste, I''m Harsh - your Vedic astrology guide.
+   initial_greeting = 'Namaste, I''m Arun - your Vedic astrology guide.
 Career, marriage, aur life ke phases kundli ke adhaar par batata hoon.
 Kis topic par dekhna chahoge?',
-  system_instructions = 'You are Harsh Dubey, a friendly and approachable Indian astrologer and spiritual guide with deep knowledge of Vedic astrology who simplifies astrology, modern astrology, and Indian spiritual philosophy.
+  system_instructions = 'You are Arun Pandit, a friendly and approachable Indian astrologer and spiritual guide with deep knowledge of Vedic astrology who simplifies astrology, modern astrology, and Indian spiritual philosophy.
 
 Your role is to:
 
@@ -120,7 +120,7 @@ Your role is to:
  (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.) but if a user just says hi or hello or just says 1-2 words in English, then reply in Hinglish.
 - Keep the entire message in the same language as the users latest message. Try not to mix languages in the same message UNLESS THEY DID SO.'
 
-WHERE name = 'harsh_astro';
+WHERE name = 'arunpandit';
 
 
 -- Update Dr. Rhea Kapoor to ensure final values (idempotent)
@@ -190,6 +190,10 @@ UPDATE conversations
 SET influencer_id = 'nova-creative-spark-ic-principal-id-placeholder-006'
 WHERE influencer_id IN (SELECT id FROM ai_influencers WHERE name = 'nova_creative' AND id != 'nova-creative-spark-ic-principal-id-placeholder-006');
 
+UPDATE conversations
+SET influencer_id = 'azjhl-m7isb-qfocx-md5sm-z55f2-zm5qf-lss57-5zdns-ljyy4-wfv2x-rae'
+WHERE influencer_id IN (SELECT id FROM ai_influencers WHERE name = 'arunpandit' AND id != 'azjhl-m7isb-qfocx-md5sm-z55f2-zm5qf-lss57-5zdns-ljyy4-wfv2x-rae');
+
 -- Update influencer IDs
 UPDATE ai_influencers
 SET id = 'qg2pi-g3xl4-uprdd-macwr-64q7r-plotv-xm3bg-iayu3-rnpux-7ikkz-hqe'
@@ -211,6 +215,10 @@ UPDATE ai_influencers
 SET id = 'nova-creative-spark-ic-principal-id-placeholder-006'
 WHERE name = 'nova_creative' AND id != 'nova-creative-spark-ic-principal-id-placeholder-006';
 
+UPDATE ai_influencers
+SET id = 'azjhl-m7isb-qfocx-md5sm-z55f2-zm5qf-lss57-5zdns-ljyy4-wfv2x-rae'
+WHERE name = 'arunpandit' AND id != 'azjhl-m7isb-qfocx-md5sm-z55f2-zm5qf-lss57-5zdns-ljyy4-wfv2x-rae';
+
 -- Re-enable foreign key checks
 PRAGMA foreign_keys = ON;
 
@@ -231,5 +239,5 @@ WHERE name IN ('dr_meera_iyer', 'kunal_jain', 'priya_nair', 'neha_gupta', 'arjun
 -- Deactivate other influencers (keep only active/coming_soon ones)
 UPDATE ai_influencers 
 SET is_active = 'discontinued' 
-WHERE name NOT IN ('ahaanfitness', 'ananya_dating', 'harsh_astro', 'dr_rhea_kapoor', 'dr_meera_iyer', 'kunal_jain', 'priya_nair', 'neha_gupta', 'arjun_singh');
+WHERE name NOT IN ('ahaanfitness', 'ananya_dating', 'arunpandit', 'dr_rhea_kapoor', 'dr_meera_iyer', 'kunal_jain', 'priya_nair', 'neha_gupta', 'arjun_singh');
 

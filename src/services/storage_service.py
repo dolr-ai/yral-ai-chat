@@ -1,5 +1,5 @@
 """
-S3 storage service for media uploads
+S3-compatible storage service for media uploads (Storj)
 """
 import asyncio
 from pathlib import Path
@@ -14,16 +14,16 @@ from src.core.exceptions import BadRequestException
 
 
 class StorageService:
-    """Service for handling file uploads to S3"""
+    """Service for handling file uploads to S3-compatible storage (Storj)"""
 
     def __init__(self):
-        """Initialize S3 storage service (lazy initialization)"""
+        """Initialize S3-compatible storage service (lazy initialization)"""
         self._s3_client = None
         self.bucket = settings.aws_s3_bucket
 
     @property
     def s3_client(self):
-        """Lazy initialization of S3 client to avoid startup failures"""
+        """Lazy initialization of S3-compatible client to avoid startup failures"""
         if self._s3_client is None:
             try:
                 self._s3_client = boto3.client(
@@ -34,7 +34,7 @@ class StorageService:
                     region_name=settings.aws_region,
                     config=Config(signature_version="s3v4")
                 )
-                logger.info(f"S3 Storage service initialized: bucket={self.bucket}, endpoint={settings.s3_endpoint_url}")
+                logger.info(f"Storage service initialized: bucket={self.bucket}, endpoint={settings.s3_endpoint_url}")
             except Exception as e:
                 logger.error(f"Failed to initialize S3 client: {e}")
                 raise
@@ -47,7 +47,7 @@ class StorageService:
         user_id: str
     ) -> tuple[str, str, int]:
         """
-        Save uploaded file to S3
+        Save uploaded file to S3-compatible storage
         
         Args:
             file_content: File binary content
@@ -55,29 +55,26 @@ class StorageService:
             user_id: User ID for organizing files
             
         Returns:
-            Tuple of (s3_key, mime_type, file_size)
+            Tuple of (storage_key, mime_type, file_size)
         """
-        # Generate unique filename
         file_ext = Path(filename).suffix.lower()
         unique_filename = f"{uuid4()}{file_ext}"
         s3_key = f"{user_id}/{unique_filename}"
 
-        # Get file size
         file_size = len(file_content)
-
-        # Determine mime type
         mime_type = self._get_mime_type(file_ext)
 
-        # Upload to S3 as a private object (run in thread pool to avoid blocking)
-        await asyncio.to_thread(
-            self.s3_client.put_object,
-            Bucket=self.bucket,
-            Key=s3_key,
-            Body=file_content,
-            ContentType=mime_type,
-        )
+        def _upload():
+            self.s3_client.put_object(
+                Bucket=self.bucket,
+                Key=s3_key,
+                Body=file_content,
+                ContentType=mime_type,
+            )
 
-        logger.info(f"File uploaded to S3: {s3_key} ({file_size} bytes)")
+        await asyncio.to_thread(_upload)
+
+        logger.info(f"File uploaded to storage: {s3_key} ({file_size} bytes)")
 
         return s3_key, mime_type, file_size
 
@@ -86,18 +83,18 @@ class StorageService:
         Generate a presigned URL for accessing an object.
 
         Args:
-            key: S3 object key
+            key: Storage object key
             expires_in: Expiration time in seconds (defaults to settings.s3_url_expires_seconds)
 
         Returns:
             A time-limited presigned URL for the object
         """
         if not key:
-            raise ValueError("S3 key is required to generate a presigned URL")
+            raise ValueError("Storage key is required to generate a presigned URL")
 
         expiration = expires_in or settings.s3_url_expires_seconds
 
-        url = self.s3_client.generate_presigned_url(
+        return self.s3_client.generate_presigned_url(
             "get_object",
             Params={
                 "Bucket": self.bucket,
@@ -105,36 +102,29 @@ class StorageService:
             },
             ExpiresIn=expiration,
         )
-        return url
 
     def extract_key_from_url(self, url_or_key: str) -> str:
         """
-        Extract S3 key from either a storage key or an old public URL.
+        Extract storage key from either a storage key or an old public URL.
         For backward compatibility with existing data that may contain full public URLs.
 
         Args:
             url_or_key: Either a storage key (e.g., "user123/uuid.jpg") or a full public URL
 
         Returns:
-            The S3 key (storage key)
+            The storage key
         """
         if not url_or_key:
             return url_or_key
 
-        # If it's already just a key (no scheme), return as-is
         if not url_or_key.startswith(("http://", "https://")):
             return url_or_key
 
-        # If it's a full URL, try to extract the key
         public_base = settings.s3_public_url_base.rstrip("/")
         if url_or_key.startswith(public_base):
-            # Extract everything after the base URL
-            key = url_or_key[len(public_base):].lstrip("/")
-            return key
+            return url_or_key[len(public_base):].lstrip("/")
 
-        # If it doesn't match our expected format, log a warning and return as-is
-        # (might be a different URL format or external URL)
-        logger.warning(f"Could not extract S3 key from URL: {url_or_key}")
+        logger.warning(f"Could not extract storage key from URL: {url_or_key}")
         return url_or_key
 
     def _get_mime_type(self, file_ext: str) -> str:
@@ -186,16 +176,8 @@ class StorageService:
 
     async def get_audio_duration(self, s3_key: str) -> int:
         """
-        Get audio file duration in seconds
-        Note: This is a placeholder. In production, use a library like mutagen or ffprobe
-        For S3 storage, you would need to download the file temporarily or use a streaming approach
+        Get audio file duration in seconds.
+        TODO: Implement using mutagen or ffprobe (requires downloading file from storage)
         """
-        # TODO: Implement actual audio duration detection
-        # For now, return 0 and let the client provide duration
         return 0
-
-
-# Global storage service instance
-storage_service = StorageService()
-
 

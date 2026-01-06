@@ -1,31 +1,74 @@
 """
 Yral AI Chat API - Main Application
 """
+import os
+import shutil
+import subprocess
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from loguru import logger
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 
-# Import routers
 from src.api.v1 import chat, health, influencers, media
 from src.config import settings
-
-# Import for error handling
 from src.core.exceptions import BaseAPIException
-
-# Import metrics
 from src.core.metrics import MetricsMiddleware, metrics_endpoint
 from src.db.base import db
-from src.middleware.logging import RequestLoggingMiddleware
-
-# Import middleware
-from src.middleware.rate_limiter import RateLimitMiddleware
+from src.middleware.logging import RequestLoggingMiddleware, configure_logging
 from src.middleware.versioning import APIVersionMiddleware
-from src.services.gemini_client import gemini_client
+
+
+def get_git_branch() -> str | None:
+    """Get current git branch name"""
+    try:
+        git_path = shutil.which("git")
+        if not git_path:
+            return None
+        result = subprocess.run(  # noqa: S603
+            [git_path, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=2,
+        )
+        return result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+
+def get_sentry_environment() -> str | None:
+    """Determine Sentry environment based on git branch"""
+    branch = get_git_branch()
+    if branch == "main":
+        return "production"
+    return "staging"
+
+
+is_running_tests = os.getenv("PYTEST_CURRENT_TEST") is not None
+sentry_env = get_sentry_environment()
+
+if not is_running_tests and settings.sentry_dsn and sentry_env:
+    try:
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=sentry_env,
+            traces_sample_rate=settings.sentry_traces_sample_rate,
+            profiles_sample_rate=settings.sentry_profiles_sample_rate,
+            release=settings.sentry_release,
+            send_default_pii=True,
+            integrations=[FastApiIntegration(transaction_style="endpoint")],
+            debug=settings.debug,
+        )
+        logger.info(f"Sentry initialized for {sentry_env}")
+    except Exception as e:
+        logger.error(f"Failed to initialize Sentry: {e}")
+        logger.warning("Application will continue without Sentry error tracking")
 
 
 @asynccontextmanager
@@ -33,40 +76,30 @@ async def lifespan(app: FastAPI):
     """
     Lifespan context manager for startup and shutdown
     """
-    # Configure logging first
-    from src.middleware.logging import configure_logging
     configure_logging()
 
-    # Startup
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Environment: {settings.environment}")
 
-    # Connect to database
     await db.connect()
 
-    # Initialize services (Gemini is already initialized)
     logger.info("All services initialized")
 
     yield
 
-    # Shutdown
     logger.info("Shutting down...")
     await db.disconnect()
-    await gemini_client.close()
+    # GeminiClient instances and HTTP clients are cleaned up automatically
     logger.info("Shutdown complete")
 
-
-# Create FastAPI app
-# Set root_path for staging to help Swagger UI generate correct URLs
-# This doesn't affect route matching (nginx strips the prefix), but helps with URL generation
-root_path = "/staging" if settings.environment == "staging" else None
+root_path: str | None = "/staging" if settings.environment == "staging" else None
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="AI Chat API for Yral with multimodal support",
     lifespan=lifespan,
-    root_path=root_path,
+    root_path=root_path,  # type: ignore[arg-type]
     docs_url="/docs",
     redoc_url="/redoc",
     swagger_ui_parameters={
@@ -76,7 +109,6 @@ app = FastAPI(
     redoc_favicon_url="https://fastapi.tiangolo.com/img/favicon.png"
 )
 
-# Add security scheme for Swagger UI
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -88,13 +120,9 @@ def custom_openapi():
         routes=app.routes,
     )
     
-    # Set server URL based on environment for correct Swagger UI routing
-    # root_path is already set above, but we also set servers for explicit Swagger UI configuration
     if settings.environment == "staging":
         openapi_schema["servers"] = [{"url": "/staging", "description": "Staging environment"}]
-    # Production: Don't set servers array - let Swagger UI use default (current origin)
     
-    # Add JWT Bearer authentication
     openapi_schema["components"]["securitySchemes"] = {
         "BearerAuth": {
             "type": "http",
@@ -107,10 +135,8 @@ def custom_openapi():
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
-app.openapi = custom_openapi
+app.openapi = custom_openapi  # type: ignore[method-assign]
 
-
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -119,33 +145,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Rate limiting middleware
-
-app.add_middleware(RateLimitMiddleware)
-
-# Enhanced request logging middleware
-
 app.add_middleware(RequestLoggingMiddleware)
-
-# Metrics collection middleware
-
 app.add_middleware(MetricsMiddleware)
-
-# API versioning middleware
-
 app.add_middleware(APIVersionMiddleware)
-
-
-# Error handling
-
-
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle Pydantic validation errors"""
     logger.warning(f"Validation error on {request.url.path}: {exc.errors()}")
 
-    # Manually serialize errors to handle non-JSON-serializable objects like ValueError
     serialized_errors = []
     for error in exc.errors():
         serialized_error = {
@@ -155,14 +163,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "input": error.get("input"),
         }
         
-        # Handle ctx field which may contain non-serializable objects
         if "ctx" in error:
             ctx = error["ctx"]
             if isinstance(ctx, dict):
                 serialized_ctx = {}
                 for key, value in ctx.items():
-                    # Convert non-primitive types to strings
-                    if isinstance(value, (str, int, float, bool, type(None))):
+                    if isinstance(value, str | int | float | bool | type(None)):
                         serialized_ctx[key] = value
                     else:
                         serialized_ctx[key] = str(value)
@@ -191,8 +197,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 @app.exception_handler(BaseAPIException)
 async def api_exception_handler(request: Request, exc: BaseAPIException):
     """Handle custom API exceptions"""
+    detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
     logger.warning(
-        f"{exc.error_code} on {request.url.path}: {exc.detail.get('message')}"
+        f"{exc.error_code} on {request.url.path}: {detail.get('message', 'Unknown error')}"
     )
     return JSONResponse(
         status_code=exc.status_code,
@@ -214,26 +221,16 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Media files are served directly from S3 - no local mount needed
-
-
-# Register routers
 app.include_router(health.router)
 app.include_router(influencers.router)
 app.include_router(chat.router)
 app.include_router(media.router)
-
-
-# Metrics endpoint
-
 
 @app.get("/metrics", tags=["Monitoring"])
 async def get_metrics():
     """Prometheus metrics endpoint"""
     return await metrics_endpoint()
 
-
-# Root endpoint
 @app.get("/", tags=["Root"])
 async def root():
     """Root endpoint"""
@@ -245,6 +242,7 @@ async def root():
         "health": "/health",
         "metrics": "/metrics"
     }
+
 
 
 if __name__ == "__main__":

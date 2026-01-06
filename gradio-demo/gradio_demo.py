@@ -3,6 +3,7 @@ Gradio Demo for Yral AI Chat API
 Tests all endpoints in a user-friendly interface
 """
 import json
+from pathlib import Path
 
 import gradio as gr
 import requests
@@ -10,10 +11,12 @@ import requests
 # Configuration
 API_BASE_URL = "http://localhost:8000"
 
-# Global state
-current_user_id = "demo_user_123"
-current_conversation_id = None
-current_influencer_id = None
+# Global state - using dict to avoid global statement warnings
+_state = {
+    "current_user_id": "demo_user_123",
+    "current_conversation_id": None,
+    "current_influencer_id": None
+}
 
 
 def format_json(data):
@@ -24,7 +27,7 @@ def format_json(data):
 def get_influencers() -> tuple[str, str]:
     """Step 1: Get list of influencers"""
     try:
-        response = requests.get(f"{API_BASE_URL}/api/v1/influencers")
+        response = requests.get(f"{API_BASE_URL}/api/v1/influencers", timeout=10)
         response.raise_for_status()
         data = response.json()
 
@@ -45,7 +48,6 @@ def get_influencers() -> tuple[str, str]:
 
 def create_conversation(influencer_id: str) -> tuple[str, str, str]:
     """Step 2: Create or get conversation"""
-    global current_conversation_id, current_influencer_id
 
     if not influencer_id.strip():
         return "Please enter an influencer ID", None, ""
@@ -54,13 +56,14 @@ def create_conversation(influencer_id: str) -> tuple[str, str, str]:
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations",
             json={"influencer_id": influencer_id.strip()},
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
 
-        current_conversation_id = data["id"]
-        current_influencer_id = influencer_id.strip()
+        _state["current_conversation_id"] = data["id"]
+        _state["current_influencer_id"] = influencer_id.strip()
 
         status = (
             f"✓ Conversation Created!\n"
@@ -90,7 +93,8 @@ def send_text_message(conversation_id: str, message: str) -> tuple[str, str, lis
                 "content": message,
                 "message_type": "text"
             },
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -119,13 +123,14 @@ def upload_media(file, media_type: str) -> tuple[str, str]:
         return "Please select a file", None
 
     try:
-        with open(file.name, "rb") as f:
+        with Path(file.name).open("rb") as f:
             files = {"file": f}
             data = {"type": media_type}
             response = requests.post(
                 f"{API_BASE_URL}/api/v1/media/upload",
                 files=files,
-                data=data
+                data=data,
+                timeout=10
             )
         response.raise_for_status()
         result = response.json()
@@ -161,7 +166,8 @@ def send_image_message(conversation_id: str, image_url: str, caption: str) -> tu
                 "message_type": message_type,
                 "media_urls": [image_url.strip()]
             },
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -193,7 +199,8 @@ def send_audio_message(conversation_id: str, audio_url: str, duration: int) -> t
                 "audio_url": audio_url.strip(),
                 "audio_duration_seconds": duration
             },
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -217,7 +224,8 @@ def get_message_history(conversation_id: str, limit: int) -> tuple[str, str, lis
     try:
         response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id.strip()}/messages",
-            params={"limit": limit, "order": "asc"}
+            params={"limit": limit, "order": "asc"},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -242,7 +250,8 @@ def list_conversations(limit: int) -> tuple[str, str]:
     try:
         response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations",
-            params={"limit": limit}
+            params={"limit": limit},
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -273,7 +282,8 @@ def delete_conversation(conversation_id: str) -> tuple[str, str]:
 
     try:
         response = requests.delete(
-            f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id.strip()}"
+            f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id.strip()}",
+            timeout=10
         )
         response.raise_for_status()
         data = response.json()
@@ -291,7 +301,7 @@ def delete_conversation(conversation_id: str) -> tuple[str, str]:
 def check_health() -> tuple[str, str]:
     """Check API health"""
     try:
-        response = requests.get(f"{API_BASE_URL}/health")
+        response = requests.get(f"{API_BASE_URL}/health", timeout=10)
         response.raise_for_status()
         data = response.json()
 
@@ -308,11 +318,11 @@ def check_health() -> tuple[str, str]:
 
 # Create Gradio Interface
 with gr.Blocks(title="Yral AI Chat API Demo") as demo:
-    gr.Markdown("# 🤖 Yral AI Chat API Demo")
+    gr.Markdown("# Yral AI Chat API Demo")
     gr.Markdown(f"Testing API at: `{API_BASE_URL}`")
 
     # Health Check
-    with gr.Accordion("🏥 Health Check", open=False):
+    with gr.Accordion("Health Check", open=False):
         with gr.Row():
             health_btn = gr.Button("Check API Health", variant="secondary")
         health_status = gr.Textbox(label="Status", lines=3)
@@ -320,10 +330,10 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         health_btn.click(check_health, outputs=[health_status, health_json])
 
     gr.Markdown("---")
-    gr.Markdown("## 📋 Step-by-Step Flow")
+    gr.Markdown("## Step-by-Step Flow")
 
     # Step 1: Browse Influencers
-    with gr.Accordion("1️⃣ Browse AI Influencers", open=True):
+    with gr.Accordion("1. Browse AI Influencers", open=True):
         gr.Markdown("First, let's see what AI influencers are available")
         get_inf_btn = gr.Button("Get Influencers", variant="primary")
         inf_display = gr.Textbox(label="Available Influencers", lines=10)
@@ -331,7 +341,7 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         get_inf_btn.click(get_influencers, outputs=[inf_display, inf_json])
 
     # Step 2: Create Conversation
-    with gr.Accordion("2️⃣ Create Conversation", open=True):
+    with gr.Accordion("2. Create Conversation", open=True):
         gr.Markdown("Copy an influencer ID from above and create a conversation")
         with gr.Row():
             inf_id_input = gr.Textbox(label="Influencer ID", placeholder="paste-uuid-here")
@@ -346,7 +356,7 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         )
 
     # Step 2.5: View Initial Greeting
-    with gr.Accordion("2️⃣ 🎉 View Initial Greeting", open=True):
+    with gr.Accordion("2. View Initial Greeting", open=True):
         gr.Markdown("""
         After creating a conversation, the AI influencer may send an automatic greeting message.
         Use this section to view it!
@@ -364,7 +374,7 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         )
 
     # Step 3: Send Text Messages
-    with gr.Accordion("3️⃣ Send Text Messages", open=True):
+    with gr.Accordion("3. Send Text Messages", open=True):
         gr.Markdown("Chat with the AI influencer")
         conv_id_text = gr.Textbox(label="Conversation ID", placeholder="paste-conversation-id")
         chatbot = gr.Chatbot(label="Chat History", height=300)
@@ -380,7 +390,7 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         )
 
     # Step 4: Send Image Messages
-    with gr.Accordion("4️⃣ Send Image Messages", open=False):
+    with gr.Accordion("4. Send Image Messages", open=False):
         gr.Markdown("Upload an image and get AI analysis")
         with gr.Row():
             image_file = gr.File(label="Select Image", file_types=["image"])
@@ -406,7 +416,7 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         )
 
     # Step 5: Send Audio Messages
-    with gr.Accordion("5️⃣ Send Audio Messages", open=False):
+    with gr.Accordion("5. Send Audio Messages", open=False):
         gr.Markdown("Upload audio and get transcription + AI response")
         with gr.Row():
             audio_file = gr.File(label="Select Audio", file_types=["audio"])
@@ -432,7 +442,7 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         )
 
     # Step 6: View History
-    with gr.Accordion("6️⃣ View Message History", open=False):
+    with gr.Accordion("6. View Message History", open=False):
         gr.Markdown("Load full conversation history")
         with gr.Row():
             conv_id_history = gr.Textbox(label="Conversation ID")
@@ -448,7 +458,7 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         )
 
     # Step 7: List Conversations
-    with gr.Accordion("7️⃣ List All Conversations", open=False):
+    with gr.Accordion("7. List All Conversations", open=False):
         gr.Markdown("See all your conversations")
         with gr.Row():
             list_limit = gr.Slider(label="Limit", minimum=5, maximum=50, value=20, step=5)
@@ -462,8 +472,8 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
         )
 
     # Step 8: Delete Conversation
-    with gr.Accordion("8️⃣ Delete Conversation", open=False):
-        gr.Markdown("⚠️ This will permanently delete the conversation and all messages")
+    with gr.Accordion("8. Delete Conversation", open=False):
+        gr.Markdown("WARNING: This will permanently delete the conversation and all messages")
         with gr.Row():
             conv_id_delete = gr.Textbox(label="Conversation ID")
             delete_btn = gr.Button("Delete Conversation", variant="stop")
@@ -477,8 +487,4 @@ with gr.Blocks(title="Yral AI Chat API Demo") as demo:
 
 
 if __name__ == "__main__":
-    print("🚀 Starting Gradio Demo...")
-    print(f"📡 API URL: {API_BASE_URL}")
-    print("🌐 Make sure your API server is running!")
-    print("\nStarting demo on http://localhost:7860")
     demo.launch(server_name="0.0.0.0", server_port=7860, share=True)
