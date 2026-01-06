@@ -84,12 +84,27 @@ jobs:
             echo "🚀 Starting deployment..."
             
             # Navigate to project directory
-            cd ~/yral-ai-chat || cd /root/yral-ai-chat || { echo "❌ Project directory not found"; exit 1; }
+            cd ~/yral-ai-chat || cd /root/yral-ai-chat || { echo "Project directory not found"; exit 1; }
             
             # Pull latest code
-            echo "📥 Pulling latest code..."
+            echo "Pulling latest code..."
             git fetch origin
             git reset --hard origin/main
+            
+            # Sync nginx config from repo to host
+            echo "Updating nginx config..."
+            sudo cp nginx/yral-ai-chat.conf /etc/nginx/sites-available/yral-ai-chat.conf
+
+            # Ensure nginx site is enabled
+            if [ ! -L /etc/nginx/sites-enabled/yral-ai-chat.conf ]; then
+              sudo ln -s /etc/nginx/sites-available/yral-ai-chat.conf /etc/nginx/sites-enabled/yral-ai-chat.conf
+            fi
+
+            # Test and reload nginx
+            echo "Testing nginx configuration..."
+            sudo nginx -t
+            echo "Reloading nginx..."
+            sudo systemctl reload nginx
             
             # Ensure data directory exists
             mkdir -p data logs
@@ -111,38 +126,45 @@ jobs:
             docker-compose up -d
             
             # Wait for services to be healthy
-            echo "⏳ Waiting for services to start..."
+            echo "Waiting for services to start..."
             sleep 30
             
             # Health check
-            echo "🏥 Running health checks..."
+            echo "Running health checks..."
             if curl -f http://localhost:8000/health > /dev/null 2>&1; then
-              echo "✅ Production service is healthy"
+              echo "Production service is healthy"
             else
-              echo "⚠️  Production service health check failed"
+              echo "Production service health check failed"
             fi
             
             if curl -f http://localhost:8001/health > /dev/null 2>&1; then
-              echo "✅ Staging service is healthy"
+              echo "Staging service is healthy"
             else
-              echo "⚠️  Staging service health check failed"
+              echo "Staging service health check failed"
             fi
             
             if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
-              echo "✅ Metabase (production) service is healthy"
+              echo "Metabase (production) service is healthy"
             else
-              echo "⚠️  Metabase (production) service health check failed (may still be initializing)"
+              echo "Metabase (production) service health check failed (may still be initializing)"
             fi
             
             if curl -f http://localhost:3001/api/health > /dev/null 2>&1; then
-              echo "✅ Metabase (staging) service is healthy"
+              echo "Metabase (staging) service is healthy"
             else
-              echo "⚠️  Metabase (staging) service health check failed (may still be initializing)"
+              echo "Metabase (staging) service health check failed (may still be initializing)"
+
+            # Check staging Metabase via nginx route (optional best-effort)
+            if curl -kf https://chat.yral.com/staging/metabase/api/health > /dev/null 2>&1; then
+              echo "Staging Metabase reachable via nginx"
+            else
+              echo "Staging Metabase NOT reachable via nginx (check nginx and Metabase containers)"
+            fi
             fi
             
             # Show container status
             echo ""
-            echo "📊 Container status:"
+            echo "Container status:"
             docker-compose ps
             
             echo ""
