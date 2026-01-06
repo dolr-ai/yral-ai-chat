@@ -248,6 +248,35 @@ jobs:
             echo "[INFO] Starting nginx"
             docker compose up -d --no-deps nginx
             
+            # Debug: Check nginx container status
+            echo "[DEBUG] Nginx container status:"
+            docker compose ps nginx || true
+            echo "[DEBUG] Nginx container logs:"
+            docker compose logs --tail=30 nginx || true
+            
+            # Debug: Check if ports are listening on host
+            echo "[DEBUG] Checking if ports are listening on host:"
+            netstat -tlnp 2>/dev/null | grep -E ":(8000|8001|443|80)" || ss -tlnp 2>/dev/null | grep -E ":(8000|8001|443|80)" || echo "Cannot check ports (netstat/ss not available)"
+            
+            # Debug: Test connectivity from host to services
+            echo "[DEBUG] Testing connectivity to staging service (port 8001):"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:8001/health || echo "Failed to connect to port 8001"
+            echo "[DEBUG] Testing connectivity to production service (port 8000):"
+            curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:8000/health || echo "Failed to connect to port 8000"
+            
+            # Debug: Test from inside nginx container
+            echo "[DEBUG] Testing from inside nginx container:"
+            docker compose exec -T nginx wget -qO- --timeout=2 http://127.0.0.1:8001/health 2>&1 | head -5 || echo "Nginx container cannot reach staging service"
+            docker compose exec -T nginx wget -qO- --timeout=2 http://127.0.0.1:8000/health 2>&1 | head -5 || echo "Nginx container cannot reach production service"
+            
+            # Debug: Check nginx config is loaded
+            echo "[DEBUG] Checking nginx config inside container:"
+            docker compose exec -T nginx cat /etc/nginx/conf.d/default.conf | grep -A 5 "location /staging" || echo "Cannot read nginx config"
+            
+            # Debug: Check nginx error logs
+            echo "[DEBUG] Nginx error logs:"
+            docker compose exec -T nginx cat /var/log/nginx/error.log 2>/dev/null | tail -20 || echo "Cannot read nginx error logs"
+            
             # Step 7: Wait for service to start
             echo "[INFO] Waiting ${SERVICE_START_DELAY}s for service to start"
             sleep $SERVICE_START_DELAY
@@ -284,11 +313,22 @@ jobs:
               exit 1
             fi
             
-            # Step 11: Deployment summary
+            # Step 11: Final connectivity tests
+            echo "[DEBUG] Final connectivity tests:"
+            echo "[DEBUG] Testing staging health from host:"
+            curl -v http://127.0.0.1:8001/staging/health 2>&1 | head -20 || echo "Failed"
+            echo "[DEBUG] Testing production health from host:"
+            curl -v http://127.0.0.1:8000/health 2>&1 | head -20 || echo "Failed"
+            echo "[DEBUG] Testing via nginx (if accessible):"
+            curl -k -v https://127.0.0.1/staging/health 2>&1 | head -20 || curl -v http://127.0.0.1/staging/health 2>&1 | head -20 || echo "Cannot test via nginx"
+            
+            # Step 12: Deployment summary
             echo ""
             echo "[SUCCESS] $ENVIRONMENT deployment complete"
             echo "[INFO] Service status:"
             docker compose ps "$SERVICE"
+            echo "[INFO] Nginx status:"
+            docker compose ps nginx || true
             echo ""
             echo "[INFO] Recent logs:"
             docker compose logs --tail=20 "$SERVICE"
