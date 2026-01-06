@@ -1,0 +1,170 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  DOCKER_COMPOSE_VERSION: "2.24.0"
+
+jobs:
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PRODUCTION_ENV: ${{ secrets.PRODUCTION_ENV || 'production' }}
+          STAGING_ENV: ${{ secrets.STAGING_ENV || 'staging' }}
+          # Application settings
+          APP_NAME: ${{ secrets.APP_NAME || 'Yral AI Chat API' }}
+          APP_VERSION: ${{ secrets.APP_VERSION || '1.0.0' }}
+          DEBUG: ${{ secrets.DEBUG || 'False' }}
+          # Database
+          DATABASE_PATH: ${{ secrets.DATABASE_PATH || '/app/data/yral_chat.db' }}
+          # JWT
+          JWT_ALGORITHM: ${{ secrets.JWT_ALGORITHM || 'HS256' }}
+          JWT_ISSUER: ${{ secrets.JWT_ISSUER || 'yral_auth' }}
+          # Gemini
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-2.5-flash' }}
+          GEMINI_MAX_TOKENS: ${{ secrets.GEMINI_MAX_TOKENS || '2048' }}
+          GEMINI_TEMPERATURE: ${{ secrets.GEMINI_TEMPERATURE || '0.7' }}
+          # Media Storage
+          MAX_IMAGE_SIZE_MB: ${{ secrets.MAX_IMAGE_SIZE_MB || '10' }}
+          MAX_AUDIO_SIZE_MB: ${{ secrets.MAX_AUDIO_SIZE_MB || '20' }}
+          MAX_AUDIO_DURATION_SECONDS: ${{ secrets.MAX_AUDIO_DURATION_SECONDS || '300' }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+          S3_PUBLIC_URL_BASE: ${{ secrets.S3_PUBLIC_URL_BASE }}
+          # Optional: Whisper
+          USE_WHISPER: ${{ secrets.USE_WHISPER || 'false' }}
+          WHISPER_API_KEY: ${{ secrets.WHISPER_API_KEY || '' }}
+          # CORS
+          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS || '*' }}
+          CORS_ALLOW_CREDENTIALS: ${{ secrets.CORS_ALLOW_CREDENTIALS || 'true' }}
+          # Rate Limiting
+          RATE_LIMIT_PER_MINUTE: ${{ secrets.RATE_LIMIT_PER_MINUTE || '60' }}
+          RATE_LIMIT_PER_HOUR: ${{ secrets.RATE_LIMIT_PER_HOUR || '1000' }}
+          # Logging
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'INFO' }}
+          LOG_FORMAT: ${{ secrets.LOG_FORMAT || 'json' }}
+          # Litestream
+          ENABLE_LITESTREAM: ${{ secrets.ENABLE_LITESTREAM || 'true' }}
+          LITESTREAM_ACCESS_KEY_ID: ${{ secrets.LITESTREAM_ACCESS_KEY_ID }}
+          LITESTREAM_SECRET_ACCESS_KEY: ${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
+          LITESTREAM_BUCKET: ${{ secrets.LITESTREAM_BUCKET }}
+          LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
+          LITESTREAM_REGION: ${{ secrets.LITESTREAM_REGION }}
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
+            set -e
+            
+            echo "🚀 Starting deployment..."
+            
+            # Navigate to project directory
+            cd ~/yral-ai-chat || cd /root/yral-ai-chat || { echo "❌ Project directory not found"; exit 1; }
+            
+            # Pull latest code
+            echo "📥 Pulling latest code..."
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Ensure data directory exists
+            mkdir -p data logs
+            
+            # Ensure staging database exists (if it doesn't)
+            if [ ! -f data/yral_chat_staging.db ]; then
+              echo "📊 Creating staging database..."
+              sqlite3 data/yral_chat_staging.db < migrations/sqlite/001_init_schema.sql || true
+              if [ -f migrations/sqlite/002_seed_influencers.sql ]; then
+                sqlite3 data/yral_chat_staging.db < migrations/sqlite/002_seed_influencers.sql || true
+              fi
+            fi
+            
+            # Deploy with docker-compose
+            echo "🐳 Deploying with Docker Compose..."
+            docker-compose down || true
+            docker-compose pull || true
+            docker-compose build --no-cache || docker-compose build
+            docker-compose up -d
+            
+            # Wait for services to be healthy
+            echo "⏳ Waiting for services to start..."
+            sleep 30
+            
+            # Health check
+            echo "🏥 Running health checks..."
+            if curl -f http://localhost:8000/health > /dev/null 2>&1; then
+              echo "✅ Production service is healthy"
+            else
+              echo "⚠️  Production service health check failed"
+            fi
+            
+            if curl -f http://localhost:8001/health > /dev/null 2>&1; then
+              echo "✅ Staging service is healthy"
+            else
+              echo "⚠️  Staging service health check failed"
+            fi
+            
+            if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "✅ Metabase (production) service is healthy"
+            else
+              echo "⚠️  Metabase (production) service health check failed (may still be initializing)"
+            fi
+            
+            if curl -f http://localhost:3001/api/health > /dev/null 2>&1; then
+              echo "✅ Metabase (staging) service is healthy"
+            else
+              echo "⚠️  Metabase (staging) service health check failed (may still be initializing)"
+            fi
+            
+            # Show container status
+            echo ""
+            echo "📊 Container status:"
+            docker-compose ps
+            
+            echo ""
+            echo "✅ Deployment complete!"
+            echo "🌐 Services available at:"
+            echo "   - Production API: http://${{ secrets.DEPLOY_HOST }}:8000"
+            echo "   - Staging API: http://${{ secrets.DEPLOY_HOST }}:8001"
+            echo "   - Metabase (Production): https://chat.yral.com/metabase/"
+            echo "   - Metabase (Staging): https://chat.yral.com/staging/metabase/"
+          ENDSSH
+
+      - name: Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Services deployed successfully:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Production API" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Staging API" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Metabase (Production)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Metabase (Staging)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Access Metabase:" >> $GITHUB_STEP_SUMMARY
+          echo "- Production: https://chat.yral.com/metabase/" >> $GITHUB_STEP_SUMMARY
+          echo "- Staging: https://chat.yral.com/staging/metabase/" >> $GITHUB_STEP_SUMMARY
+

@@ -472,17 +472,39 @@ Configure the following secrets in your GitHub repository (Settings → Secrets 
    - Checks out the code
    - SSH into the deployment server
    - Pulls the latest code
-   - Builds and deploys using `docker-compose` with secrets from GitHub Secrets
+   - Creates staging database if it doesn't exist
+   - Builds and deploys all services (including Metabase BI dashboard) using `docker-compose` with secrets from GitHub Secrets
    - Runs health checks to verify deployment
 
 2. Secrets are passed as environment variables to `docker-compose up -d`, ensuring they are never stored in files on the server.
 
+**Services Deployed:**
+- Production API (port 8000)
+- Staging API (port 8001)
+- Metabase BI Dashboard (port 3000)
+- Nginx reverse proxy
+
+#### BI Dashboard (Metabase)
+
+The deployment includes Metabase for interactive analytics dashboards:
+
+- **Production UI:** `https://chat.yral.com/metabase/` (container `metabase` on port 3000)
+- **Staging UI:** `https://chat.yral.com/staging/metabase/` (container `metabase-staging` on port 3001)
+- **Local dev:** `http://localhost:3000` (prod Metabase), `http://localhost:3001` (staging Metabase)
+- **SQLite files:** `/data/yral_chat.db` (prod), `/data/yral_chat_staging.db` (staging)
+- **Views for analytics (optional):** `migrations/sqlite/004_dashboard_views.sql` creates:
+  - `v_user_conversation_summary` (PID, bot, last seen, time spent)
+  - `v_conversation_threads` (full conversation)
+  - `v_bot_performance`, `v_user_engagement`, `v_daily_activity`, `v_recent_activity`
+  You can query these directly from Metabase for most dashboards.
+
 #### Docker Volumes
 
 The following directories are persisted as Docker volumes:
-- `./data`: SQLite database files
+- `./data`: SQLite database files (production and staging)
 - `./uploads`: Uploaded media files
 - `./logs`: Application logs
+- `metabase-data`: Metabase metadata (dashboards, queries, settings)
 
 These directories are created automatically if they don't exist.
 
