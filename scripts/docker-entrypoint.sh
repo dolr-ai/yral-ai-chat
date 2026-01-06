@@ -92,15 +92,29 @@ EOF
     
     # Start the application
     echo "Starting application..."
+    echo "Command: $@"
+    echo "Working directory: $(pwd)"
+    echo "Environment: ENVIRONMENT=${ENVIRONMENT:-not set}, DATABASE_PATH=${DATABASE_PATH}"
+    
     "$@" &
     APP_PID=$!
     echo "Application started with PID: $APP_PID"
     
     # Wait a moment and check if the process is still running
-    sleep 2
+    sleep 3
     if ! kill -0 "$APP_PID" 2>/dev/null; then
         echo "ERROR: Application process died immediately after startup"
+        echo "Checking if process exists..."
+        ps aux | grep -E "(uvicorn|python)" | grep -v grep || echo "No uvicorn/python processes found"
+        echo "Checking for error logs..."
         exit 1
+    fi
+    
+    echo "Application is running (PID: $APP_PID)"
+    echo "Checking if port 8000 is listening..."
+    sleep 2
+    if command -v netstat >/dev/null 2>&1; then
+        netstat -tlnp 2>/dev/null | grep 8000 || echo "WARNING: Port 8000 not found in netstat"
     fi
     
     # Wait for the application process
@@ -112,5 +126,8 @@ EOF
 else
     echo "Litestream is disabled or not configured"
     echo "Starting application without Litestream..."
+    echo "Command: $@"
+    echo "Working directory: $(pwd)"
+    echo "Environment: ENVIRONMENT=${ENVIRONMENT:-not set}, DATABASE_PATH=${DATABASE_PATH}"
     exec "$@"
 fi

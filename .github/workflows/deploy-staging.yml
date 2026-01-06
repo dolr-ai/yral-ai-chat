@@ -165,21 +165,44 @@ jobs:
               local retry_delay=$4
               local attempt=1
               
+              echo "[INFO] Starting health check for $service_name on port $port"
+              
               while [ $attempt -le $max_attempts ]; do
+                echo "[INFO] Health check attempt $attempt/$max_attempts for $service_name"
+                
+                # Check if container is running
+                if ! docker compose ps "$service_name" | grep -q "Up"; then
+                  echo "[ERROR] Container $service_name is not running"
+                  docker compose ps "$service_name"
+                  docker compose logs --tail=50 "$service_name"
+                  return 1
+                fi
+                
+                # Try health check
                 if docker compose exec -T "$service_name" python -c \
                   "import urllib.request; urllib.request.urlopen('http://localhost:$port/health')" \
-                  2>/dev/null; then
+                  2>&1; then
                   echo "[OK] $service_name health check passed"
                   return 0
+                else
+                  echo "[WARN] Health check failed, checking container logs..."
+                  docker compose logs --tail=20 "$service_name"
                 fi
                 
                 if [ $attempt -eq $max_attempts ]; then
                   echo "[ERROR] $service_name health check failed after $max_attempts attempts"
-                  docker compose logs --tail=100 "$service_name"
+                  echo "[ERROR] Container status:"
+                  docker compose ps "$service_name"
+                  echo "[ERROR] Full container logs:"
+                  docker compose logs --tail=200 "$service_name"
+                  echo "[ERROR] Checking if process is running inside container:"
+                  docker compose exec -T "$service_name" ps aux || true
+                  echo "[ERROR] Checking if port is listening:"
+                  docker compose exec -T "$service_name" netstat -tlnp 2>/dev/null || docker compose exec -T "$service_name" ss -tlnp 2>/dev/null || echo "Cannot check ports"
                   return 1
                 fi
                 
-                echo "[INFO] $service_name: Attempt $attempt/$max_attempts... retrying in ${retry_delay}s"
+                echo "[INFO] $service_name: Attempt $attempt/$max_attempts failed, retrying in ${retry_delay}s"
                 sleep $retry_delay
                 attempt=$((attempt + 1))
               done
@@ -213,6 +236,14 @@ jobs:
             echo "[INFO] Starting $ENVIRONMENT service"
             docker compose up -d "$SERVICE"
             
+            # Show container status immediately
+            echo "[INFO] Container status after start:"
+            docker compose ps "$SERVICE" || true
+            
+            # Show initial logs
+            echo "[INFO] Initial container logs:"
+            docker compose logs --tail=50 "$SERVICE" || true
+            
             # Step 6: Start nginx (without starting dependencies to avoid affecting production)
             echo "[INFO] Starting nginx"
             docker compose up -d --no-deps nginx
@@ -221,19 +252,31 @@ jobs:
             echo "[INFO] Waiting ${SERVICE_START_DELAY}s for service to start"
             sleep $SERVICE_START_DELAY
             
+            # Show logs again after wait
+            echo "[INFO] Container logs after ${SERVICE_START_DELAY}s wait:"
+            docker compose logs --tail=50 "$SERVICE" || true
+            
             # Step 8: Run database migrations
             echo "[INFO] Running database migrations for $ENVIRONMENT"
-            if ! docker compose exec -T "$SERVICE" python scripts/run_migrations.py; then
+            echo "[INFO] Container logs before migrations:"
+            docker compose logs --tail=30 "$SERVICE" || true
+            if ! docker compose exec -T "$SERVICE" python scripts/run_migrations.py 2>&1; then
               echo "[ERROR] $ENVIRONMENT migrations failed"
-              docker compose logs --tail=50 "$SERVICE"
+              echo "[ERROR] Container logs after migration failure:"
+              docker compose logs --tail=100 "$SERVICE"
               exit 1
             fi
+            echo "[INFO] Migrations completed successfully"
             
             # Step 9: Restart service to load migrated data
             echo "[INFO] Restarting service to load migrated data"
             docker compose restart "$SERVICE"
             echo "[INFO] Waiting ${SERVICE_RESTART_DELAY}s for service to restart"
             sleep $SERVICE_RESTART_DELAY
+            
+            # Show logs after restart
+            echo "[INFO] Container logs after restart:"
+            docker compose logs --tail=50 "$SERVICE" || true
             
             # Step 10: Health check
             echo "[INFO] Running health checks for $ENVIRONMENT"
