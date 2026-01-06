@@ -9,21 +9,49 @@ ENABLE_LITESTREAM=${ENABLE_LITESTREAM:-true}
 if [ "$ENABLE_LITESTREAM" = "true" ]; then
     echo "Litestream is enabled"
     
+    # Get database path from environment variable, default to production path
+    DATABASE_PATH=${DATABASE_PATH:-/app/data/yral_chat.db}
+    
+    # Determine S3 path based on database filename
+    DB_FILENAME=$(basename "$DATABASE_PATH")
+    S3_PATH="yral-ai-chat/$DB_FILENAME"
+    
+    # Generate dynamic litestream config based on DATABASE_PATH
+    LITESTREAM_CONFIG="/tmp/litestream.yml"
+    cat > "$LITESTREAM_CONFIG" <<EOF
+# Litestream Configuration (generated dynamically)
+dbs:
+  - path: $DATABASE_PATH
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: $S3_PATH
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        sync-interval: 10s
+        retention: 24h
+        retention-check-interval: 1h
+        snapshot-interval: 1h
+EOF
+    echo "Generated Litestream config for database: $DATABASE_PATH"
+    
     # Check if database exists, if not try to restore from backup
-    if [ ! -f "/app/data/yral_chat.db" ]; then
-        echo "Database not found, attempting to restore from Litestream backup..."
-        if litestream restore -if-db-not-exists -if-replica-exists -config /etc/litestream.yml /app/data/yral_chat.db; then
+    if [ ! -f "$DATABASE_PATH" ]; then
+        echo "Database not found at $DATABASE_PATH, attempting to restore from Litestream backup..."
+        if litestream restore -if-db-not-exists -if-replica-exists -config "$LITESTREAM_CONFIG" "$DATABASE_PATH"; then
             echo "Database restored from backup"
         else
             echo "No backup found or restore failed, will create new database"
         fi
     else
-        echo "Database file exists"
+        echo "Database file exists at $DATABASE_PATH"
     fi
     
     # Start Litestream replication in the background
     echo "Starting Litestream replication..."
-    litestream replicate -config /etc/litestream.yml &
+    litestream replicate -config "$LITESTREAM_CONFIG" &
     LITESTREAM_PID=$!
     echo "Litestream started with PID: $LITESTREAM_PID"
     
