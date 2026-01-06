@@ -120,16 +120,29 @@ jobs:
             
             # Ensure nginx container is running and reload config
             echo "Configuring nginx container..."
-            if docker ps | grep -q yral-ai-chat-nginx; then
-              echo "Testing nginx config inside container..."
-              docker exec yral-ai-chat-nginx nginx -t || echo "⚠️  Nginx config test failed"
+            # Always restart nginx to ensure it picks up the latest config file
+            echo "Restarting nginx container to pick up latest config..."
+            docker-compose restart nginx || docker-compose up -d nginx
+            sleep 3
+            
+            # Test and reload nginx config
+            echo "Testing nginx config inside container..."
+            if docker exec yral-ai-chat-nginx nginx -t > /dev/null 2>&1; then
+              echo "✅ Nginx config test passed"
               echo "Reloading nginx inside container..."
-              docker exec yral-ai-chat-nginx nginx -s reload || echo "⚠️  Nginx reload failed, restarting container..."
-              docker-compose restart nginx || true
+              if docker exec yral-ai-chat-nginx nginx -s reload > /dev/null 2>&1; then
+                echo "✅ Nginx configuration reloaded successfully"
+              else
+                echo "⚠️  Nginx reload failed, restarting container..."
+                docker-compose restart nginx
+                sleep 2
+              fi
             else
-              echo "⚠️  Nginx container not found, starting it..."
-              docker-compose up -d nginx
-              sleep 5
+              echo "⚠️  Nginx config test failed, showing errors:"
+              docker exec yral-ai-chat-nginx nginx -t || true
+              echo "Restarting nginx container..."
+              docker-compose restart nginx
+              sleep 2
             fi
             
             # Health check
