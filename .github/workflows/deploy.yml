@@ -81,30 +81,19 @@ jobs:
           ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
             set -e
             
-            echo "🚀 Starting deployment..."
+            echo "Starting deployment..."
             
             # Navigate to project directory
             cd ~/yral-ai-chat || cd /root/yral-ai-chat || { echo "Project directory not found"; exit 1; }
+            
+            # Stop and disable host nginx (nginx runs in Docker)
+            sudo systemctl stop nginx || true
+            sudo systemctl disable nginx || true
             
             # Pull latest code
             echo "Pulling latest code..."
             git fetch origin
             git reset --hard origin/main
-            
-            # Sync nginx config from repo to host
-            echo "Updating nginx config..."
-            sudo cp nginx/yral-ai-chat.conf /etc/nginx/sites-available/yral-ai-chat.conf
-
-            # Ensure nginx site is enabled
-            if [ ! -L /etc/nginx/sites-enabled/yral-ai-chat.conf ]; then
-              sudo ln -s /etc/nginx/sites-available/yral-ai-chat.conf /etc/nginx/sites-enabled/yral-ai-chat.conf
-            fi
-
-            # Test and reload nginx
-            echo "Testing nginx configuration..."
-            sudo nginx -t
-            echo "Reloading nginx..."
-            sudo systemctl reload nginx
             
             # Ensure data directory exists
             mkdir -p data logs
@@ -119,7 +108,7 @@ jobs:
             fi
             
             # Deploy with docker-compose
-            echo "🐳 Deploying with Docker Compose..."
+            echo "Deploying with Docker Compose..."
             docker-compose down || true
             docker-compose pull || true
             docker-compose build --no-cache || docker-compose build
@@ -153,13 +142,13 @@ jobs:
               echo "Metabase (staging) service is healthy"
             else
               echo "Metabase (staging) service health check failed (may still be initializing)"
-
-            # Check staging Metabase via nginx route (optional best-effort)
+            fi
+            
+            # Check staging Metabase via nginx route (best-effort)
             if curl -kf https://chat.yral.com/staging/metabase/api/health > /dev/null 2>&1; then
               echo "Staging Metabase reachable via nginx"
             else
               echo "Staging Metabase NOT reachable via nginx (check nginx and Metabase containers)"
-            fi
             fi
             
             # Show container status
