@@ -6,24 +6,61 @@ echo "Starting Yral AI Chat API with Litestream..."
 # Check if Litestream is enabled via environment variable
 ENABLE_LITESTREAM=${ENABLE_LITESTREAM:-true}
 
+# Get database path from environment variable, default to production path
+DATABASE_PATH=${DATABASE_PATH:-/app/data/yral_chat.db}
+
+# Check if Litestream should be enabled
+USE_LITESTREAM=false
 if [ "$ENABLE_LITESTREAM" = "true" ]; then
-    echo "Litestream is enabled"
+    if [ -n "$LITESTREAM_BUCKET" ] && [ -n "$LITESTREAM_ACCESS_KEY_ID" ] && [ -n "$LITESTREAM_SECRET_ACCESS_KEY" ]; then
+        USE_LITESTREAM=true
+        echo "Litestream is enabled"
+    else
+        echo "WARNING: Litestream environment variables not set, disabling Litestream replication"
+    fi
+fi
+
+if [ "$USE_LITESTREAM" = "true" ]; then
+    # Determine S3 path based on database filename
+    DB_FILENAME=$(basename "$DATABASE_PATH")
+    S3_PATH="yral-ai-chat/$DB_FILENAME"
+    
+    # Generate dynamic litestream config based on DATABASE_PATH
+    LITESTREAM_CONFIG="/tmp/litestream.yml"
+    cat > "$LITESTREAM_CONFIG" <<EOF
+# Litestream Configuration (generated dynamically)
+dbs:
+  - path: $DATABASE_PATH
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: $S3_PATH
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        sync-interval: 10s
+        retention: 24h
+        retention-check-interval: 1h
+        snapshot-interval: 1h
+EOF
+    echo "Generated Litestream config for database: $DATABASE_PATH"
     
     # Check if database exists, if not try to restore from backup
-    if [ ! -f "/app/data/yral_chat.db" ]; then
-        echo "Database not found, attempting to restore from Litestream backup..."
-        if litestream restore -if-db-not-exists -if-replica-exists -config /etc/litestream.yml /app/data/yral_chat.db; then
+    if [ ! -f "$DATABASE_PATH" ]; then
+        echo "Database not found at $DATABASE_PATH, attempting to restore from Litestream backup..."
+        if litestream restore -if-db-not-exists -if-replica-exists -config "$LITESTREAM_CONFIG" "$DATABASE_PATH"; then
             echo "Database restored from backup"
         else
             echo "No backup found or restore failed, will create new database"
         fi
     else
-        echo "Database file exists"
+        echo "Database file exists at $DATABASE_PATH"
     fi
     
     # Start Litestream replication in the background
     echo "Starting Litestream replication..."
-    litestream replicate -config /etc/litestream.yml &
+    litestream replicate -config "$LITESTREAM_CONFIG" &
     LITESTREAM_PID=$!
     echo "Litestream started with PID: $LITESTREAM_PID"
     
@@ -55,15 +92,42 @@ if [ "$ENABLE_LITESTREAM" = "true" ]; then
     
     # Start the application
     echo "Starting application..."
+    echo "Command: $@"
+    echo "Working directory: $(pwd)"
+    echo "Environment: ENVIRONMENT=${ENVIRONMENT:-not set}, DATABASE_PATH=${DATABASE_PATH}"
+    
     "$@" &
     APP_PID=$!
     echo "Application started with PID: $APP_PID"
     
+    # Wait a moment and check if the process is still running
+    sleep 3
+    if ! kill -0 "$APP_PID" 2>/dev/null; then
+        echo "ERROR: Application process died immediately after startup"
+        echo "Checking if process exists..."
+        ps aux | grep -E "(uvicorn|python)" | grep -v grep || echo "No uvicorn/python processes found"
+        echo "Checking for error logs..."
+        exit 1
+    fi
+    
+    echo "Application is running (PID: $APP_PID)"
+    echo "Checking if port 8000 is listening..."
+    sleep 2
+    if command -v netstat >/dev/null 2>&1; then
+        netstat -tlnp 2>/dev/null | grep 8000 || echo "WARNING: Port 8000 not found in netstat"
+    fi
+    
     # Wait for the application process
     wait "$APP_PID"
+    EXIT_CODE=$?
+    echo "Application exited with code: $EXIT_CODE"
+    exit $EXIT_CODE
     
 else
-    echo "Litestream is disabled (ENABLE_LITESTREAM=false)"
+    echo "Litestream is disabled or not configured"
     echo "Starting application without Litestream..."
+    echo "Command: $@"
+    echo "Working directory: $(pwd)"
+    echo "Environment: ENVIRONMENT=${ENVIRONMENT:-not set}, DATABASE_PATH=${DATABASE_PATH}"
     exec "$@"
 fi
