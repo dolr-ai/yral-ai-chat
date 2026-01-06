@@ -129,25 +129,58 @@ def configure_logging():
     if settings.log_format == "json":
         def json_sink(message):
             """Custom sink for JSON logging"""
-            record = message.record
+            # Handle both record objects and dicts (dicts occur with multiple workers)
+            if isinstance(message, dict):
+                record_dict = message
+            else:
+                record = message.record
+                # Convert record to dict for consistent handling
+                record_dict = {
+                    "time": record.time,
+                    "level": record.level,
+                    "message": record.message,
+                    "module": record.module,
+                    "function": record.function,
+                    "line": record.line,
+                    "extra": record.extra or {},
+                    "exception": record.exception
+                }
+            
+            # Extract values from dict
+            timestamp = record_dict.get("time")
+            level = record_dict.get("level")
             log_data = {
-                "timestamp": record.time.isoformat(),
-                "level": record.level.name,
-                "message": record.message,
-                "module": record.module,
-                "function": record.function,
-                "line": record.line
+                "timestamp": timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp),
+                "level": level.name if hasattr(level, "name") else str(level),
+                "message": record_dict.get("message", ""),
+                "module": record_dict.get("module", ""),
+                "function": record_dict.get("function", ""),
+                "line": record_dict.get("line", 0)
             }
 
-            if record.extra:
-                log_data.update(record.extra)
+            # Handle extra data (may be nested)
+            extra = record_dict.get("extra", {})
+            if extra:
+                # If extra contains nested 'extra', unwrap it
+                if isinstance(extra, dict) and "extra" in extra:
+                    log_data.update(extra["extra"])
+                else:
+                    log_data.update(extra)
 
-            if record.exception:
-                log_data["exception"] = {
-                    "type": record.exception.type.__name__,
-                    "value": str(record.exception.value)
-                }
-
+            # Handle exception
+            exception = record_dict.get("exception")
+            if exception:
+                if hasattr(exception, "type") and hasattr(exception, "value"):
+                    log_data["exception"] = {
+                        "type": exception.type.__name__,
+                        "value": str(exception.value)
+                    }
+                elif isinstance(exception, dict):
+                    log_data["exception"] = exception
+            
+            # Write JSON log line to stdout (will be captured by container logs)
+            import json
+            print(json.dumps(log_data), flush=True)
 
         logger.add(
             json_sink,
