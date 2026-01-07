@@ -228,16 +228,13 @@ SET suggested_messages = COALESCE(suggested_messages, '[]')
 WHERE suggested_messages IS NULL;
 
 -- Set correct is_active status for influencers
+-- Only keep ahaanfitness and arunpandit active, deactivate all others
 UPDATE ai_influencers 
 SET is_active = 'active' 
-WHERE name = 'dr_rhea_kapoor';
+WHERE name IN ('ahaanfitness', 'arunpandit');
 
-UPDATE ai_influencers 
-SET is_active = 'coming_soon' 
-WHERE name IN ('dr_meera_iyer', 'kunal_jain', 'priya_nair', 'neha_gupta', 'arjun_singh');
-
--- Deactivate other influencers (keep only active/coming_soon ones)
+-- Deactivate all other influencers
 UPDATE ai_influencers 
 SET is_active = 'discontinued' 
-WHERE name NOT IN ('ahaanfitness', 'ananya_dating', 'arunpandit', 'dr_rhea_kapoor', 'dr_meera_iyer', 'kunal_jain', 'priya_nair', 'neha_gupta', 'arjun_singh');
+WHERE name NOT IN ('ahaanfitness', 'arunpandit');
 
