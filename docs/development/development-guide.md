@@ -110,7 +110,7 @@ mypy src/
 
 **Run all checks:**
 ```bash
-make lint  # If using Makefile
+ruff check src/ tests/
 ```
 
 ### 3. Testing

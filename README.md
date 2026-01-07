@@ -381,6 +381,12 @@ The application can be deployed using Docker and Docker Compose. This is the rec
 - Docker 20.10+
 - Docker Compose 2.0+
 
+#### Environment-Specific Deployment
+
+The project includes separate docker-compose files for different environments:
+- `docker-compose.prod.yml` - Production environment
+- `docker-compose.staging.yml` - Staging environment
+
 #### Manual Deployment
 
 1. **Set required environment variables:**
@@ -393,20 +399,42 @@ The application can be deployed using Docker and Docker Compose. This is the rec
 
 2. **Deploy using docker-compose:**
 
+   **Production:**
    ```bash
-   # Set required secrets and deploy
+   # Set required secrets and deploy production
    JWT_SECRET_KEY="your-secret-key" \
    GEMINI_API_KEY="your-gemini-api-key" \
-   docker-compose up -d --build
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+
+   **Staging:**
+   ```bash
+   # Set required secrets and deploy staging
+   JWT_SECRET_KEY="your-secret-key" \
+   GEMINI_API_KEY="your-gemini-api-key" \
+   docker compose -f docker-compose.staging.yml up -d --build
    ```
 
    For multiple secrets:
    ```bash
+   # Production example
    JWT_SECRET_KEY="secret1" \
    GEMINI_API_KEY="secret2" \
    CORS_ORIGINS="https://chat.yral.com" \
-   MEDIA_BASE_URL="https://chat.yral.com/media" \
-   docker-compose up -d --build
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+
+   **Common Docker commands:**
+   ```bash
+   # Production
+   docker compose -f docker-compose.prod.yml up -d
+   docker compose -f docker-compose.prod.yml down
+   docker compose -f docker-compose.prod.yml logs -f yral-ai-chat
+   
+   # Staging
+   docker compose -f docker-compose.staging.yml up -d
+   docker compose -f docker-compose.staging.yml down
+   docker compose -f docker-compose.staging.yml logs -f yral-ai-chat-staging
    ```
 
 3. **Using the deployment script:**
@@ -430,14 +458,23 @@ The application can be deployed using Docker and Docker Compose. This is the rec
 4. **Check service status:**
 
    ```bash
-   docker-compose ps
-   docker-compose logs -f yral-ai-chat
+   # Production
+   docker compose -f docker-compose.prod.yml ps
+   docker compose -f docker-compose.prod.yml logs -f yral-ai-chat
+   
+   # Staging
+   docker compose -f docker-compose.staging.yml ps
+   docker compose -f docker-compose.staging.yml logs -f yral-ai-chat-staging
    ```
 
 5. **Stop the service:**
 
    ```bash
-   docker-compose down
+   # Production
+   docker compose -f docker-compose.prod.yml down
+   
+   # Staging
+   docker compose -f docker-compose.staging.yml down
    ```
 
 #### CI/CD Deployment
@@ -473,10 +510,10 @@ Configure the following secrets in your GitHub repository (Settings → Secrets 
    - SSH into the deployment server
    - Pulls the latest code
    - Creates staging database if it doesn't exist
-   - Builds and deploys all services (including Metabase BI dashboard) using `docker-compose` with secrets from GitHub Secrets
+   - Builds and deploys all services (including Metabase BI dashboard) using `docker compose -f docker-compose.prod.yml` and `docker compose -f docker-compose.staging.yml` with secrets from GitHub Secrets
    - Runs health checks to verify deployment
 
-2. Secrets are passed as environment variables to `docker-compose up -d`, ensuring they are never stored in files on the server.
+2. Secrets are passed as environment variables to `docker compose up -d`, ensuring they are never stored in files on the server.
 
 **Services Deployed:**
 - Production API (port 8000)
@@ -517,24 +554,40 @@ Database migrations are handled automatically on first startup. The SQLite schem
 The Docker container includes a health check that verifies the `/health` endpoint. You can check container health with:
 
 ```bash
-docker-compose ps
+# Production
+docker compose -f docker-compose.prod.yml ps
+
+# Staging
+docker compose -f docker-compose.staging.yml ps
 ```
 
 #### Troubleshooting
 
 **View logs:**
 ```bash
-docker-compose logs -f yral-ai-chat
+# Production
+docker compose -f docker-compose.prod.yml logs -f yral-ai-chat
+
+# Staging
+docker compose -f docker-compose.staging.yml logs -f yral-ai-chat-staging
 ```
 
 **Restart service:**
 ```bash
-docker-compose restart yral-ai-chat
+# Production
+docker compose -f docker-compose.prod.yml restart yral-ai-chat
+
+# Staging
+docker compose -f docker-compose.staging.yml restart yral-ai-chat-staging
 ```
 
 **Rebuild and redeploy:**
 ```bash
-docker-compose up -d --build
+# Production
+docker compose -f docker-compose.prod.yml up -d --build
+
+# Staging
+docker compose -f docker-compose.staging.yml up -d --build
 ```
 
 **Check health endpoint:**

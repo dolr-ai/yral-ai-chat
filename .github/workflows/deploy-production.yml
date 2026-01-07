@@ -166,7 +166,7 @@ jobs:
               local attempt=1
               
               while [ $attempt -le $max_attempts ]; do
-                if docker compose exec -T "$service_name" python -c \
+                if docker compose -f docker-compose.prod.yml exec -T "$service_name" python -c \
                   "import urllib.request; urllib.request.urlopen('http://localhost:$port/health')" \
                   2>/dev/null; then
                   echo "[OK] $service_name health check passed"
@@ -175,7 +175,7 @@ jobs:
                 
                 if [ $attempt -eq $max_attempts ]; then
                   echo "[ERROR] $service_name health check failed after $max_attempts attempts"
-                  docker compose logs --tail=100 "$service_name"
+                  docker compose -f docker-compose.prod.yml logs --tail=100 "$service_name"
                   return 1
                 fi
                 
@@ -207,19 +207,19 @@ jobs:
             
             # Step 4: Build Docker image
             echo "[INFO] Building Docker image for $ENVIRONMENT"
-            docker compose build --no-cache "$SERVICE"
+            docker compose -f docker-compose.prod.yml build --no-cache "$SERVICE"
             
             # Step 5: Start service
             echo "[INFO] Starting $ENVIRONMENT service"
-            docker compose up -d "$SERVICE"
+            docker compose -f docker-compose.prod.yml up -d "$SERVICE"
             
             # Step 6: Start nginx (without starting dependencies to avoid affecting staging)
             echo "[INFO] Starting nginx"
-            docker compose up -d --no-deps nginx
+            docker compose -f docker-compose.prod.yml up -d --no-deps nginx
             
             # Step 6.5: Restart nginx to ensure it picks up the latest config
             echo "[INFO] Restarting nginx to load latest configuration"
-            docker compose restart nginx
+            docker compose -f docker-compose.prod.yml restart nginx
             
             # Wait for nginx container to be fully running
             echo "[INFO] Waiting for nginx container to be ready..."
@@ -256,15 +256,15 @@ jobs:
             
             # Step 8: Run database migrations
             echo "[INFO] Running database migrations for $ENVIRONMENT"
-            if ! docker compose exec -T "$SERVICE" python scripts/run_migrations.py; then
+            if ! docker compose -f docker-compose.prod.yml exec -T "$SERVICE" python scripts/run_migrations.py; then
               echo "[ERROR] $ENVIRONMENT migrations failed"
-              docker compose logs --tail=50 "$SERVICE"
+              docker compose -f docker-compose.prod.yml logs --tail=50 "$SERVICE"
               exit 1
             fi
             
             # Step 9: Restart service to load migrated data
             echo "[INFO] Restarting service to load migrated data"
-            docker compose restart "$SERVICE"
+            docker compose -f docker-compose.prod.yml restart "$SERVICE"
             echo "[INFO] Waiting ${SERVICE_RESTART_DELAY}s for service to restart"
             sleep $SERVICE_RESTART_DELAY
             
@@ -296,23 +296,17 @@ jobs:
               echo "[WARN] Nginx container cannot reach Metabase production on port 3000"
             fi
             
-            if docker exec yral-ai-chat-nginx wget -q -O- http://127.0.0.1:3001/api/health > /dev/null 2>&1; then
-              echo "[OK] Nginx container can reach Metabase staging on port 3001"
-            else
-              echo "[WARN] Nginx container cannot reach Metabase staging on port 3001"
-            fi
-            
             # Step 12: Deployment summary
             echo ""
             echo "[SUCCESS] $ENVIRONMENT deployment complete"
             echo "[INFO] Service status:"
-            docker compose ps "$SERVICE"
+            docker compose -f docker-compose.prod.yml ps "$SERVICE"
             echo ""
             echo "[INFO] All services:"
-            docker compose ps
+            docker compose -f docker-compose.prod.yml ps
             echo ""
             echo "[INFO] Recent logs:"
-            docker compose logs --tail=20 "$SERVICE"
+            docker compose -f docker-compose.prod.yml logs --tail=20 "$SERVICE"
             echo ""
             echo "🌐 Services available at:"
             echo "   - Production API: http://localhost:8000"
