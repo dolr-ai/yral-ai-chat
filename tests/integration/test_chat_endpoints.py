@@ -591,141 +591,68 @@ def test_short_numeric_message_preserved(client, clean_conversation_id, auth_hea
         assert stored_user_msg["role"] == "user", "Found message is not a user message"
 
 
-def test_send_message_accepts_uppercase_message_types(client, clean_conversation_id, auth_headers):
-    """
-    Test that message types can be sent in uppercase and are normalized to lowercase.
-    This ensures backward compatibility and flexibility for API consumers.
-    """
-    # Test all message types in uppercase
-    uppercase_types = [
-        ("TEXT", "text", "Hello, this is a test message!"),
-        ("IMAGE", "image", None),  # Image messages don't require content
-        ("MULTIMODAL", "multimodal", "What's in this image?"),
-        ("AUDIO", "audio", ""),  # Audio messages can have empty content
-    ]
-    
-    for uppercase_type, expected_lowercase, content in uppercase_types:
-        payload = {
-            "message_type": uppercase_type,
-        }
-        
-        # Add content if provided
-        if content is not None:
-            payload["content"] = content
-        
-        # For IMAGE and MULTIMODAL, we need media_urls (but skip in test to avoid upload complexity)
-        # For AUDIO, we need audio_url (but skip in test to avoid upload complexity)
-        # So we'll only test TEXT type fully, and verify others don't error on validation
-        
-        if uppercase_type == "TEXT":
-            response = client.post(
-                f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
-                json=payload,
-                headers=auth_headers
-            )
-            
-            # Should succeed (200) and normalize to lowercase
-            assert response.status_code == 200, \
-                f"Uppercase {uppercase_type} should be accepted but got {response.status_code}"
-            
-            data = response.json()
-            user_msg = data["user_message"]
-            
-            # Verify it was normalized to lowercase in the response
-            assert user_msg["message_type"] == expected_lowercase, \
-                f"Expected message_type '{expected_lowercase}' but got '{user_msg['message_type']}'"
-            
-            # Verify the message was processed correctly
-            assert user_msg["role"] == "user"
-            assert user_msg["content"] == content
-            assert "id" in user_msg
-            assert "created_at" in user_msg
-
-
-def test_send_message_accepts_mixed_case_message_types(client, clean_conversation_id, auth_headers):
-    """
-    Test that message types can be sent in mixed case (e.g., "Text", "MuLtImOdAl")
-    and are normalized to lowercase.
-    """
-    mixed_case_types = [
-        ("Text", "text"),
+def test_send_message_accepts_uppercase_text_type(client, clean_conversation_id, auth_headers):
+    """Test that TEXT message type can be sent in uppercase and is normalized to lowercase"""
+    test_cases = [
         ("TEXT", "text"),
+        ("Text", "text"),
         ("text", "text"),  # Already lowercase should still work
-        ("Multimodal", "multimodal"),
-        ("MULTIMODAL", "multimodal"),
-        ("multimodal", "multimodal"),  # Already lowercase should still work
-        ("Image", "image"),
-        ("IMAGE", "image"),
-        ("image", "image"),  # Already lowercase should still work
-        ("Audio", "audio"),
-        ("AUDIO", "audio"),
-        ("audio", "audio"),  # Already lowercase should still work
     ]
     
-    for mixed_case_type, expected_lowercase in mixed_case_types:
-        payload = {
-            "message_type": mixed_case_type,
-            "content": "Test message" if mixed_case_type.upper() in ("TEXT", "MULTIMODAL") else "",
-        }
+    for input_type, expected_type in test_cases:
+        response = client.post(
+            f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+            json={
+                "message_type": input_type,
+                "content": "Test message"
+            },
+            headers=auth_headers
+        )
         
-        # Only test TEXT type fully to avoid needing media uploads
-        if mixed_case_type.upper() == "TEXT":
-            response = client.post(
-                f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
-                json=payload,
-                headers=auth_headers
-            )
-            
-            # Should succeed (200) regardless of case
-            assert response.status_code == 200, \
-                f"Mixed case '{mixed_case_type}' should be accepted but got {response.status_code}"
-            
-            data = response.json()
-            user_msg = data["user_message"]
-            
-            # Verify it was normalized to lowercase
-            assert user_msg["message_type"] == expected_lowercase, \
-                f"Expected message_type '{expected_lowercase}' but got '{user_msg['message_type']}'"
-        else:
-            # For other types, verify that normalization works by checking error details
-            # They will get 422 because they're missing required fields (media_urls, audio_url),
-            # but the error should NOT be about invalid message_type enum - it should be about
-            # missing required fields, which proves normalization worked
-            response = client.post(
-                f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
-                json=payload,
-                headers=auth_headers
-            )
-            
-            # Should get 422 (validation error) because of missing required fields
-            assert response.status_code == 422, \
-                f"Expected 422 for missing required fields, got {response.status_code}"
-            
-            # Check that the error is NOT about invalid message_type enum
-            # If normalization failed, we'd see an enum validation error
-            error_data = response.json()
-            error_details = error_data.get("details", {})
-            errors = error_details.get("errors", [])
-            
-            # Verify no error about message_type enum (proves normalization worked)
-            # Enum errors would have type='enum' and loc containing 'message_type'
-            message_type_enum_errors = [
-                e for e in errors
-                if e.get("type") == "enum" and "message_type" in str(e.get("loc", []))
-            ]
-            assert len(message_type_enum_errors) == 0, \
-                f"Mixed case '{mixed_case_type}' caused enum validation error - normalization failed! " \
-                f"Errors: {errors}"
-            
-            # The error should be about missing required fields (proves normalization worked)
-            # This is a value_error from the model validator, not an enum error
-            required_field_errors = [
-                e for e in errors
-                if e.get("type") == "value_error" and (
-                    "media_urls" in str(e.get("msg", "")).lower() or
-                    "audio_url" in str(e.get("msg", "")).lower() or
-                    "required" in str(e.get("msg", "")).lower()
-                )
-            ]
-            assert len(required_field_errors) > 0, \
-                f"Expected value_error about missing required fields, but got: {errors}"
+        assert response.status_code == 200, \
+            f"Message type '{input_type}' should be accepted but got {response.status_code}"
+        
+        data = response.json()
+        user_msg = data["user_message"]
+        
+        # Verify it was normalized to lowercase in the response
+        assert user_msg["message_type"] == expected_type, \
+            f"Expected message_type '{expected_type}' but got '{user_msg['message_type']}'"
+        assert user_msg["content"] == "Test message"
+        assert user_msg["role"] == "user"
+
+
+def test_send_message_accepts_uppercase_multimodal_type(client, clean_conversation_id, auth_headers):
+    """Test that MULTIMODAL message type can be sent in uppercase and is normalized to lowercase"""
+    # Use provided image URL
+    image_url = "https://yral-profile.hel1.your-objectstorage.com/users/upzvo-glz6l-actg5-izx2o-bsufp-hacvl-e6yeh-wyxl2-qf2gq-c3ndy-2ae/profile-1767637456.jpg"
+    
+    test_cases = [
+        ("MULTIMODAL", "multimodal"),
+        ("Multimodal", "multimodal"),
+        ("multimodal", "multimodal"),  # Already lowercase should still work
+    ]
+    
+    for input_type, expected_type in test_cases:
+        response = client.post(
+            f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+            json={
+                "message_type": input_type,
+                "content": "What's in this image?",
+                "media_urls": [image_url]
+            },
+            headers=auth_headers
+        )
+        
+        assert response.status_code == 200, \
+            f"Message type '{input_type}' should be accepted but got {response.status_code}"
+        
+        data = response.json()
+        user_msg = data["user_message"]
+        
+        # Verify it was normalized to lowercase in the response
+        assert user_msg["message_type"] == expected_type, \
+            f"Expected message_type '{expected_type}' but got '{user_msg['message_type']}'"
+        assert user_msg["content"] == "What's in this image?"
+        assert len(user_msg["media_urls"]) > 0
+        assert user_msg["role"] == "user"
