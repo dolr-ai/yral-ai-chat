@@ -589,3 +589,70 @@ def test_short_numeric_message_preserved(client, clean_conversation_id, auth_hea
         assert stored_user_msg["content"] == test_content, \
             f"Stored content '{stored_user_msg['content']}' doesn't match sent content '{test_content}'"
         assert stored_user_msg["role"] == "user", "Found message is not a user message"
+
+
+def test_send_message_accepts_uppercase_text_type(client, clean_conversation_id, auth_headers):
+    """Test that TEXT message type can be sent in uppercase and is normalized to lowercase"""
+    test_cases = [
+        ("TEXT", "text"),
+        ("Text", "text"),
+        ("text", "text"),  # Already lowercase should still work
+    ]
+    
+    for input_type, expected_type in test_cases:
+        response = client.post(
+            f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+            json={
+                "message_type": input_type,
+                "content": "Test message"
+            },
+            headers=auth_headers
+        )
+        
+        assert response.status_code == 200, \
+            f"Message type '{input_type}' should be accepted but got {response.status_code}"
+        
+        data = response.json()
+        user_msg = data["user_message"]
+        
+        # Verify it was normalized to lowercase in the response
+        assert user_msg["message_type"] == expected_type, \
+            f"Expected message_type '{expected_type}' but got '{user_msg['message_type']}'"
+        assert user_msg["content"] == "Test message"
+        assert user_msg["role"] == "user"
+
+
+def test_send_message_accepts_uppercase_multimodal_type(client, clean_conversation_id, auth_headers):
+    """Test that MULTIMODAL message type can be sent in uppercase and is normalized to lowercase"""
+    # Use provided image URL
+    image_url = "https://yral-profile.hel1.your-objectstorage.com/users/upzvo-glz6l-actg5-izx2o-bsufp-hacvl-e6yeh-wyxl2-qf2gq-c3ndy-2ae/profile-1767637456.jpg"
+    
+    test_cases = [
+        ("MULTIMODAL", "multimodal"),
+        ("Multimodal", "multimodal"),
+        ("multimodal", "multimodal"),  # Already lowercase should still work
+    ]
+    
+    for input_type, expected_type in test_cases:
+        response = client.post(
+            f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+            json={
+                "message_type": input_type,
+                "content": "What's in this image?",
+                "media_urls": [image_url]
+            },
+            headers=auth_headers
+        )
+        
+        assert response.status_code == 200, \
+            f"Message type '{input_type}' should be accepted but got {response.status_code}"
+        
+        data = response.json()
+        user_msg = data["user_message"]
+        
+        # Verify it was normalized to lowercase in the response
+        assert user_msg["message_type"] == expected_type, \
+            f"Expected message_type '{expected_type}' but got '{user_msg['message_type']}'"
+        assert user_msg["content"] == "What's in this image?"
+        assert len(user_msg["media_urls"]) > 0
+        assert user_msg["role"] == "user"
