@@ -93,6 +93,14 @@ class SendMessageRequest(BaseModel):
         examples=[45]
     )
 
+    @field_validator("message_type", mode="before")
+    @classmethod
+    def normalize_message_type(cls, v: str | MessageType) -> str | MessageType:
+        """Normalize message type to lowercase to accept both uppercase and lowercase"""
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
     @field_validator("message_type")
     @classmethod
     def validate_message_type(cls, v: MessageType) -> MessageType:
