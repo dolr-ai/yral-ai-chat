@@ -536,21 +536,6 @@ Litestream requires the following environment variables:
 docker-compose exec yral-ai-chat python3 /app/scripts/verify_database.py
 ```
 
-**Verify backup exists and connectivity:**
-```bash
-docker-compose exec yral-ai-chat python3 /app/scripts/verify_backup.py
-```
-
-**Emergency restore (recommended):**
-```bash
-# Inside container or on host
-./scripts/emergency_restore.sh
-
-# With options
-./scripts/emergency_restore.sh --timestamp "2024-01-15T10:30:00Z"  # Point-in-time restore
-./scripts/emergency_restore.sh --force  # Force restore even if DB exists
-```
-
 **Manual restore from backup:**
 ```bash
 # Inside container
@@ -577,17 +562,7 @@ Quick recovery steps:
    docker-compose logs yral-ai-chat | grep -i restore
    ```
 
-2. **Verify backup exists** before restore:
-   ```bash
-   docker-compose exec yral-ai-chat python3 /app/scripts/verify_backup.py
-   ```
-
-3. **Run emergency restore script** (recommended):
-   ```bash
-   ./scripts/emergency_restore.sh
-   ```
-
-4. **Or restart container** (automatic restore):
+2. **Restart container** (automatic restore):
    ```bash
    docker-compose restart yral-ai-chat
    ```

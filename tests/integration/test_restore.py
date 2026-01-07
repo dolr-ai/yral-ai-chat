@@ -255,38 +255,6 @@ class TestMigrationAfterRestore:
             pytest.fail(f"Migration failed: {e}")
 
 
-class TestRestoreScripts:
-    """Test restore-related scripts"""
-    
-    def test_verify_backup_script_exists(self):
-        """Test that verify_backup.py script exists and is executable"""
-        script_path = Path(__file__).parent.parent.parent / "scripts" / "verify_backup.py"
-        assert script_path.exists(), "verify_backup.py should exist"
-        assert script_path.is_file(), "verify_backup.py should be a file"
-    
-    def test_emergency_restore_script_exists(self):
-        """Test that emergency_restore.sh script exists and is executable"""
-        script_path = Path(__file__).parent.parent.parent / "scripts" / "emergency_restore.sh"
-        assert script_path.exists(), "emergency_restore.sh should exist"
-        assert script_path.is_file(), "emergency_restore.sh should be a file"
-        # Check if it's executable (on Unix systems)
-        if os.name != "nt":
-            assert os.access(script_path, os.X_OK), "emergency_restore.sh should be executable"
-    
-    def test_verify_backup_script_help(self):
-        """Test that verify_backup.py can be run (even if it fails without env vars)"""
-        script_path = Path(__file__).parent.parent.parent / "scripts" / "verify_backup.py"
-        result = subprocess.run(  # noqa: S603
-            ["python3", str(script_path)],  # noqa: S607
-            capture_output=True,
-            text=True,
-            check=False
-        )
-        
-        # Script should exit with error if env vars are missing, but should not crash
-        assert result.returncode != 0 or "ERROR" in result.stdout or "Missing" in result.stdout
-
-
 class TestDatabaseRecoveryScenarios:
     """Test various recovery scenarios"""
     

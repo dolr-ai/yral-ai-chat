@@ -83,6 +83,7 @@ EOF
     # Step 1: Check if database exists and is valid
     NEEDS_RESTORE=false
     RESTORE_REASON=""
+    RESTORE_STATUS="not_needed"
     
     if [ ! -f "$DATABASE_PATH" ]; then
         echo "⚠ Database not found at $DATABASE_PATH"
@@ -103,6 +104,7 @@ EOF
         NEEDS_RESTORE=true
     else
         echo "✓ Database file exists and is valid at $DATABASE_PATH"
+        RESTORE_STATUS="database_valid"
     fi
     
     # Step 2: Restore from backup if needed
@@ -129,6 +131,7 @@ EOF
                 echo "✓ Database successfully restored and verified"
                 echo "  Restore completed at $(date -Iseconds)"
                 echo "=========================================="
+                RESTORE_STATUS="success"
             else
                 echo ""
                 echo "✗ ERROR: Database restore completed but verification failed!"
@@ -158,19 +161,50 @@ EOF
             echo "    - S3 backup exists: litestream snapshots -config $LITESTREAM_CONFIG $DATABASE_PATH"
             echo "    - S3 connectivity: litestream databases -config $LITESTREAM_CONFIG"
             echo ""
+            RESTORE_STATUS="failed_no_backup"
         fi
         echo ""
     fi
     
+    # Log restore status summary for visibility in deployment logs
+    echo ""
+    echo "=========================================="
+    echo "DATABASE RESTORE STATUS SUMMARY"
+    echo "=========================================="
+    case "$RESTORE_STATUS" in
+        "success")
+            echo "✓ RESTORE: Database was successfully restored from backup"
+            ;;
+        "failed_no_backup")
+            echo "⚠ RESTORE: Restore attempted but no backup found (new deployment)"
+            ;;
+        "database_valid")
+            echo "✓ RESTORE: No restore needed - database exists and is valid"
+            ;;
+        "not_needed")
+            echo "✓ RESTORE: No restore needed - database exists and is valid"
+            ;;
+        *)
+            echo "ℹ RESTORE: Status unknown"
+            ;;
+    esac
+    echo "=========================================="
+    echo ""
+    
     # Step 4: Run migrations (creates database if missing, updates schema if needed)
     echo "Running database migrations..."
-    python3 /app/scripts/run_migrations.py || {
+    if python3 /app/scripts/run_migrations.py; then
+        echo "✓ Database migrations completed successfully"
+    else
         echo "ERROR: Database migrations failed!"
         exit 1
-    }
+    fi
     
     # Step 5: Final verification after migrations
-    if ! verify_database "$DATABASE_PATH"; then
+    echo "Verifying database after migrations..."
+    if verify_database "$DATABASE_PATH"; then
+        echo "✓ Database verification passed after migrations"
+    else
         echo "ERROR: Database verification failed after migrations!"
         exit 1
     fi
