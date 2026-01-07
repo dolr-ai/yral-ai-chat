@@ -1,6 +1,8 @@
 """
 Health check and status endpoints
 """
+import os
+import subprocess
 import time
 from datetime import UTC, datetime
 
@@ -22,6 +24,79 @@ from src.models.responses import (
 router = APIRouter(tags=["Health"])
 
 app_start_time = time.time()
+
+
+def check_litestream_process() -> ServiceHealth:  # noqa: PLR0911
+    """
+    Check if Litestream replication process is running
+    Returns ServiceHealth with status and optional error message
+    """
+    # Check if Litestream is enabled
+    enable_litestream = os.getenv("ENABLE_LITESTREAM", "true").lower() == "true"
+    has_credentials = all([
+        os.getenv("LITESTREAM_BUCKET"),
+        os.getenv("LITESTREAM_ACCESS_KEY_ID"),
+        os.getenv("LITESTREAM_SECRET_ACCESS_KEY")
+    ])
+    
+    # If Litestream is disabled or not configured, return as not applicable
+    if not enable_litestream or not has_credentials:
+        return ServiceHealth(
+            status="up",  # Not a problem if disabled
+            error=None
+        )
+    
+    # Check if litestream process is running
+    try:
+        # Use ps to check for litestream replicate process
+        result = subprocess.run(
+            ["ps", "aux"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False
+        )
+        
+        if result.returncode == 0:
+            # Look for litestream replicate process
+            if "litestream replicate" in result.stdout:
+                return ServiceHealth(
+                    status="up",
+                    error=None
+                )
+            return ServiceHealth(
+                status="degraded",
+                error="Litestream process not found (replication may not be running)"
+            )
+        # If ps command fails, try alternative method
+        # Check if litestream binary exists and is accessible
+        try:
+            subprocess.run(
+                ["litestream", "version"],  # noqa: S607
+                capture_output=True,
+                timeout=2,
+                check=False
+            )
+            return ServiceHealth(
+                status="degraded",
+                error="Cannot verify Litestream process status"
+            )
+        except FileNotFoundError:
+            return ServiceHealth(
+                status="degraded",
+                error="Litestream binary not found"
+            )
+    except subprocess.TimeoutExpired:
+        return ServiceHealth(
+            status="degraded",
+            error="Litestream process check timed out"
+        )
+    except Exception as e:
+        logger.warning(f"Error checking Litestream process: {e}")
+        return ServiceHealth(
+            status="degraded",
+            error=f"Error checking Litestream: {e!s}"
+        )
 
 
 @router.get(
@@ -68,6 +143,10 @@ async def health_check():
         status="up" if s3_circuit_state.state == "closed" else "degraded",
         error=None if s3_circuit_state.state == "closed" else f"Circuit breaker {s3_circuit_state.state}"
     )
+
+    # Check Litestream replication process
+    litestream_health = check_litestream_process()
+    services["litestream"] = litestream_health
 
     overall_status = "healthy"
     degraded_count = sum(1 for s in services.values() if s.status in ["down", "degraded"])
