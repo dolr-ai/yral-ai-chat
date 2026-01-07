@@ -57,6 +57,7 @@ docker-compose*.yml
 scripts/
 !scripts/run_migrations.py
 !scripts/docker-entrypoint.sh
+!scripts/verify_database.py
 !migrations/
 
 # Other

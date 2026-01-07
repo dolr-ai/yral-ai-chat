@@ -1,8 +1,11 @@
 """
 Health check and status endpoints
 """
+import os
+import subprocess
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import APIRouter
 from loguru import logger
@@ -22,6 +25,130 @@ from src.models.responses import (
 router = APIRouter(tags=["Health"])
 
 app_start_time = time.time()
+
+
+def check_restore_status() -> dict[str, str | bool | int | None]:
+    """
+    Check if database restore happened recently by looking for indicators:
+    1. Database file created/modified very recently (within 5 min of app start)
+    2. Presence of corrupted backup files
+    Returns dict with restore status information
+    """
+    restore_info: dict[str, str | bool | int | None] = {
+        "restored_recently": False,
+        "restore_indicator": None,
+        "database_age_seconds": None
+    }
+    
+    try:
+        db_path = os.getenv("DATABASE_PATH", settings.database_path)
+        if not Path(db_path).is_absolute():
+            if Path("/app").exists():
+                db_path = str(Path("/app") / db_path)
+            else:
+                db_path = str(Path(__file__).parent.parent.parent / db_path)
+        
+        db_file = Path(db_path)
+        if not db_file.exists():
+            return restore_info
+        
+        # Check database file modification time
+        db_mtime = db_file.stat().st_mtime
+        app_start_time_float = app_start_time
+        time_since_start = time.time() - app_start_time_float
+        time_since_db_modified = time.time() - db_mtime
+        
+        # If database was modified within 5 minutes of app start, likely a restore
+        if time_since_start < 300 and time_since_db_modified < 300:
+            restore_info["restored_recently"] = True
+            restore_info["restore_indicator"] = "database_modified_after_startup"
+            restore_info["database_age_seconds"] = int(time_since_db_modified)
+        
+        # Check for corrupted backup files (indicates restore happened)
+        db_dir = db_file.parent
+        corrupted_backups = list(db_dir.glob(f"{db_file.name}.corrupted.*"))
+        if corrupted_backups:
+            restore_info["restored_recently"] = True
+            restore_info["restore_indicator"] = "corrupted_backup_found"
+            restore_info["database_age_seconds"] = int(time_since_db_modified)
+        
+    except Exception as e:
+        logger.warning(f"Error checking restore status: {e}")
+    
+    return restore_info
+
+
+def check_litestream_process() -> ServiceHealth:  # noqa: PLR0911
+    """
+    Check if Litestream replication process is running
+    Returns ServiceHealth with status and optional error message
+    """
+    # Check if Litestream is enabled
+    enable_litestream = os.getenv("ENABLE_LITESTREAM", "true").lower() == "true"
+    has_credentials = all([
+        os.getenv("LITESTREAM_BUCKET"),
+        os.getenv("LITESTREAM_ACCESS_KEY_ID"),
+        os.getenv("LITESTREAM_SECRET_ACCESS_KEY")
+    ])
+    
+    # If Litestream is disabled or not configured, return as not applicable
+    if not enable_litestream or not has_credentials:
+        return ServiceHealth(
+            status="up",  # Not a problem if disabled
+            error=None
+        )
+    
+    # Check if litestream process is running
+    try:
+        # Use ps to check for litestream replicate process
+        result = subprocess.run(
+            ["ps", "aux"],  # noqa: S607
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False
+        )
+        
+        if result.returncode == 0:
+            # Look for litestream replicate process
+            if "litestream replicate" in result.stdout:
+                return ServiceHealth(
+                    status="up",
+                    error=None
+                )
+            return ServiceHealth(
+                status="degraded",
+                error="Litestream process not found (replication may not be running)"
+            )
+        # If ps command fails, try alternative method
+        # Check if litestream binary exists and is accessible
+        try:
+            subprocess.run(
+                ["litestream", "version"],  # noqa: S607
+                capture_output=True,
+                timeout=2,
+                check=False
+            )
+            return ServiceHealth(
+                status="degraded",
+                error="Cannot verify Litestream process status"
+            )
+        except FileNotFoundError:
+            return ServiceHealth(
+                status="degraded",
+                error="Litestream binary not found"
+            )
+    except subprocess.TimeoutExpired:
+        return ServiceHealth(
+            status="degraded",
+            error="Litestream process check timed out"
+        )
+    except Exception as e:
+        logger.warning(f"Error checking Litestream process: {e}")
+        return ServiceHealth(
+            status="degraded",
+            error=f"Error checking Litestream: {e!s}"
+        )
 
 
 @router.get(
@@ -69,6 +196,18 @@ async def health_check():
         error=None if s3_circuit_state.state == "closed" else f"Circuit breaker {s3_circuit_state.state}"
     )
 
+    # Check Litestream replication process
+    litestream_health = check_litestream_process()
+    services["litestream"] = litestream_health
+
+    # Check restore status
+    restore_status = check_restore_status()
+    if restore_status["restored_recently"]:
+        services["database_restore"] = ServiceHealth(
+            status="up",
+            error=f"Database restored recently ({restore_status['restore_indicator']})"
+        )
+
     overall_status = "healthy"
     degraded_count = sum(1 for s in services.values() if s.status in ["down", "degraded"])
 
@@ -77,11 +216,22 @@ async def health_check():
     elif degraded_count > 0:
         overall_status = "degraded"
 
-    return HealthResponse(
+    response = HealthResponse(
         status=overall_status,
         timestamp=datetime.now(UTC),
         services=services
     )
+    
+    # Add restore info to response if available
+    if restore_status["restored_recently"]:
+        # Store restore info in a way that's accessible
+        # We'll add it as metadata in the response
+        logger.info(
+            f"Database restore detected: {restore_status['restore_indicator']}, "
+            f"database age: {restore_status['database_age_seconds']}s"
+        )
+    
+    return response
 
 
 @router.get(

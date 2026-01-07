@@ -233,13 +233,48 @@ dbs:
 
 ### Recovery
 
-```bash
-# Restore from backup
-litestream restore -o /path/to/yral_chat.db s3://bucket/db-backup
+The application automatically attempts to restore the database on startup if it's missing or corrupted. For manual restore procedures, see [Emergency Restore Guide](../operations/emergency-restore.md).
 
-# Restore to specific point in time
-litestream restore -o /path/to/yral_chat.db -timestamp 2024-01-01T10:00:00Z s3://bucket/db-backup
+#### Automatic Restore
+
+On container startup, the entrypoint script:
+1. Checks if database exists and is valid
+2. If missing or corrupted, attempts restore from Litestream backup
+3. Verifies restored database integrity
+4. Runs migrations to ensure schema compatibility
+
+#### Manual Restore
+
+**Basic restore:**
+```bash
+# Using emergency restore script (recommended)
+./scripts/emergency_restore.sh
+
+# Or manually with Litestream
+litestream restore -if-db-not-exists -if-replica-exists \
+  -config /tmp/litestream.yml \
+  /app/data/yral_chat.db
 ```
+
+**Point-in-time restore:**
+```bash
+# Restore to specific timestamp
+litestream restore \
+  -config /tmp/litestream.yml \
+  -timestamp "2024-01-01T10:00:00Z" \
+  /app/data/yral_chat.db
+```
+
+**Verify backup exists:**
+```bash
+# Check backup status
+python3 /app/scripts/verify_backup.py
+
+# List available snapshots
+litestream snapshots -config /tmp/litestream.yml /app/data/yral_chat.db
+```
+
+For detailed recovery procedures, troubleshooting, and emergency scenarios, see [Emergency Restore Guide](../operations/emergency-restore.md).
 
 ## Query Patterns
 

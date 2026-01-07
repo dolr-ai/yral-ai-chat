@@ -12,6 +12,17 @@ This directory contains various deployment and setup scripts for the Yral AI Cha
 - After pulling schema changes
 - When resetting the database
 
+## Database and Backup Scripts
+
+### `verify_database.py`
+**Purpose**: Validate SQLite database integrity and check for expected schema  
+**Usage**: `python scripts/verify_database.py`  
+**When to use**:
+- After database operations
+- Before deployments
+- When troubleshooting database issues
+- After restore operations
+
 ### `start_litestream_local.sh`
 **Purpose**: Start Litestream replication for local development (macOS)  
 **Usage**: `./scripts/start_litestream_local.sh`  
