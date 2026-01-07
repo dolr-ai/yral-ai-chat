@@ -180,7 +180,7 @@ def configure_logging():
             
             # Write JSON log line to stdout (will be captured by container logs)
             import json
-            print(json.dumps(log_data), flush=True)
+            print(json.dumps(log_data), flush=True)  # noqa: T201
 
         logger.add(
             json_sink,

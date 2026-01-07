@@ -121,6 +121,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[Database Schema](docs/architecture/database.md)** - Database structure
 - **[Development Guide](docs/development/development-guide.md)** - Development workflow
 - **[Testing Guide](docs/development/testing-guide.md)** - Testing strategies
+- **[Emergency Restore](docs/operations/emergency-restore.md)** - Database recovery procedures
 
 ## API Endpoints
 
@@ -489,6 +490,127 @@ These directories are created automatically if they don't exist.
 #### Database Migrations
 
 Database migrations are handled automatically on first startup. The SQLite schema is created from `migrations/sqlite/001_init_schema.sql` if the database doesn't exist.
+
+#### Data Persistence and Backup
+
+**Litestream Replication:**
+The application uses [Litestream](https://litestream.io/) for continuous SQLite replication to S3-compatible storage. This ensures your database is automatically backed up in real-time.
+
+**How it works:**
+1. **Automatic Backups**: Litestream continuously replicates your SQLite database to S3 every 10 seconds
+2. **Automatic Restore**: On container startup, if the database is missing or corrupted, it's automatically restored from the latest S3 backup
+3. **Database Validation**: The restored database is verified for integrity before the application starts
+4. **Migration Safety**: Migrations run after restore, ensuring your data is preserved
+
+**Startup Sequence:**
+1. Check if database exists and is valid
+2. If missing or corrupted → restore from Litestream backup
+3. Verify restored database integrity
+4. Run database migrations (if needed)
+5. Final verification
+6. Start application
+
+**Configuration:**
+Litestream requires the following environment variables:
+- `LITESTREAM_BUCKET`: S3 bucket name for backups
+- `LITESTREAM_ACCESS_KEY_ID`: S3 access key
+- `LITESTREAM_SECRET_ACCESS_KEY`: S3 secret key
+- `LITESTREAM_ENDPOINT`: S3 endpoint URL (optional, for custom S3-compatible storage)
+- `LITESTREAM_REGION`: S3 region (defaults to us-east-1)
+
+**Backup Retention:**
+- Snapshots: Every 1 hour
+- Retention: 24 hours of history
+- Sync interval: 10 seconds
+
+**Data Safety:**
+- Database files are stored in `./data` directory (mounted as Docker volume)
+- Backup files are stored in S3 at path: `yral-ai-chat/{database_filename}`
+- Corrupted databases are automatically backed up (with timestamp) before restore attempt
+- If restore fails, the container will exit to prevent data loss
+
+**Manual Database Operations:**
+
+**Verify database integrity:**
+```bash
+docker-compose exec yral-ai-chat python3 /app/scripts/verify_database.py
+```
+
+**Verify backup exists and connectivity:**
+```bash
+docker-compose exec yral-ai-chat python3 /app/scripts/verify_backup.py
+```
+
+**Emergency restore (recommended):**
+```bash
+# Inside container or on host
+./scripts/emergency_restore.sh
+
+# With options
+./scripts/emergency_restore.sh --timestamp "2024-01-15T10:30:00Z"  # Point-in-time restore
+./scripts/emergency_restore.sh --force  # Force restore even if DB exists
+```
+
+**Manual restore from backup:**
+```bash
+# Inside container
+litestream restore -if-db-not-exists -if-replica-exists \
+  -config /tmp/litestream.yml \
+  /app/data/yral_chat.db
+```
+
+**Check backup status:**
+```bash
+docker-compose exec yral-ai-chat litestream databases -config /tmp/litestream.yml
+docker-compose exec yral-ai-chat litestream snapshots -config /tmp/litestream.yml /app/data/yral_chat.db
+```
+
+For detailed emergency restore procedures, see [Emergency Restore Guide](docs/operations/emergency-restore.md).
+
+**Recovery Procedures:**
+
+For complete recovery procedures, see [Emergency Restore Guide](docs/operations/emergency-restore.md).
+
+Quick recovery steps:
+1. **Check container logs** for restore messages:
+   ```bash
+   docker-compose logs yral-ai-chat | grep -i restore
+   ```
+
+2. **Verify backup exists** before restore:
+   ```bash
+   docker-compose exec yral-ai-chat python3 /app/scripts/verify_backup.py
+   ```
+
+3. **Run emergency restore script** (recommended):
+   ```bash
+   ./scripts/emergency_restore.sh
+   ```
+
+4. **Or restart container** (automatic restore):
+   ```bash
+   docker-compose restart yral-ai-chat
+   ```
+
+5. **Verify after restore**:
+   ```bash
+   docker-compose exec yral-ai-chat python3 /app/scripts/verify_database.py
+   ```
+
+**Preventing Data Loss in CI/CD:**
+
+The deployment process includes safeguards:
+- Database is verified before application starts
+- Restore happens automatically if database is missing
+- Migrations run after restore to ensure schema compatibility
+- Container exits if restore fails (prevents starting with empty database)
+- Database validation ensures integrity before accepting connections
+
+**Important Notes:**
+- Always ensure `./data` directory is persisted as a Docker volume
+- Never delete the `./data` directory without first backing up to S3
+- Verify Litestream environment variables are set before deploying
+- Test restore procedures in staging before production deployment
 
 #### Health Checks
 
