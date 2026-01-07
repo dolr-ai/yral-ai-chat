@@ -47,8 +47,6 @@ COPY src/ ./src/
 COPY migrations/ ./migrations/
 COPY scripts/run_migrations.py ./scripts/run_migrations.py
 COPY scripts/verify_database.py ./scripts/verify_database.py
-COPY scripts/verify_backup.py ./scripts/verify_backup.py
-COPY scripts/emergency_restore.sh ./scripts/emergency_restore.sh
 
 # Copy Litestream config and entrypoint
 COPY config/litestream.yml /etc/litestream.yml

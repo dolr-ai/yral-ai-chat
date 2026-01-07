@@ -23,30 +23,6 @@ This directory contains various deployment and setup scripts for the Yral AI Cha
 - When troubleshooting database issues
 - After restore operations
 
-### `verify_backup.py`
-**Purpose**: Verify Litestream backup exists, check backup age, and test S3 connectivity  
-**Usage**: `python scripts/verify_backup.py`  
-**When to use**:
-- Before deployments (verify backups exist)
-- After backup configuration changes
-- When troubleshooting restore issues
-- Regular backup verification checks
-**Environment Variables**: Requires `LITESTREAM_*` environment variables
-
-### `emergency_restore.sh`
-**Purpose**: Manual database restore from Litestream backups with point-in-time restore support  
-**Usage**: `./scripts/emergency_restore.sh [--timestamp TIMESTAMP] [--force] [--no-backup]`  
-**When to use**:
-- Database is missing or corrupted
-- Need to restore to specific point in time
-- Automatic restore failed
-- Emergency recovery scenarios
-**Options**:
-- `--timestamp TIMESTAMP`: Restore to specific point in time (ISO format)
-- `--force`: Force restore even if database exists
-- `--no-backup`: Skip backing up existing database before restore
-**See**: [Emergency Restore Guide](../docs/operations/emergency-restore.md) for detailed procedures
-
 ### `start_litestream_local.sh`
 **Purpose**: Start Litestream replication for local development (macOS)  
 **Usage**: `./scripts/start_litestream_local.sh`  

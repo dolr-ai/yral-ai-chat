@@ -1,10 +1,10 @@
 # Emergency Database Restore Guide
 
-This guide covers emergency procedures for restoring the database from Litestream backups.
+This guide covers automatic database restore procedures from Litestream backups.
 
 ## Overview
 
-The application uses Litestream for continuous SQLite replication to S3-compatible storage. In case of database corruption, deletion, or other emergencies, the database can be restored from backups.
+The application uses Litestream for continuous SQLite replication to S3-compatible storage. The database is automatically restored on container startup if it's missing or corrupted.
 
 ## Automatic Restore
 
@@ -22,117 +22,37 @@ The application automatically attempts to restore the database on startup if:
 5. **Migrations**: Database migrations run to ensure schema compatibility
 6. **Startup**: Application starts normally
 
-### Logs
+### Checking Restore Status
 
-Monitor container logs to see restore activity:
+Since you may not have direct access to Docker logs, you can check restore status via the API:
 
+**Via Health Endpoint:**
 ```bash
-docker-compose logs yral-ai-chat | grep -i restore
+curl http://your-domain.com/health | jq '.services.database_restore'
 ```
 
-Look for messages like:
+If a restore happened recently, you'll see:
+```json
+{
+  "status": "up",
+  "error": "Database restored recently (database_modified_after_startup)"
+}
+```
+
+**Via GitHub Actions Logs:**
+Check deployment logs for restore messages:
 - `DATABASE RESTORE REQUIRED`
-- `Database successfully restored and verified`
-- `WARNING: No backup found or restore failed`
+- `✓ Database successfully restored and verified`
+- `⚠ WARNING: Database restore failed`
 
-## Manual Restore Procedures
-
-### Prerequisites
-
-1. **Access to container**: SSH or Docker exec access
-2. **Environment variables**: Litestream credentials must be set
-3. **Backup exists**: Verify backup exists before attempting restore
-
-### Verify Backup Exists
-
-Before attempting a restore, verify that backups exist:
-
+**Manual Verification:**
 ```bash
-# Inside container
-python3 /app/scripts/verify_backup.py
+# Check if database was recently created/modified
+docker-compose exec yral-ai-chat ls -lh /app/data/yral_chat.db
+
+# Verify database integrity
+docker-compose exec yral-ai-chat python3 /app/scripts/verify_database.py
 ```
-
-Or check directly with Litestream:
-
-```bash
-# Generate config (if needed)
-export DATABASE_PATH=/app/data/yral_chat.db
-# ... set other LITESTREAM_* env vars ...
-
-# Check snapshots
-litestream snapshots -config /tmp/litestream.yml $DATABASE_PATH
-```
-
-### Option 1: Emergency Restore Script
-
-Use the provided emergency restore script:
-
-```bash
-# Inside container or on host
-./scripts/emergency_restore.sh
-```
-
-**Options:**
-- `--timestamp TIMESTAMP`: Restore to specific point in time (ISO format)
-- `--force`: Force restore even if database exists
-- `--no-backup`: Skip backing up existing database
-
-**Example:**
-```bash
-# Restore to specific time
-./scripts/emergency_restore.sh --timestamp "2024-01-15T10:30:00Z"
-
-# Force restore (overwrites existing)
-./scripts/emergency_restore.sh --force
-```
-
-### Option 2: Manual Litestream Restore
-
-If the script is not available, restore manually:
-
-```bash
-# 1. Generate Litestream config
-cat > /tmp/litestream.yml <<EOF
-dbs:
-  - path: /app/data/yral_chat.db
-    replicas:
-      - type: s3
-        bucket: ${LITESTREAM_BUCKET}
-        path: yral-ai-chat/yral_chat.db
-        endpoint: ${LITESTREAM_ENDPOINT}
-        region: ${LITESTREAM_REGION}
-        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
-        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
-EOF
-
-# 2. Backup existing database (if exists)
-cp /app/data/yral_chat.db /app/data/yral_chat.db.backup.$(date +%s)
-
-# 3. Restore from backup
-litestream restore -if-db-not-exists -if-replica-exists \
-  -config /tmp/litestream.yml \
-  /app/data/yral_chat.db
-
-# 4. Verify restored database
-python3 /app/scripts/verify_database.py
-
-# 5. Run migrations (if needed)
-python3 /app/scripts/run_migrations.py
-```
-
-### Option 3: Point-in-Time Restore
-
-Restore to a specific point in time:
-
-```bash
-# Restore to specific timestamp
-litestream restore \
-  -config /tmp/litestream.yml \
-  -timestamp "2024-01-15T10:30:00Z" \
-  /app/data/yral_chat.db
-```
-
-**Note**: Point-in-time restore requires WAL files to be available in S3. Retention period is 24 hours by default.
 
 ## Recovery Scenarios
 
@@ -145,7 +65,7 @@ litestream restore \
 
 **Solution:**
 1. Restart container (automatic restore will trigger)
-2. Or run manual restore script
+2. Monitor logs for restore messages
 3. Verify application starts successfully
 
 ### Scenario 2: Database Corrupted
@@ -158,8 +78,8 @@ litestream restore \
 **Solution:**
 1. Corrupted database is automatically backed up on startup
 2. Automatic restore will attempt to restore from backup
-3. If automatic restore fails, use manual restore script
-4. Check backup location: `/app/data/yral_chat.db.corrupted.*`
+3. Check backup location: `/app/data/yral_chat.db.corrupted.*`
+4. If automatic restore fails, check logs for specific errors
 
 ### Scenario 3: Backup Too Old
 
@@ -168,9 +88,11 @@ litestream restore \
 - Backup age exceeds retention period (24h default)
 
 **Solution:**
-1. Check backup age: `python3 /app/scripts/verify_backup.py`
+1. Check backup age using Litestream commands:
+   ```bash
+   docker-compose exec yral-ai-chat litestream snapshots -config /tmp/litestream.yml /app/data/yral_chat.db
+   ```
 2. If backup is too old, consider:
-   - Restoring to latest available point
    - Accepting data loss for period beyond retention
    - Implementing longer retention if needed
 
@@ -237,41 +159,42 @@ After restore, always verify:
 
 To prevent the need for emergency restores:
 
-1. **Regular Backup Verification:**
-   ```bash
-   # Run before deployments
-   python3 /app/scripts/verify_backup.py
-   ```
-
-2. **Monitor Litestream Status:**
+1. **Monitor Litestream Status:**
    ```bash
    # Check replication status
-   litestream databases -config /tmp/litestream.yml
+   docker-compose exec yral-ai-chat litestream databases -config /tmp/litestream.yml
    ```
 
-3. **Test Restore Procedures:**
-   - Test restore in staging environment
-   - Document any environment-specific steps
-   - Keep restore procedures up to date
-
-4. **Monitor Application Logs:**
+2. **Monitor Application Logs:**
    - Watch for restore events
    - Alert on restore failures
    - Track backup age
 
+3. **Regular Health Checks:**
+   - Monitor `/health` endpoint for Litestream status
+   - Set up alerts for restore events
+   - Track database integrity over time
+
 ## Troubleshooting
 
-### Restore Command Not Found
+### Automatic Restore Not Triggering
 
-If `litestream` command is not available:
+If automatic restore doesn't trigger:
 
-```bash
-# Check if Litestream is installed
-which litestream
+1. Check container logs for restore messages
+2. Verify Litestream environment variables are set
+3. Ensure database path is correct
+4. Check if database file exists (restore only triggers if missing or corrupted)
 
-# If not installed, install it
-# See Dockerfile for installation steps
-```
+### Restore Fails
+
+If automatic restore fails:
+
+1. Check container logs for specific error messages
+2. Verify S3 connectivity and credentials
+3. Check if backup exists in S3
+4. Verify disk space and permissions
+5. Review Litestream configuration
 
 ### Permission Denied
 
@@ -279,11 +202,10 @@ If restore fails due to permissions:
 
 ```bash
 # Check file permissions
-ls -la /app/data/
+docker-compose exec yral-ai-chat ls -la /app/data/
 
-# Fix permissions if needed
-chmod 644 /app/data/yral_chat.db
-chown $(whoami) /app/data/yral_chat.db
+# Fix permissions if needed (inside container)
+docker-compose exec yral-ai-chat chmod 644 /app/data/yral_chat.db
 ```
 
 ### Backup Path Mismatch
@@ -293,15 +215,16 @@ If restore can't find backup:
 1. Verify S3 path matches database filename
 2. Check `LITESTREAM_BUCKET` environment variable
 3. Verify path in Litestream config matches S3 structure
+4. Check container logs for path-related errors
 
 ### Migration Failures After Restore
 
 If migrations fail after restore:
 
-1. Check migration logs
+1. Check migration logs in container output
 2. Verify restored database schema version
-3. May need to restore to point before problematic migration
-4. Consider running migrations manually
+3. Review application startup logs
+4. Check if migrations need to be run manually
 
 ## Support
 
@@ -309,8 +232,8 @@ For additional help:
 
 1. Check application logs: `docker-compose logs yral-ai-chat`
 2. Review Litestream documentation: https://litestream.io/
-3. Check backup verification script output
-4. Review container startup logs for restore events
+3. Review container startup logs for restore events
+4. Check health endpoint: `curl http://localhost:8000/health`
 
 ## Related Documentation
 
