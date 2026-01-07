@@ -381,7 +381,29 @@ jobs:
               exit 1
             fi
             
-            # Step 11: Final connectivity tests
+            # Step 11: Metabase health checks
+            echo "[INFO] Checking Metabase services..."
+            if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "[OK] Metabase (production) service is healthy"
+            else
+              echo "[WARN] Metabase (production) service health check failed (may still be initializing)"
+            fi
+            
+            if curl -f http://localhost:3001/api/health > /dev/null 2>&1; then
+              echo "[OK] Metabase (staging) service is healthy"
+            else
+              echo "[WARN] Metabase (staging) service health check failed (may still be initializing)"
+            fi
+            
+            # Verify nginx can reach Metabase
+            echo "[INFO] Verifying nginx can reach Metabase..."
+            if docker exec yral-ai-chat-nginx wget -q -O- http://127.0.0.1:3001/api/health > /dev/null 2>&1; then
+              echo "[OK] Nginx container can reach Metabase staging on port 3001"
+            else
+              echo "[WARN] Nginx container cannot reach Metabase staging on port 3001"
+            fi
+            
+            # Step 12: Final connectivity tests
             echo "[DEBUG] Final connectivity tests:"
             echo "[DEBUG] Testing staging health from host:"
             curl -v http://127.0.0.1:8001/staging/health 2>&1 | head -20 || echo "Failed"
@@ -390,7 +412,7 @@ jobs:
             echo "[DEBUG] Testing via nginx (if accessible):"
             curl -k -v https://127.0.0.1/staging/health 2>&1 | head -20 || curl -v http://127.0.0.1/staging/health 2>&1 | head -20 || echo "Cannot test via nginx"
             
-            # Step 12: Deployment summary
+            # Step 13: Deployment summary
             echo ""
             echo "[SUCCESS] $ENVIRONMENT deployment complete"
             echo "[INFO] Service status:"
@@ -400,5 +422,9 @@ jobs:
             echo ""
             echo "[INFO] Recent logs:"
             docker compose logs --tail=20 "$SERVICE"
+            echo ""
+            echo "🌐 Services available at:"
+            echo "   - Staging API: http://localhost:8001"
+            echo "   - Metabase (Staging): https://chat.yral.com/staging/metabase/"
           DEPLOY_SCRIPT
 
