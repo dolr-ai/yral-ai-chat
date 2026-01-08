@@ -131,16 +131,10 @@ class ConversationRepository:
         result = await db.fetchval(query, user_id)
         return int(result) if result is not None and isinstance(result, int | str) else 0
 
-    async def delete(self, conversation_id: UUID) -> int:
-        """Delete conversation and return count of deleted messages"""
-        count_query = "SELECT COUNT(*) FROM messages WHERE conversation_id = $1"
-        result = await db.fetchval(count_query, str(conversation_id))
-        message_count = int(result) if result is not None else 0
-
+    async def delete(self, conversation_id: UUID) -> None:
+        """Delete conversation (messages should be deleted first)"""
         delete_query = "DELETE FROM conversations WHERE id = $1"
         await db.execute(delete_query, str(conversation_id))
-
-        return message_count
 
     async def update_metadata(self, conversation_id: UUID, metadata: dict[str, object]) -> None:
         """Update conversation metadata"""

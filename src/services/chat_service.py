@@ -335,7 +335,9 @@ class ChatService:
         """Delete a conversation"""
         await self.get_conversation(conversation_id, user_id)
 
-        deleted_messages = await self.conversation_repo.delete(conversation_id)
+        deleted_messages = await self.message_repo.delete_by_conversation(conversation_id)
+
+        await self.conversation_repo.delete(conversation_id)
 
         logger.info(f"Deleted conversation {conversation_id} with {deleted_messages} messages")
 
