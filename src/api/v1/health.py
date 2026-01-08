@@ -206,7 +206,7 @@ async def health_check():
         services["database_restore"] = ServiceHealth(
             status="up",
             error=f"Database restored recently ({restore_status['restore_indicator']})"
-    )
+        )
 
     overall_status = "healthy"
     degraded_count = sum(1 for s in services.values() if s.status in ["down", "degraded"])
