@@ -146,7 +146,7 @@ jobs:
             SERVICE="yral-ai-chat-staging"
             BRANCH="staging"
             PROJECT_DIR="/root/yral-ai-chat"
-            HEALTH_CHECK_PORT=8000
+            HEALTH_CHECK_PORT=8001
             HEALTH_CHECK_MAX_ATTEMPTS=15
             HEALTH_CHECK_RETRY_DELAY=3
             SERVICE_START_DELAY=15
@@ -228,33 +228,14 @@ jobs:
             systemctl stop yral-ai-chat.service 2>/dev/null || true
             systemctl disable yral-ai-chat.service 2>/dev/null || true
             
-            # Step 3.5: Stop and disable host nginx (docker nginx will handle it)
-            echo "[INFO] Stopping host nginx to allow docker nginx to bind to port 443"
-            systemctl stop nginx 2>/dev/null || true
-            systemctl disable nginx 2>/dev/null || true
-            
-            # Kill any nginx processes that might be holding port 443
-            echo "[INFO] Checking for nginx processes on port 443"
-            if command -v ss > /dev/null 2>&1; then
-              if ss -tuln | grep -q ':443 '; then
-                echo "[WARN] Port 443 is in use, checking what's using it:"
-                ss -tulpn | grep ':443 ' || true
-                echo "[INFO] Attempting to free port 443..."
-                pkill -9 nginx 2>/dev/null || true
-                sleep 2
-              else
-                echo "[OK] Port 443 is free"
-              fi
-            fi
-            
             # Step 4: Build Docker image
             echo "[INFO] Building Docker image for $ENVIRONMENT"
             docker compose -f docker-compose.staging.yml build --no-cache "$SERVICE"
-            
+
             # Step 5: Start service
             echo "[INFO] Starting $ENVIRONMENT service"
             docker compose -f docker-compose.staging.yml up -d "$SERVICE"
-            
+
             # Step 5.5: Start Metabase staging service
             echo "[INFO] Starting Metabase staging service"
             docker compose -f docker-compose.staging.yml up -d metabase-staging || echo "[WARN] Metabase staging container may already be running"
@@ -279,18 +260,9 @@ jobs:
               echo "[WARN] Metabase staging may still be initializing (this is normal, can take up to 60s)"
             fi
 
-            # Reload production nginx to ensure it has latest config (if it's managing both routes)
+            # Reload production nginx to ensure it has latest config
             if docker ps --filter "name=yral-ai-chat-nginx" --filter "status=running" --format "{{.Names}}" | grep -q yral-ai-chat-nginx; then
               echo "[INFO] Reloading production nginx to ensure staging routes are active"
-              docker exec yral-ai-chat-nginx nginx -s reload 2>/dev/null || echo "[WARN] Could not reload production nginx (may need manual reload)"
-            fi
-            # Show container status immediately
-            echo "[INFO] Container status after start:"
-            docker compose -f docker-compose.staging.yml ps "$SERVICE" || true
-            
-            # Show initial logs
-            echo "[INFO] Initial container logs:"
-            docker compose -f docker-compose.staging.yml logs --tail=50 "$SERVICE" || true
             
             # Step 6: Start nginx (without starting dependencies to avoid affecting production)
             echo "[INFO] Starting nginx"
