@@ -125,14 +125,16 @@ Your role is to:
 WHERE name = 'arunpandit';
 
 
--- Update Dr. Rhea Kapoor to ensure final values (idempotent)
+-- Update Dr. Tanya Kapoor to ensure final values (idempotent)
 UPDATE ai_influencers
 SET 
-    description = 'Sexual Health and Sex Ed Coach 🌸',
-    initial_greeting = 'Namaste, I''m Rhea - your sex education coach.
+    avatar_url = 'https://yral-profile.hel1.your-objectstorage.com/users/5pho3-hiuzu-atzdq-mqara-vk3sq-n47qa-ltvvf-rpwd5-3qx7a-ctdks-bqe/profile-1767869952.jpg',
+    display_name = 'Dr. Tanya Kapoor',
+    description = 'Sexual Health and SexEd Coach 🌸',
+    initial_greeting = 'Namaste, I''m Tanya - your sex education coach.
 Intimacy, body, ya sexual health ke doubts ko simple aur safe tarike se samjhaati hoon
 Jo sawal hesitate karte ho poochne se, wahi pooch sakte ho.',
-    system_instructions = 'You are Dr. Rhea Kapoor, a friendly and approachable expert Indian sexual health and sex education coach.
+    system_instructions = 'You are Dr. Tanya Kapoor, a friendly and approachable expert Indian sexual health and sex education coach.
 
 Your role is to:
 
@@ -164,7 +166,7 @@ Your role is to:
  (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.) but if a user just says hi or hello or just says 1-2 words in English, then reply in Hinglish.
 - Keep the entire message in the same language as the users latest message. Try not to mix languages in the same message UNLESS THEY DID SO.'
 
-WHERE name = 'dr_rhea_kapoor';
+WHERE name = 'DrTanya';
 
 
 -- Update influencer IDs to IC Principal format (idempotent - handles existing conversations)
@@ -200,6 +202,10 @@ UPDATE conversations
 SET influencer_id = 'zchob-yxzst-hjmrg-um4bk-d5zwx-3s2ft-jedwo-xitfe-sg2ks-6dnxy-sae'
 WHERE influencer_id IN (SELECT id FROM ai_influencers WHERE name = 'Kshitij' AND id != 'zchob-yxzst-hjmrg-um4bk-d5zwx-3s2ft-jedwo-xitfe-sg2ks-6dnxy-sae');
 
+UPDATE conversations
+SET influencer_id = '5pho3-hiuzu-atzdq-mqara-vk3sq-n47qa-ltvvf-rpwd5-3qx7a-ctdks-bqe'
+WHERE influencer_id IN (SELECT id FROM ai_influencers WHERE name = 'DrTanya' AND id != '5pho3-hiuzu-atzdq-mqara-vk3sq-n47qa-ltvvf-rpwd5-3qx7a-ctdks-bqe');
+
 -- Update influencer IDs
 UPDATE ai_influencers
 SET id = 'qg2pi-g3xl4-uprdd-macwr-64q7r-plotv-xm3bg-iayu3-rnpux-7ikkz-hqe'
@@ -229,6 +235,10 @@ UPDATE ai_influencers
 SET id = 'zchob-yxzst-hjmrg-um4bk-d5zwx-3s2ft-jedwo-xitfe-sg2ks-6dnxy-sae'
 WHERE name = 'Kshitij' AND id != 'zchob-yxzst-hjmrg-um4bk-d5zwx-3s2ft-jedwo-xitfe-sg2ks-6dnxy-sae';
 
+UPDATE ai_influencers
+SET id = '5pho3-hiuzu-atzdq-mqara-vk3sq-n47qa-ltvvf-rpwd5-3qx7a-ctdks-bqe'
+WHERE name = 'DrTanya' AND id != '5pho3-hiuzu-atzdq-mqara-vk3sq-n47qa-ltvvf-rpwd5-3qx7a-ctdks-bqe';
+
 -- Re-enable foreign key checks
 PRAGMA foreign_keys = ON;
 
@@ -238,13 +248,13 @@ SET suggested_messages = COALESCE(suggested_messages, '[]')
 WHERE suggested_messages IS NULL;
 
 -- Set correct is_active status for influencers
--- Only keep ahaanfitness, arunpandit, and Kshitij active, deactivate all others
+-- Only keep ahaanfitness, arunpandit, Kshitij, and DrTanya active, deactivate all others
 UPDATE ai_influencers 
 SET is_active = 'active' 
-WHERE name IN ('ahaanfitness', 'arunpandit', 'Kshitij');
+WHERE name IN ('ahaanfitness', 'arunpandit', 'Kshitij', 'DrTanya');
 
 -- Deactivate all other influencers
 UPDATE ai_influencers 
 SET is_active = 'discontinued' 
-WHERE name NOT IN ('ahaanfitness', 'arunpandit', 'Kshitij');
+WHERE name NOT IN ('ahaanfitness', 'arunpandit', 'Kshitij', 'DrTanya');
 
