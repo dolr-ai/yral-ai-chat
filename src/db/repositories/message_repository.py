@@ -118,6 +118,18 @@ class MessageRepository:
         query = "SELECT COUNT(*) FROM messages"
         return await db.fetchval(query)
 
+    async def delete_by_conversation(self, conversation_id: UUID) -> int:
+        """Delete all messages for a conversation and return count of deleted messages"""
+        count_query = "SELECT COUNT(*) FROM messages WHERE conversation_id = $1"
+        result = await db.fetchval(count_query, str(conversation_id))
+        message_count = int(result) if result is not None else 0
+
+        if message_count > 0:
+            delete_query = "DELETE FROM messages WHERE conversation_id = $1"
+            await db.execute(delete_query, str(conversation_id))
+
+        return message_count
+
     def _row_to_message(self, row) -> Message:
         """Convert database row to Message model"""
         media_urls = row["media_urls"]
