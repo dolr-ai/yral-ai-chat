@@ -240,4 +240,3 @@ For additional help:
 - [Database Architecture](../architecture/database.md)
 - [Development Guide](../development/development-guide.md)
 - [Testing Guide](../development/testing-guide.md)
-

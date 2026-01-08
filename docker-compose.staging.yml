@@ -1,82 +1,4 @@
 services:
-  yral-ai-chat:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: yral-ai-chat
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    volumes:
-      # Persist SQLite database
-      - ./data:/app/data
-      # Persist logs
-      - ./logs:/app/logs
-      # Note: Media files are stored in S3, not locally
-    environment:
-      # Application Settings
-      - APP_NAME=${APP_NAME:-Yral AI Chat API}
-      - APP_VERSION=${APP_VERSION:-1.0.0}
-      - ENVIRONMENT=${PRODUCTION_ENV}
-      - DEBUG=${DEBUG:-False}
-      - HOST=0.0.0.0
-      - PORT=8000
-      
-      # Database (SQLite)
-      - DATABASE_PATH=${DATABASE_PATH:-/app/data/yral_chat.db}
-      
-      # JWT Authentication (REQUIRED)
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
-      - JWT_ISSUER=${JWT_ISSUER:-yral_auth}
-      
-      # Google Gemini API (REQUIRED)
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
-      - GEMINI_MAX_TOKENS=${GEMINI_MAX_TOKENS:-2048}
-      - GEMINI_TEMPERATURE=${GEMINI_TEMPERATURE:-0.7}
-      
-      # Media Storage - S3 (Required)
-      - MAX_IMAGE_SIZE_MB=${MAX_IMAGE_SIZE_MB:-10}
-      - MAX_AUDIO_SIZE_MB=${MAX_AUDIO_SIZE_MB:-20}
-      - MAX_AUDIO_DURATION_SECONDS=${MAX_AUDIO_DURATION_SECONDS:-300}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
-      - AWS_REGION=${AWS_REGION}
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
-      - S3_PUBLIC_URL_BASE=${S3_PUBLIC_URL_BASE}
-      
-      # Optional: Whisper API
-      - USE_WHISPER=${USE_WHISPER:-false}
-      - WHISPER_API_KEY=${WHISPER_API_KEY:-}
-      
-      # CORS Configuration
-      - CORS_ORIGINS=${CORS_ORIGINS:-*}
-      - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS:-true}
-      
-      # Rate Limiting
-      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
-      - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-1000}
-      
-      # Logging
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - LOG_FORMAT=${LOG_FORMAT:-json}
-      
-      # Litestream Configuration
-      - ENABLE_LITESTREAM=${ENABLE_LITESTREAM:-true}
-      - LITESTREAM_ACCESS_KEY_ID=${LITESTREAM_ACCESS_KEY_ID}
-      - LITESTREAM_SECRET_ACCESS_KEY=${LITESTREAM_SECRET_ACCESS_KEY}
-      - LITESTREAM_BUCKET=${LITESTREAM_BUCKET}
-      - LITESTREAM_ENDPOINT=${LITESTREAM_ENDPOINT}
-      - LITESTREAM_REGION=${LITESTREAM_REGION}
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
   yral-ai-chat-staging:
     build:
       context: .
@@ -155,9 +77,9 @@ services:
       retries: 3
       start_period: 40s
 
-  nginx:
+  nginx-staging:
     image: nginx:alpine
-    container_name: yral-ai-chat-nginx
+    container_name: yral-ai-chat-nginx-staging
     restart: unless-stopped
     network_mode: host
     volumes:
@@ -167,11 +89,42 @@ services:
       - /opt/nginx-certs/letsencrypt:/etc/letsencrypt:ro
       - ./logs/nginx:/var/log/nginx
     depends_on:
-      - yral-ai-chat
       - yral-ai-chat-staging
     healthcheck:
       test: ["CMD", "nginx", "-t"]
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Metabase BI Dashboard - Staging
+  # Accessible at: https://chat.yral.com/staging/metabase/
+  # Reads SQLite databases from ./data directory (read-only)
+  metabase-staging:
+    image: metabase/metabase:latest
+    container_name: yral-ai-chat-metabase-staging
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    volumes:
+      # Mount SQLite databases for read-only access
+      - ./data:/data:ro
+      # Persist Metabase metadata (dashboards, queries, settings) - separate for staging
+      - metabase-staging-data:/metabase-data
+    environment:
+      - MB_DB_TYPE=h2
+      - MB_DB_FILE=/metabase-data/metabase.db
+      - JAVA_TIMEZONE=UTC
+      - MB_SITE_URL=https://chat.yral.com/staging/metabase
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'java.*metabase' > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  # Metabase metadata storage (dashboards, queries, settings)
+  # Separate volumes for staging to keep data isolated
+  metabase-staging-data:
+    driver: local
 

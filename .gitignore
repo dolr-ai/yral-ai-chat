@@ -91,3 +91,4 @@ gradio-demo/.gradio/
 *.jpg
 *.jpeg
 media_upload.py
+.github/copilot-instructions.md

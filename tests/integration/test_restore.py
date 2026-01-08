@@ -319,4 +319,3 @@ class TestDatabaseRecoveryScenarios:
         )
         
         assert result.returncode == 1, "Empty database should fail verification"
-
