@@ -255,6 +255,35 @@ jobs:
             echo "[INFO] Starting $ENVIRONMENT service"
             docker compose -f docker-compose.staging.yml up -d "$SERVICE"
             
+            # Step 5.5: Start Metabase staging service
+            echo "[INFO] Starting Metabase staging service"
+            docker compose -f docker-compose.staging.yml up -d metabase-staging || echo "[WARN] Metabase staging container may already be running"
+
+            # Show Metabase staging container status
+            echo "[INFO] Metabase staging container status:"
+            docker compose -f docker-compose.staging.yml ps metabase-staging || true
+
+            # Show Metabase staging initial logs
+            echo "[INFO] Metabase staging initial logs:"
+            docker compose -f docker-compose.staging.yml logs --tail=30 metabase-staging || true
+       
+            # Wait a moment for Metabase to start accepting connections
+            echo "[INFO] Waiting 10s for Metabase staging to initialize..."
+            sleep 10
+
+            # Test if Metabase staging is responding
+            echo "[INFO] Testing Metabase staging health..."
+            if curl -f http://localhost:3001/api/health > /dev/null 2>&1; then
+              echo "[OK] Metabase staging is ready"
+            else
+              echo "[WARN] Metabase staging may still be initializing (this is normal, can take up to 60s)"
+            fi
+
+            # Reload production nginx to ensure it has latest config (if it's managing both routes)
+            if docker ps --filter "name=yral-ai-chat-nginx" --filter "status=running" --format "{{.Names}}" | grep -q yral-ai-chat-nginx; then
+              echo "[INFO] Reloading production nginx to ensure staging routes are active"
+              docker exec yral-ai-chat-nginx nginx -s reload 2>/dev/null || echo "[WARN] Could not reload production nginx (may need manual reload)"
+            fi
             # Show container status immediately
             echo "[INFO] Container status after start:"
             docker compose -f docker-compose.staging.yml ps "$SERVICE" || true
