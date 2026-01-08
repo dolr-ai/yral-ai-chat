@@ -461,6 +461,68 @@ def test_delete_conversation(client, clean_conversation_id, auth_headers):
     assert isinstance(data["deleted_messages_count"], int)
 
 
+def test_delete_conversation_deletes_all_messages(client, test_influencer_id, auth_headers):
+    """Test that deleting a conversation also deletes all associated messages"""
+    # Create a conversation
+    create_response = client.post(
+        "/api/v1/chat/conversations",
+        json={"influencer_id": test_influencer_id},
+        headers=auth_headers
+    )
+    assert create_response.status_code == 201
+    conversation_id = create_response.json()["id"]
+
+    # Send multiple messages to create message history
+    message_count = 3
+    for i in range(message_count):
+        send_response = client.post(
+            f"/api/v1/chat/conversations/{conversation_id}/messages",
+            json={"content": f"Test message {i+1}", "message_type": "text"},
+            headers=auth_headers
+        )
+        assert send_response.status_code == 200
+
+    # Verify messages exist
+    messages_response = client.get(
+        f"/api/v1/chat/conversations/{conversation_id}/messages",
+        headers=auth_headers
+    )
+    assert messages_response.status_code == 200
+    messages_data = messages_response.json()
+    # Should have greeting (if any) + user messages + assistant responses
+    assert messages_data["total"] >= message_count * 2  # Each message gets an assistant response
+
+    # Delete the conversation
+    delete_response = client.delete(
+        f"/api/v1/chat/conversations/{conversation_id}",
+        headers=auth_headers
+    )
+    assert delete_response.status_code == 200
+    delete_data = delete_response.json()
+
+    # Verify response contains correct count
+    assert delete_data["success"] is True
+    assert delete_data["deleted_conversation_id"] == conversation_id
+    assert delete_data["deleted_messages_count"] >= message_count * 2
+
+    # Verify conversation is deleted (should return 404)
+    get_response = client.get(
+        f"/api/v1/chat/conversations/{conversation_id}/messages",
+        headers=auth_headers
+    )
+    assert get_response.status_code == 404
+
+    # Verify conversation doesn't appear in list
+    list_response = client.get(
+        "/api/v1/chat/conversations",
+        headers=auth_headers
+    )
+    assert list_response.status_code == 200
+    conversations = list_response.json()["conversations"]
+    conversation_ids = [conv["id"] for conv in conversations]
+    assert conversation_id not in conversation_ids
+
+
 def test_delete_nonexistent_conversation(client, auth_headers):
     """Test deleting a conversation that doesn't exist"""
     fake_uuid = "00000000-0000-0000-0000-000000000000"
