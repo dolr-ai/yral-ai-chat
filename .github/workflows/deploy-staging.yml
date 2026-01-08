@@ -236,7 +236,7 @@ jobs:
             echo "[INFO] Starting $ENVIRONMENT service"
             docker compose -f docker-compose.staging.yml up -d "$SERVICE"
 
-            # Step 5.5: Start Metabase staging service
+            # Step 6: Start Metabase staging service
             echo "[INFO] Starting Metabase staging service"
             docker compose -f docker-compose.staging.yml up -d metabase-staging || echo "[WARN] Metabase staging container may already be running"
 
@@ -263,88 +263,9 @@ jobs:
             # Reload production nginx to ensure it has latest config
             if docker ps --filter "name=yral-ai-chat-nginx" --filter "status=running" --format "{{.Names}}" | grep -q yral-ai-chat-nginx; then
               echo "[INFO] Reloading production nginx to ensure staging routes are active"
-            
-            # Step 6: Start nginx (without starting dependencies to avoid affecting production)
-            echo "[INFO] Starting nginx"
-            docker compose -f docker-compose.staging.yml up -d --no-deps nginx-staging
-            
-            # Step 6.5: Restart nginx to ensure it picks up the latest config
-            echo "[INFO] Restarting nginx to load latest configuration"
-            docker compose -f docker-compose.staging.yml restart nginx-staging
-            
-            # Wait for nginx container to be fully running
-            echo "[INFO] Waiting for nginx container to be ready..."
-            max_wait=10
-            wait_count=0
-            while [ $wait_count -lt $max_wait ]; do
-              if docker ps --filter "name=yral-ai-chat-nginx-staging" --filter "status=running" --format "{{.Names}}" | grep -q yral-ai-chat-nginx-staging; then
-                sleep 2  # Give it a moment to fully initialize
-                break
-              fi
-              sleep 1
-              wait_count=$((wait_count + 1))
-            done
-            
-            # Step 6.6: Verify nginx config is valid and reloaded
-            echo "[INFO] Verifying nginx configuration"
-            if docker exec yral-ai-chat-nginx-staging nginx -t > /dev/null 2>&1; then
-              echo "[OK] Nginx configuration is valid"
-              # Try graceful reload first
-              if docker exec yral-ai-chat-nginx-staging nginx -s reload > /dev/null 2>&1; then
-                echo "[OK] Nginx configuration reloaded successfully"
-              else
-                echo "[WARN] Nginx reload failed, container was restarted above"
-              fi
-            else
-              echo "[ERROR] Nginx configuration test failed"
-              docker exec yral-ai-chat-nginx-staging nginx -t || true
-              echo "[WARN] Continuing despite nginx test failure (container was restarted)"
-            fi
-            
-            # Step 6.7: Verify nginx is listening on port 443
-            echo "[INFO] Verifying nginx container is listening on port 443"
-            sleep 3  # Give nginx time to fully start
-            if command -v ss > /dev/null 2>&1; then
-              if ss -tuln | grep -q ':443 '; then
-                echo "[OK] Port 443 is in use (nginx should be listening)"
-                ss -tulpn | grep ':443 ' || true
-              else
-                echo "[ERROR] Port 443 is NOT in use - nginx container may not have started properly"
-                echo "[INFO] Checking nginx container status:"
-                docker ps -a | grep nginx || true
-                echo "[INFO] Checking nginx container logs:"
-                docker logs --tail=30 yral-ai-chat-nginx || true
-              fi
-            fi
-            
-            # Debug: Check nginx container status
-            echo "[DEBUG] Nginx container status:"
-            docker compose -f docker-compose.staging.yml ps nginx-staging || true
-            echo "[DEBUG] Nginx container logs:"
-            docker compose -f docker-compose.staging.yml logs --tail=30 nginx-staging || true
-            
-            # Debug: Check if ports are listening on host
-            echo "[DEBUG] Checking if ports are listening on host:"
-            netstat -tlnp 2>/dev/null | grep -E ":(8000|8001|443|80)" || ss -tlnp 2>/dev/null | grep -E ":(8000|8001|443|80)" || echo "Cannot check ports (netstat/ss not available)"
-            
-            # Debug: Test connectivity from host to services
-            echo "[DEBUG] Testing connectivity to staging service (port 8001):"
-            curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:8001/health || echo "Failed to connect to port 8001"
-            echo "[DEBUG] Testing connectivity to production service (port 8000):"
-            curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:8000/health || echo "Failed to connect to port 8000"
-            
-            # Debug: Test from inside nginx container
-            echo "[DEBUG] Testing from inside nginx container:"
-            docker compose -f docker-compose.staging.yml exec -T nginx-staging wget -qO- --timeout=2 http://127.0.0.1:8001/health 2>&1 | head -5 || echo "Nginx container cannot reach staging service"
-            
-            # Debug: Check nginx config is loaded
-            echo "[DEBUG] Checking nginx config inside container:"
-            docker compose -f docker-compose.staging.yml exec -T nginx-staging cat /etc/nginx/conf.d/default.conf | grep -A 5 "location /staging" || echo "Cannot read nginx config"
-            
-            # Debug: Check nginx error logs
-            echo "[DEBUG] Nginx error logs:"
-            docker compose -f docker-compose.staging.yml exec -T nginx-staging cat /var/log/nginx/error.log 2>/dev/null | tail -20 || echo "Cannot read nginx error logs"
-            
+              docker exec yral-ai-chat-nginx nginx -s reload 2>/dev/null || echo "[WARN] Could not reload production nginx (may need manual reload)"
+            fi           
+             
             # Step 7: Wait for service to start
             echo "[INFO] Waiting ${SERVICE_START_DELAY}s for service to start"
             sleep $SERVICE_START_DELAY
@@ -395,18 +316,18 @@ jobs:
               echo "[WARN] Metabase (staging) service health check failed (may still be initializing)"
             fi
             
-            # Verify nginx can reach Metabase
-            echo "[INFO] Verifying nginx can reach Metabase..."
-            if docker exec yral-ai-chat-nginx-staging wget -q -O- http://127.0.0.1:3001/api/health > /dev/null 2>&1; then
-              echo "[OK] Nginx container can reach Metabase staging on port 3001"
+            # Verify production nginx can reach Metabase staging
+            echo "[INFO] Verifying production nginx can reach Metabase staging..."
+            if docker exec yral-ai-chat-nginx wget -q -O- http://127.0.0.1:3001/api/health > /dev/null 2>&1; then
+              echo "[OK] Production nginx can reach Metabase staging on port 3001"
             else
-              echo "[WARN] Nginx container cannot reach Metabase staging on port 3001"
+              echo "[WARN] Production nginx cannot reach Metabase staging on port 3001"
             fi
             
             # Step 12: Final connectivity tests
             echo "[DEBUG] Final connectivity tests:"
             echo "[DEBUG] Testing staging health from host:"
-            curl -v http://127.0.0.1:8001/staging/health 2>&1 | head -20 || echo "Failed"
+            curl -v http://127.0.0.1:8001/health 2>&1 | head -20 || echo "Failed"
             echo "[DEBUG] Testing production health from host:"
             curl -v http://127.0.0.1:8000/health 2>&1 | head -20 || echo "Failed"
             echo "[DEBUG] Testing via nginx (if accessible):"
@@ -417,8 +338,6 @@ jobs:
             echo "[SUCCESS] $ENVIRONMENT deployment complete"
             echo "[INFO] Service status:"
             docker compose -f docker-compose.staging.yml ps "$SERVICE"
-            echo "[INFO] Nginx status:"
-            docker compose -f docker-compose.staging.yml ps nginx-staging || true
             echo ""
             echo "[INFO] Recent logs:"
             docker compose -f docker-compose.staging.yml logs --tail=20 "$SERVICE"
