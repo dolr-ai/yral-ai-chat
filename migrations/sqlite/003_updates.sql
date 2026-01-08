@@ -85,6 +85,7 @@ WHERE name = 'ananya_dating';
 
 UPDATE ai_influencers
 SET 
+   avatar_url = 'https://yral-profile.hel1.your-objectstorage.com/users/azjhl-m7isb-qfocx-md5sm-z55f2-zm5qf-lss57-5zdns-ljyy4-wfv2x-rae/profile-1767787104.jpg',
    description = 'Astrologer and Spiritual Guide 🕉️',
    initial_greeting = 'Namaste, I''m Arun - your Vedic astrology guide.
 Career, marriage, aur life ke phases kundli ke adhaar par batata hoon.
@@ -228,16 +229,13 @@ SET suggested_messages = COALESCE(suggested_messages, '[]')
 WHERE suggested_messages IS NULL;
 
 -- Set correct is_active status for influencers
+-- Only keep ahaanfitness and arunpandit active, deactivate all others
 UPDATE ai_influencers 
 SET is_active = 'active' 
-WHERE name = 'dr_rhea_kapoor';
+WHERE name IN ('ahaanfitness', 'arunpandit');
 
-UPDATE ai_influencers 
-SET is_active = 'coming_soon' 
-WHERE name IN ('dr_meera_iyer', 'kunal_jain', 'priya_nair', 'neha_gupta', 'arjun_singh');
-
--- Deactivate other influencers (keep only active/coming_soon ones)
+-- Deactivate all other influencers
 UPDATE ai_influencers 
 SET is_active = 'discontinued' 
-WHERE name NOT IN ('ahaanfitness', 'ananya_dating', 'arunpandit', 'dr_rhea_kapoor', 'dr_meera_iyer', 'kunal_jain', 'priya_nair', 'neha_gupta', 'arjun_singh');
+WHERE name NOT IN ('ahaanfitness', 'arunpandit');
 
