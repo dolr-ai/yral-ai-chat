@@ -165,21 +165,44 @@ jobs:
               local retry_delay=$4
               local attempt=1
               
+              echo "[INFO] Starting health check for $service_name on port $port"
+              
               while [ $attempt -le $max_attempts ]; do
+                echo "[INFO] Health check attempt $attempt/$max_attempts for $service_name"
+                
+                # Check if container is running
+                if ! docker compose -f docker-compose.prod.yml ps "$service_name" | grep -q "Up"; then
+                  echo "[ERROR] Container $service_name is not running"
+                  docker compose -f docker-compose.prod.yml ps "$service_name"
+                  docker compose -f docker-compose.prod.yml logs --tail=50 "$service_name"
+                  return 1
+                fi
+                
+                # Try health check
                 if docker compose -f docker-compose.prod.yml exec -T "$service_name" python -c \
                   "import urllib.request; urllib.request.urlopen('http://localhost:$port/health')" \
-                  2>/dev/null; then
+                  2>&1; then
                   echo "[OK] $service_name health check passed"
                   return 0
+                else
+                  echo "[WARN] Health check failed, checking container logs..."
+                  docker compose -f docker-compose.prod.yml logs --tail=20 "$service_name"
                 fi
                 
                 if [ $attempt -eq $max_attempts ]; then
                   echo "[ERROR] $service_name health check failed after $max_attempts attempts"
-                  docker compose -f docker-compose.prod.yml logs --tail=100 "$service_name"
+                  echo "[ERROR] Container status:"
+                  docker compose -f docker-compose.prod.yml ps "$service_name"
+                  echo "[ERROR] Full container logs:"
+                  docker compose -f docker-compose.prod.yml logs --tail=200 "$service_name"
+                  echo "[ERROR] Checking if process is running inside container:"
+                  docker compose -f docker-compose.prod.yml exec -T "$service_name" ps aux || true
+                  echo "[ERROR] Checking if port is listening:"
+                  docker compose -f docker-compose.prod.yml exec -T "$service_name" netstat -tlnp 2>/dev/null || docker compose -f docker-compose.prod.yml exec -T "$service_name" ss -tlnp 2>/dev/null || echo "Cannot check ports"
                   return 1
                 fi
                 
-                echo "[INFO] $service_name: Attempt $attempt/$max_attempts... retrying in ${retry_delay}s"
+                echo "[INFO] $service_name: Attempt $attempt/$max_attempts failed, retrying in ${retry_delay}s"
                 sleep $retry_delay
                 attempt=$((attempt + 1))
               done
@@ -213,11 +236,43 @@ jobs:
             echo "[INFO] Starting $ENVIRONMENT service"
             docker compose -f docker-compose.prod.yml up -d "$SERVICE"
             
-            # Step 6: Start nginx (without starting dependencies to avoid affecting staging)
+            # Show container status immediately
+            echo "[INFO] Container status after start:"
+            docker compose -f docker-compose.prod.yml ps "$SERVICE" || true
+            
+            # Show initial logs
+            echo "[INFO] Initial container logs:"
+            docker compose -f docker-compose.prod.yml logs --tail=50 "$SERVICE" || true
+            
+            # Step 6: Start Metabase production service
+            echo "[INFO] Starting Metabase production service"
+            docker compose -f docker-compose.prod.yml up -d metabase || echo "[WARN] Metabase production container may already be running"
+            
+            # Show Metabase production container status
+            echo "[INFO] Metabase production container status:"
+            docker compose -f docker-compose.prod.yml ps metabase || true
+            
+            # Show Metabase production initial logs
+            echo "[INFO] Metabase production initial logs:"
+            docker compose -f docker-compose.prod.yml logs --tail=30 metabase || true
+            
+            # Wait a moment for Metabase to start accepting connections
+            echo "[INFO] Waiting 10s for Metabase production to initialize..."
+            sleep 10
+            
+            # Test if Metabase production is responding
+            echo "[INFO] Testing Metabase production health..."
+            if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
+              echo "[OK] Metabase production is ready"
+            else
+              echo "[WARN] Metabase production may still be initializing (this is normal, can take up to 60s)"
+            fi
+            
+            # Step 7: Start nginx (without starting dependencies to avoid affecting staging)
             echo "[INFO] Starting nginx"
             docker compose -f docker-compose.prod.yml up -d --no-deps nginx
             
-            # Step 6.5: Restart nginx to ensure it picks up the latest config
+            # Step 7.5: Restart nginx to ensure it picks up the latest config
             echo "[INFO] Restarting nginx to load latest configuration"
             docker compose -f docker-compose.prod.yml restart nginx
             
@@ -234,7 +289,7 @@ jobs:
               wait_count=$((wait_count + 1))
             done
             
-            # Step 6.6: Verify nginx config is valid and reloaded
+            # Step 7.6: Verify nginx config is valid and reloaded
             echo "[INFO] Verifying nginx configuration"
             if docker exec yral-ai-chat-nginx nginx -t > /dev/null 2>&1; then
               echo "[OK] Nginx configuration is valid"
@@ -250,31 +305,43 @@ jobs:
               echo "[WARN] Continuing despite nginx test failure (container was restarted)"
             fi
             
-            # Step 7: Wait for service to start
+            # Step 8: Wait for service to start
             echo "[INFO] Waiting ${SERVICE_START_DELAY}s for service to start"
             sleep $SERVICE_START_DELAY
             
-            # Step 8: Run database migrations
+            # Show logs again after wait
+            echo "[INFO] Container logs after ${SERVICE_START_DELAY}s wait:"
+            docker compose -f docker-compose.prod.yml logs --tail=50 "$SERVICE" || true
+            
+            # Step 9: Run database migrations
             echo "[INFO] Running database migrations for $ENVIRONMENT"
-            if ! docker compose -f docker-compose.prod.yml exec -T "$SERVICE" python scripts/run_migrations.py; then
+            echo "[INFO] Container logs before migrations:"
+            docker compose -f docker-compose.prod.yml logs --tail=30 "$SERVICE" || true
+            if ! docker compose -f docker-compose.prod.yml exec -T "$SERVICE" python scripts/run_migrations.py 2>&1; then
               echo "[ERROR] $ENVIRONMENT migrations failed"
-              docker compose -f docker-compose.prod.yml logs --tail=50 "$SERVICE"
+              echo "[ERROR] Container logs after migration failure:"
+              docker compose -f docker-compose.prod.yml logs --tail=100 "$SERVICE"
               exit 1
             fi
+            echo "[INFO] Migrations completed successfully"
             
-            # Step 9: Restart service to load migrated data
+            # Step 10: Restart service to load migrated data
             echo "[INFO] Restarting service to load migrated data"
             docker compose -f docker-compose.prod.yml restart "$SERVICE"
             echo "[INFO] Waiting ${SERVICE_RESTART_DELAY}s for service to restart"
             sleep $SERVICE_RESTART_DELAY
             
-            # Step 10: Health check
+            # Show logs after restart
+            echo "[INFO] Container logs after restart:"
+            docker compose -f docker-compose.prod.yml logs --tail=50 "$SERVICE" || true
+            
+            # Step 11: Health check
             echo "[INFO] Running health checks for $ENVIRONMENT"
             if ! check_service_health "$SERVICE" "$HEALTH_CHECK_PORT" "$HEALTH_CHECK_MAX_ATTEMPTS" "$HEALTH_CHECK_RETRY_DELAY"; then
               exit 1
             fi
             
-            # Step 11: Metabase health checks
+            # Step 12: Metabase health checks
             echo "[INFO] Checking Metabase services..."
             if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
               echo "[OK] Metabase (production) service is healthy"
@@ -288,15 +355,24 @@ jobs:
               echo "[WARN] Metabase (staging) service health check failed (may still be initializing)"
             fi
             
-            # Verify nginx can reach Metabase
-            echo "[INFO] Verifying nginx can reach Metabase..."
+            # Verify nginx can reach Metabase production
+            echo "[INFO] Verifying nginx can reach Metabase production..."
             if docker exec yral-ai-chat-nginx wget -q -O- http://127.0.0.1:3000/api/health > /dev/null 2>&1; then
               echo "[OK] Nginx container can reach Metabase production on port 3000"
             else
               echo "[WARN] Nginx container cannot reach Metabase production on port 3000"
             fi
             
-            # Step 12: Deployment summary
+            # Step 13: Final connectivity tests
+            echo "[DEBUG] Final connectivity tests:"
+            echo "[DEBUG] Testing production health from host:"
+            curl -v http://127.0.0.1:8000/health 2>&1 | head -20 || echo "Failed"
+            echo "[DEBUG] Testing staging health from host:"
+            curl -v http://127.0.0.1:8001/health 2>&1 | head -20 || echo "Failed"
+            echo "[DEBUG] Testing via nginx (if accessible):"
+            curl -k -v https://127.0.0.1/health 2>&1 | head -20 || curl -v http://127.0.0.1/health 2>&1 | head -20 || echo "Cannot test via nginx"
+            
+            # Step 14: Deployment summary
             echo ""
             echo "[SUCCESS] $ENVIRONMENT deployment complete"
             echo "[INFO] Service status:"
@@ -314,4 +390,3 @@ jobs:
             echo "   - Metabase (Production): https://chat.yral.com/metabase/"
             echo "   - Metabase (Staging): https://chat.yral.com/staging/metabase/"
           DEPLOY_SCRIPT
-
