@@ -41,17 +41,18 @@ Your role is to:
   '
 WHERE name = 'ahaanfitness';
 
--- Update Ananya and Arun to ensure final values (idempotent)
+-- Update Kshitij and Arun to ensure final values (idempotent)
 UPDATE ai_influencers
 SET 
-    display_name = 'Ananya Khanna',
+    avatar_url = 'https://yral-profile.hel1.your-objectstorage.com/users/zchob-yxzst-hjmrg-um4bk-d5zwx-3s2ft-jedwo-xitfe-sg2ks-6dnxy-sae/profile-1767867374.jpg',
+    display_name = 'Kshitij Khanna',
     description = 'Dating & Relationship Coach 💕',
-    initial_greeting = 'Namaste, I''m Ananya - your dating coach.
+    initial_greeting = 'Namaste, I''m Kshitij - your dating coach.
 Dating mein jo confusion ya awkward moment hai, usko clear karte hain.
 Bas apni situation batao.
 ',
     category = 'dating',
-    system_instructions = 'You are Ananya Khanna, an expert Indian dating and relationship coach who specializes in helping men understand women, dating dynamics, and healthy masculine confidence.
+    system_instructions = 'You are Kshitij Khanna, an expert Indian dating and relationship coach who specializes in helping men understand women, dating dynamics, and healthy masculine confidence.
 
 Your role is to:
 
@@ -81,7 +82,7 @@ Your role is to:
  (English, Hindi, Hinglish, Tamil, Telugu, Malayalam, etc.) but if a user just says hi or hello or just says 1-2 words in English, then reply in Hinglish.
 - Keep the entire message in the same language as the users latest message. Try not to mix languages in the same message UNLESS THEY DID SO.'
 
-WHERE name = 'ananya_dating';
+WHERE name = 'Kshitij';
 
 UPDATE ai_influencers
 SET 
@@ -195,6 +196,10 @@ UPDATE conversations
 SET influencer_id = 'azjhl-m7isb-qfocx-md5sm-z55f2-zm5qf-lss57-5zdns-ljyy4-wfv2x-rae'
 WHERE influencer_id IN (SELECT id FROM ai_influencers WHERE name = 'arunpandit' AND id != 'azjhl-m7isb-qfocx-md5sm-z55f2-zm5qf-lss57-5zdns-ljyy4-wfv2x-rae');
 
+UPDATE conversations
+SET influencer_id = 'zchob-yxzst-hjmrg-um4bk-d5zwx-3s2ft-jedwo-xitfe-sg2ks-6dnxy-sae'
+WHERE influencer_id IN (SELECT id FROM ai_influencers WHERE name = 'Kshitij' AND id != 'zchob-yxzst-hjmrg-um4bk-d5zwx-3s2ft-jedwo-xitfe-sg2ks-6dnxy-sae');
+
 -- Update influencer IDs
 UPDATE ai_influencers
 SET id = 'qg2pi-g3xl4-uprdd-macwr-64q7r-plotv-xm3bg-iayu3-rnpux-7ikkz-hqe'
@@ -220,6 +225,10 @@ UPDATE ai_influencers
 SET id = 'azjhl-m7isb-qfocx-md5sm-z55f2-zm5qf-lss57-5zdns-ljyy4-wfv2x-rae'
 WHERE name = 'arunpandit' AND id != 'azjhl-m7isb-qfocx-md5sm-z55f2-zm5qf-lss57-5zdns-ljyy4-wfv2x-rae';
 
+UPDATE ai_influencers
+SET id = 'zchob-yxzst-hjmrg-um4bk-d5zwx-3s2ft-jedwo-xitfe-sg2ks-6dnxy-sae'
+WHERE name = 'Kshitij' AND id != 'zchob-yxzst-hjmrg-um4bk-d5zwx-3s2ft-jedwo-xitfe-sg2ks-6dnxy-sae';
+
 -- Re-enable foreign key checks
 PRAGMA foreign_keys = ON;
 
@@ -229,13 +238,13 @@ SET suggested_messages = COALESCE(suggested_messages, '[]')
 WHERE suggested_messages IS NULL;
 
 -- Set correct is_active status for influencers
--- Only keep ahaanfitness and arunpandit active, deactivate all others
+-- Only keep ahaanfitness, arunpandit, and Kshitij active, deactivate all others
 UPDATE ai_influencers 
 SET is_active = 'active' 
-WHERE name IN ('ahaanfitness', 'arunpandit');
+WHERE name IN ('ahaanfitness', 'arunpandit', 'Kshitij');
 
 -- Deactivate all other influencers
 UPDATE ai_influencers 
 SET is_active = 'discontinued' 
-WHERE name NOT IN ('ahaanfitness', 'arunpandit');
+WHERE name NOT IN ('ahaanfitness', 'arunpandit', 'Kshitij');
 
