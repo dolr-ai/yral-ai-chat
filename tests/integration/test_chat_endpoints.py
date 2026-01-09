@@ -687,7 +687,7 @@ def test_send_message_accepts_uppercase_text_type(client, clean_conversation_id,
 def test_send_message_accepts_uppercase_multimodal_type(client, clean_conversation_id, auth_headers):
     """Test that MULTIMODAL message type can be sent in uppercase and is normalized to lowercase"""
     # Use provided image URL
-    image_url = "https://yral-profile.hel1.your-objectstorage.com/users/upzvo-glz6l-actg5-izx2o-bsufp-hacvl-e6yeh-wyxl2-qf2gq-c3ndy-2ae/profile-1767637456.jpg"
+    image_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
     
     test_cases = [
         ("MULTIMODAL", "multimodal"),

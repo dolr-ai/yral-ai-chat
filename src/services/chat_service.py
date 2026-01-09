@@ -104,6 +104,9 @@ class ChatService:
             return None
         try:
             s3_key = self.storage_service.extract_key_from_url(storage_key)
+            # If s3_key is still a full URL, it means it's external and not in our storage
+            if s3_key.startswith(("http://", "https://")):
+                return s3_key
             return self.storage_service.generate_presigned_url(s3_key)
         except Exception as e:
             logger.warning(f"Failed to convert storage key {storage_key} to presigned URL: {e}")
