@@ -106,11 +106,15 @@ class ChatService:
             s3_key = self.storage_service.extract_key_from_url(storage_key)
             # If s3_key is still a full URL, it means it's external and not in our storage
             if s3_key.startswith(("http://", "https://")):
-                return s3_key
-            return self.storage_service.generate_presigned_url(s3_key)
+                logger.info(f"Media URL {storage_key} is external, returning as-is")
+                return storage_key
+            url = self.storage_service.generate_presigned_url(s3_key)
+            logger.info(f"Converted storage key {s3_key} to presigned URL: {url[:50]}...")
+            return url
         except Exception as e:
             logger.warning(f"Failed to convert storage key {storage_key} to presigned URL: {e}")
             if storage_key.startswith(("http://", "https://")):
+                logger.info(f"Falling back to original URL: {storage_key}")
                 return storage_key
             return None
 
