@@ -23,8 +23,8 @@ from src.models.responses import (
     MessageResponse,
     SendMessageResponse,
 )
-from src.services.storage_service import StorageService
 from src.services.chat_service import ChatService
+from src.services.storage_service import StorageService
 
 security = HTTPBearer()
 router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
@@ -316,6 +316,7 @@ async def list_messages(
         503: {"description": "Service unavailable - AI service temporarily unavailable"},
     },
 )
+async def send_message(
     conversation_id: str,
     request: SendMessageRequest,
     background_tasks: BackgroundTasks,
@@ -342,7 +343,6 @@ async def list_messages(
         message_type=request.message_type,
         media_urls=request.media_urls or [],
         audio_url=request.audio_url,
-        audio_duration_seconds=request.audio_duration_seconds,
         audio_duration_seconds=request.audio_duration_seconds,
     )
 
