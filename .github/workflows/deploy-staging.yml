@@ -49,6 +49,7 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
           S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
           S3_PUBLIC_URL_BASE: ${{ secrets.S3_PUBLIC_URL_BASE }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL || 'google/gemini-2.5-flash' }}
           ENVIRONMENT: development
         run: |
           pytest -v --tb=short
