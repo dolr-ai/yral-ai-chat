@@ -135,16 +135,19 @@ def configure_logging():
             else:
                 record = message.record
                 # Convert record to dict for consistent handling
-                record_dict = {
-                    "time": record.time,
-                    "level": record.level,
-                    "message": record.message,
-                    "module": record.module,
-                    "function": record.function,
-                    "line": record.line,
-                    "extra": record.extra or {},
-                    "exception": record.exception
-                }
+                if isinstance(record, dict):
+                    record_dict = record
+                else:
+                    record_dict = {
+                        "time": record.time,
+                        "level": record.level,
+                        "message": record.message,
+                        "module": record.module,
+                        "function": record.function,
+                        "line": record.line,
+                        "extra": record.extra or {},
+                        "exception": record.exception
+                    }
             
             # Extract values from dict
             timestamp = record_dict.get("time")

@@ -9,6 +9,7 @@ from src.core.exceptions import ForbiddenException, NotFoundException
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
 from src.models.entities import Conversation, Message, MessageRole, MessageType
 from src.services.gemini_client import GeminiClient
+from src.services.openrouter_client import OpenRouterClient
 from src.services.storage_service import StorageService
 
 
@@ -22,12 +23,22 @@ class ChatService:
         conversation_repo: ConversationRepository,
         message_repo: MessageRepository,
         storage_service: StorageService | None = None,
+        openrouter_client: OpenRouterClient | None = None,
     ):
         self.influencer_repo = influencer_repo
         self.conversation_repo = conversation_repo
         self.message_repo = message_repo
         self.storage_service = storage_service
         self.gemini_client = gemini_client
+        self.openrouter_client = openrouter_client
+
+    def _select_ai_client(self, is_nsfw: bool):
+        """Select appropriate AI client based on content type (NSFW or regular)"""
+        if is_nsfw and self.openrouter_client:
+            logger.info("Using OpenRouter client for NSFW influencer")
+            return self.openrouter_client
+        logger.info("Using Gemini client for regular influencer")
+        return self.gemini_client
 
     async def create_conversation(
         self,
@@ -237,14 +248,30 @@ class ChatService:
             media_urls_for_ai = self._convert_media_urls_for_ai(media_urls)
 
         try:
-            response_text, token_count = await self.gemini_client.generate_response(
+            # Select appropriate AI client based on influencer's NSFW status
+            ai_client = self._select_ai_client(influencer.is_nsfw)
+            provider_name = "OpenRouter" if influencer.is_nsfw else "Gemini"
+            logger.info(
+                f"Generating response for influencer {influencer.id} ({influencer.display_name}) "
+                f"using {provider_name} provider"
+            )
+            response_text, token_count = await ai_client.generate_response(
                 user_message=ai_input_content,
                 system_instructions=enhanced_system_instructions,
                 conversation_history=history,
                 media_urls=media_urls_for_ai
             )
+            logger.info(
+                f"Response generated successfully from {provider_name}: "
+                f"{len(response_text)} chars, {token_count} tokens"
+            )
         except Exception as e:
-            logger.error(f"AI response generation failed: {e}")
+            logger.error(
+                "AI response generation failed for influencer {}: {}",
+                influencer.id,
+                str(e),
+                exc_info=True
+            )
             response_text = "I'm having trouble generating a response right now. Please try again."
             token_count = 0
 
