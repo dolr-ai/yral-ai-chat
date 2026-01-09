@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     gemini_max_tokens: int = Field(default=2048, ge=1, le=8192, alias="GEMINI_MAX_TOKENS")
     gemini_temperature: float = Field(default=0.7, ge=0.0, le=2.0, alias="GEMINI_TEMPERATURE")
 
+    # ===========================================
+    # OpenRouter API (for NSFW content)
+    # ===========================================
+    openrouter_api_key: str = Field(default="", min_length=0, alias="OPENROUTER_API_KEY")
+    openrouter_model: str = Field(default="google/gemini-2.5-flash:free", alias="OPENROUTER_MODEL")
+    openrouter_max_tokens: int = Field(default=2048, ge=1, le=8192, alias="OPENROUTER_MAX_TOKENS")
+    openrouter_temperature: float = Field(default=0.7, ge=0.0, le=2.0, alias="OPENROUTER_TEMPERATURE")
+    openrouter_timeout: float = Field(default=30.0, gt=0, alias="OPENROUTER_TIMEOUT")
+
     max_image_size_mb: int = Field(default=10, ge=1, le=100, alias="MAX_IMAGE_SIZE_MB")
     max_audio_size_mb: int = Field(default=20, ge=1, le=200, alias="MAX_AUDIO_SIZE_MB")
     max_audio_duration_seconds: int = Field(default=300, ge=1, le=600, alias="MAX_AUDIO_DURATION_SECONDS")
