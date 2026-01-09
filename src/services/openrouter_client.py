@@ -12,8 +12,6 @@ import httpx
 import tiktoken
 from loguru import logger
 from tenacity import (
-    after_log,
-    before_sleep_log,
     retry,
     retry_if_exception,
     retry_if_exception_type,
@@ -122,48 +120,9 @@ class OpenRouterClient:
             user_message_str = str(user_message) if not isinstance(user_message, str) else user_message
             
             # Build messages for OpenAI-compatible API
-            messages = []
-            
-            # Add system instructions
-            messages.append({
-                "role": "system",
-                "content": f"{system_instructions}. Lastly, always answer in the same language as the user's message."
-            })
-            
-            # Add conversation history
-            if conversation_history:
-                for msg in conversation_history[-10:]:  # Last 10 messages for context
-                    role = "user" if msg.role == MessageRole.USER else "assistant"
-                    content = msg.content or ""
-                    
-                    # Build content with potential images
-                    if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and msg.media_urls:
-                        content_list = [{"type": "text", "text": content}] if content else []
-                        for image_url in msg.media_urls[:3]:
-                            try:
-                                image_content = await self._build_image_content(image_url)
-                                if image_content:
-                                    content_list.append(image_content)
-                            except Exception as e:
-                                logger.warning(f"Failed to load image from history: {e}")
-                        if content_list:
-                            messages.append({"role": role, "content": content_list})
-                    else:
-                        messages.append({"role": role, "content": content})
-            
-            # Add current message with optional images
-            current_content = [{"type": "text", "text": user_message_str}]
-            if media_urls:
-                for image_url in media_urls[:5]:
-                    try:
-                        image_content = await self._build_image_content(image_url)
-                        if image_content:
-                            current_content.append(image_content)
-                    except Exception as e:
-                        logger.error(f"Failed to download image {image_url}: {e}")
-                        raise AIServiceException(f"Failed to process image: {e}") from e
-            
-            messages.append({"role": "user", "content": current_content if len(current_content) > 1 else user_message_str})
+            messages = await self._build_messages(
+                user_message_str, system_instructions, conversation_history, media_urls
+            )
             
             response_text, token_count = await self._generate_content(messages)
             return response_text, int(token_count)
@@ -455,3 +414,56 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
     async def close(self):
         """Close HTTP client"""
         await self.http_client.aclose()
+
+    async def _build_messages(
+        self,
+        user_message: str,
+        system_instructions: str,
+        conversation_history: list[Message] | None,
+        media_urls: list[str] | None
+    ) -> list[dict]:
+        """Build messages list for OpenRouter/OpenAI API"""
+        messages = []
+        
+        # Add system instructions
+        messages.append({
+            "role": "system",
+            "content": f"{system_instructions}. Lastly, always answer in the same language as the user's message."
+        })
+        
+        # Add conversation history
+        if conversation_history:
+            for msg in conversation_history[-10:]:  # Last 10 messages for context
+                role = "user" if msg.role == MessageRole.USER else "assistant"
+                content = msg.content or ""
+                
+                # Build content with potential images
+                if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and msg.media_urls:
+                    content_list = [{"type": "text", "text": content}] if content else []
+                    for image_url in msg.media_urls[:3]:
+                        try:
+                            image_content = await self._build_image_content(image_url)
+                            if image_content:
+                                content_list.append(image_content)
+                        except Exception as e:
+                            logger.warning(f"Failed to load image from history: {e}")
+                    if content_list:
+                        messages.append({"role": role, "content": content_list})
+                else:
+                    messages.append({"role": role, "content": content})
+        
+        # Add current message with optional images
+        current_content = [{"type": "text", "text": user_message}]
+        if media_urls:
+            for image_url in media_urls[:5]:
+                try:
+                    image_content = await self._build_image_content(image_url)
+                    if image_content:
+                        current_content.append(image_content)
+                except Exception as e:
+                    logger.error(f"Failed to download image {image_url}: {e}")
+                    raise AIServiceException(f"Failed to process image: {e}") from e
+        
+        messages.append({"role": "user", "content": current_content if len(current_content) > 1 else user_message})
+        
+        return messages

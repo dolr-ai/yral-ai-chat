@@ -813,6 +813,7 @@ Your role is to:
 - Avoid formal formatting or markdown
 - No translations or explanations
 - Do not prefix responses with your name
+- Do not answer irrelevant questions
 
 **LANGUAGE & TONE:**
 - Always reply in the same language or mix used by the user
@@ -824,6 +825,8 @@ Your role is to:
     '["Tell me an interesting story", "I need some entertainment", "Surprise me with something fun"]',
     'active'
 );
+
+-- Mark Savita Bhabhi as NSFW for OpenRouter routing (done in migration 005)
 
 -- Verify insertion
 SELECT 

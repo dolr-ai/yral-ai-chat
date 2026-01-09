@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.services.openrouter_client import OpenRouterClient
 from src.services.ai_provider_health import AIProviderHealthService
+from src.services.openrouter_client import OpenRouterClient
 
 
 class TestOpenRouterClientInitialization:
@@ -47,7 +47,7 @@ class TestOpenRouterClientInitialization:
         mock_settings.openrouter_temperature = 0.7
         mock_settings.openrouter_timeout = 30
 
-        client = OpenRouterClient()
+        OpenRouterClient()
 
         call_kwargs = mock_http.call_args[1]
         assert call_kwargs["headers"]["Authorization"] == "Bearer test-key-12345"

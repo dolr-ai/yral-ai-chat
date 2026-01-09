@@ -7,7 +7,7 @@ Tests cover:
 - InfluencerService NSFW methods
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -126,7 +126,7 @@ class TestInfluencerServiceNSFW:
         mock_influencer2.is_nsfw = True
 
         mock_influencers = [mock_influencer1, mock_influencer2]
-        expected_tuple = (mock_influencers, 2)
+        mock_influencers = [mock_influencer1, mock_influencer2]
 
         mock_repository = AsyncMock()
         mock_repository.list_nsfw = AsyncMock(return_value=mock_influencers)

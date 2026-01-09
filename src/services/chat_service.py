@@ -37,9 +37,8 @@ class ChatService:
         if is_nsfw and self.openrouter_client:
             logger.info("Using OpenRouter client for NSFW influencer")
             return self.openrouter_client
-        else:
-            logger.info("Using Gemini client for regular influencer")
-            return self.gemini_client
+        logger.info("Using Gemini client for regular influencer")
+        return self.gemini_client
 
     async def create_conversation(
         self,
@@ -268,7 +267,9 @@ class ChatService:
             )
         except Exception as e:
             logger.error(
-                f"AI response generation failed for influencer {influencer.id}: {e}",
+                "AI response generation failed for influencer {}: {}",
+                influencer.id,
+                str(e),
                 exc_info=True
             )
             response_text = "I'm having trouble generating a response right now. Please try again."

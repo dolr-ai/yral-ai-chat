@@ -11,8 +11,8 @@ from src.db.repositories.message_repository import MessageRepository
 from src.services.ai_provider_health import AIProviderHealthService
 from src.services.chat_service import ChatService
 from src.services.gemini_client import GeminiClient
-from src.services.openrouter_client import OpenRouterClient
 from src.services.influencer_service import InfluencerService
+from src.services.openrouter_client import OpenRouterClient
 from src.services.storage_service import StorageService
 
 

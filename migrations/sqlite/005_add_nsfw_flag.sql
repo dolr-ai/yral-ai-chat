@@ -11,3 +11,8 @@ CREATE INDEX IF NOT EXISTS idx_influencers_nsfw ON ai_influencers(is_nsfw);
 
 -- Create index on combination of is_active and is_nsfw for common queries
 CREATE INDEX IF NOT EXISTS idx_influencers_active_nsfw ON ai_influencers(is_active, is_nsfw);
+
+-- Mark Savita Bhabhi as NSFW and ensure she's active
+UPDATE ai_influencers
+SET is_nsfw = 1, is_active = 'active'
+WHERE name = 'savita_bhabhi';

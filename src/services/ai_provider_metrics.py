@@ -3,6 +3,8 @@ AI Provider Usage Metrics & Analytics
 Tracks usage statistics for Gemini and OpenRouter providers
 """
 from datetime import datetime
+from functools import lru_cache
+
 from loguru import logger
 
 
@@ -83,17 +85,17 @@ class AIProviderMetrics:
         """Get a human-readable metrics summary"""
         metrics = self.get_metrics_summary()
         summary = "\n=== AI Provider Metrics Summary ===\n"
-        summary += f"Gemini:\n"
+        summary += "Gemini:\n"
         summary += f"  Requests: {metrics['gemini']['requests']}\n"
         summary += f"  Errors: {metrics['gemini']['errors']}\n"
         summary += f"  Error Rate: {metrics['gemini']['error_rate']:.2f}%\n"
         summary += f"  Tokens: {metrics['gemini']['total_tokens']}\n"
-        summary += f"\nOpenRouter:\n"
+        summary += "\nOpenRouter:\n"
         summary += f"  Requests: {metrics['openrouter']['requests']}\n"
         summary += f"  Errors: {metrics['openrouter']['errors']}\n"
         summary += f"  Error Rate: {metrics['openrouter']['error_rate']:.2f}%\n"
         summary += f"  Tokens: {metrics['openrouter']['total_tokens']}\n"
-        summary += f"\nTotal:\n"
+        summary += "\nTotal:\n"
         summary += f"  Requests: {metrics['total']['requests']}\n"
         summary += f"  Errors: {metrics['total']['errors']}\n"
         summary += f"  Error Rate: {metrics['total']['error_rate']:.2f}%\n"
@@ -114,16 +116,11 @@ class AIProviderMetrics:
         logger.info("All metrics reset")
 
 
-# Global metrics instance
-_metrics_instance: AIProviderMetrics | None = None
 
-
+@lru_cache(maxsize=1)
 def get_metrics_instance() -> AIProviderMetrics:
     """Get global metrics instance (lazy singleton)"""
-    global _metrics_instance
-    if _metrics_instance is None:
-        _metrics_instance = AIProviderMetrics()
-    return _metrics_instance
+    return AIProviderMetrics()
 
 
 def record_api_request(provider: str, token_count: int = 0, error: bool = False):
