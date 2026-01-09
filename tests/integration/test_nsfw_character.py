@@ -7,6 +7,8 @@ Tests cover:
 - Chat flow with NSFW character
 - Conversation history with NSFW bots
 """
+import os
+import pytest
 
 
 
@@ -135,6 +137,7 @@ def test_savita_suggested_messages(client):
     # It's available via InfluencerBasicInfo in conversation responses
 
 
+@pytest.mark.skipif(not os.getenv("OPENROUTER_API_KEY"), reason="OpenRouter API key not configured")
 def test_chat_with_savita_bhabhi_via_openrouter(client, auth_headers):
     """Test end-to-end chat with Savita Bhabhi to verify OpenRouter integration works"""
     # Get Savita Bhabhi's ID

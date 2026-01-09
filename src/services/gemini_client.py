@@ -78,7 +78,10 @@ class GeminiClient:
         """Initialize Gemini client with API key and tokenizer"""
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.model_name = settings.gemini_model
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        self.http_client = httpx.AsyncClient(
+            timeout=30.0,
+            headers={"User-Agent": "YralAIChat/1.0"}
+        )
         try:
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
         except Exception as e:
