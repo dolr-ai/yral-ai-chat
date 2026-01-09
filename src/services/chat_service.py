@@ -16,6 +16,8 @@ from src.services.storage_service import StorageService
 class ChatService:
     """Service for chat operations"""
 
+    FALLBACK_ERROR_MESSAGE = "I'm having trouble generating a response right now. Please try again."
+
     def __init__(
         self,
         gemini_client: GeminiClient,
@@ -272,7 +274,7 @@ class ChatService:
                 str(e),
                 exc_info=True
             )
-            response_text = "I'm having trouble generating a response right now. Please try again."
+            response_text = self.FALLBACK_ERROR_MESSAGE
             token_count = 0
 
         assistant_message = await self.message_repo.create(

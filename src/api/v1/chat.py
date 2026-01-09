@@ -1,7 +1,7 @@
 """
 Chat endpoints
 """
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from fastapi.security import HTTPBearer
 from loguru import logger
 
@@ -24,6 +24,7 @@ from src.models.responses import (
     SendMessageResponse,
 )
 from src.services.storage_service import StorageService
+from src.services.chat_service import ChatService
 
 security = HTTPBearer()
 router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
@@ -315,10 +316,10 @@ async def list_messages(
         503: {"description": "Service unavailable - AI service temporarily unavailable"},
     },
 )
-async def send_message(
     conversation_id: str,
     request: SendMessageRequest,
     background_tasks: BackgroundTasks,
+    response: Response,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
     chat_service: ChatServiceDep = None,
     storage_service: StorageServiceDep = None,
@@ -342,7 +343,12 @@ async def send_message(
         media_urls=request.media_urls or [],
         audio_url=request.audio_url,
         audio_duration_seconds=request.audio_duration_seconds,
+        audio_duration_seconds=request.audio_duration_seconds,
     )
+
+    # Check if we hit the fallback error message
+    if assistant_msg.content == ChatService.FALLBACK_ERROR_MESSAGE:
+        response.status_code = 503
 
     if assistant_msg.token_count:
         background_tasks.add_task(
