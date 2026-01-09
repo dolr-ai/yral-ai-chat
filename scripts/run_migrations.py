@@ -6,6 +6,7 @@ Runs migration SQL files in order
 import os
 import sqlite3
 import sys
+import traceback
 from pathlib import Path
 
 if Path("/app/migrations").exists():
@@ -97,7 +98,6 @@ def run_migrations():
         conn.commit()
 
     except Exception:
-        import traceback
         traceback.print_exc()
         conn.rollback()
         sys.exit(1)
