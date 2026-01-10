@@ -5,6 +5,7 @@ Configured for use with Litestream for real-time S3 backups
 import asyncio
 import os
 import re
+import secrets
 import time
 import uuid
 from pathlib import Path
@@ -46,7 +47,7 @@ class ConnectionPool:
 
         await conn.execute("PRAGMA foreign_keys = ON")
         await conn.execute("PRAGMA journal_mode = WAL")
-        await conn.execute(f"PRAGMA busy_timeout = {busy_timeout_ms}")
+        await conn.execute(f"PRAGMA busy_timeout = {max(busy_timeout_ms, 30000)}") # Increase busy_timeout to 30 seconds for better Litestream compatibility (Litestream Bug)
         await conn.execute("PRAGMA synchronous = NORMAL")
         await conn.execute("PRAGMA cache_size = -64000")
 
@@ -170,7 +171,10 @@ class Database:
                     last_error = e
                     error_str = str(e).lower()
                     if ("database is locked" in error_str or "locked" in error_str) and attempt < max_retries - 1:
-                        await asyncio.sleep(retry_delay * (attempt + 1))
+                        # Random jitter to prevent thundering herd
+                        actual_delay = retry_delay * (2 ** attempt) + (secrets.SystemRandom().random() * 0.1)
+                        logger.warning(f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(actual_delay)
                         continue
                     logger.error(f"Execute error: {e}, Query: {query[:100]}")
                     raise
