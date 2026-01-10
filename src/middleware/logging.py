@@ -1,6 +1,7 @@
 """
 Enhanced logging middleware with correlation IDs and structured logging
 """
+import json
 import sys
 import time
 import uuid
@@ -129,40 +130,40 @@ def configure_logging():
     if settings.log_format == "json":
         def json_sink(message):
             """Custom sink for JSON logging"""
-            # Handle both record objects and dicts (dicts occur with multiple workers)
-            if isinstance(message, dict):
-                record_dict = message
-            else:
-                record = message.record
-                # Convert record to dict for consistent handling
-                if isinstance(record, dict):
-                    record_dict = record
-                else:
-                    record_dict = {
-                        "time": record.time,
-                        "level": record.level,
-                        "message": record.message,
-                        "module": record.module,
-                        "function": record.function,
-                        "line": record.line,
-                        "extra": record.extra or {},
-                        "exception": record.exception
-                    }
+            # Handle both loguru.Message objects and raw dicts
+            record = message.record if hasattr(message, "record") else message
+
+            # Extract values using item access (for dicts) or attribute access
+            def get_val(obj, key, default=None):
+                if isinstance(obj, dict):
+                    return obj.get(key, default)
+                return getattr(obj, key, default)
+
+            timestamp = get_val(record, "time")
+            level = get_val(record, "level")
             
-            # Extract values from dict
-            timestamp = record_dict.get("time")
-            level = record_dict.get("level")
+            # Robust timestamp stringification
+            if hasattr(timestamp, "isoformat"):
+                timestamp_str = timestamp.isoformat()
+            else:
+                timestamp_str = str(timestamp) if timestamp else None
+
+            # Robust level name extraction
+            level_name = "INFO"
+            if level:
+                level_name = get_val(level, "name", str(level))
+
             log_data = {
-                "timestamp": timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp),
-                "level": level.name if hasattr(level, "name") else str(level),
-                "message": record_dict.get("message", ""),
-                "module": record_dict.get("module", ""),
-                "function": record_dict.get("function", ""),
-                "line": record_dict.get("line", 0)
+                "timestamp": timestamp_str,
+                "level": level_name,
+                "message": get_val(record, "message", ""),
+                "module": get_val(record, "module", ""),
+                "function": get_val(record, "function", ""),
+                "line": get_val(record, "line", 0)
             }
 
             # Handle extra data (may be nested)
-            extra = record_dict.get("extra", {})
+            extra = get_val(record, "extra", {})
             if extra:
                 # If extra contains nested 'extra', unwrap it
                 if isinstance(extra, dict) and "extra" in extra:
@@ -171,18 +172,19 @@ def configure_logging():
                     log_data.update(extra)
 
             # Handle exception
-            exception = record_dict.get("exception")
+            exception = get_val(record, "exception")
             if exception:
-                if hasattr(exception, "type") and hasattr(exception, "value"):
+                exc_type = get_val(exception, "type")
+                exc_value = get_val(exception, "value")
+                if exc_type and exc_value:
                     log_data["exception"] = {
-                        "type": exception.type.__name__,
-                        "value": str(exception.value)
+                        "type": exc_type.__name__ if hasattr(exc_type, "__name__") else str(exc_type),
+                        "value": str(exc_value)
                     }
-                elif isinstance(exception, dict):
-                    log_data["exception"] = exception
+                else:
+                    log_data["exception"] = str(exception)
             
-            # Write JSON log line to stdout (will be captured by container logs)
-            import json
+            # Write JSON log line to stdout
             print(json.dumps(log_data), flush=True)  # noqa: T201
 
         logger.add(
@@ -192,7 +194,7 @@ def configure_logging():
     else:
         logger.add(
             sys.stdout,
-            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level> {extra}",
             level=settings.log_level,
             colorize=True
         )
