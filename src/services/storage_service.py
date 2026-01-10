@@ -2,6 +2,7 @@
 S3-compatible storage service for media uploads (Storj)
 """
 import asyncio
+import time
 from pathlib import Path
 from uuid import uuid4
 
@@ -173,6 +174,28 @@ class StorageService:
             raise BadRequestException(
                 f"Audio too large. Max size: {settings.max_audio_size_mb}MB"
             )
+
+    async def health_check(self) -> dict:
+        """Check S3 storage health"""
+        try:
+            start = time.time()
+            def _check():
+                self.s3_client.head_bucket(Bucket=self.bucket)
+            
+            await asyncio.to_thread(_check)
+            latency_ms = int((time.time() - start) * 1000)
+            return {
+                "status": "up",
+                "latency_ms": latency_ms,
+                "error": None
+            }
+        except Exception as e:
+            logger.error(f"Storage health check failed: {e}")
+            return {
+                "status": "down",
+                "latency_ms": None,
+                "error": str(e)
+            }
 
     async def get_audio_duration(self, s3_key: str) -> int:
         """
