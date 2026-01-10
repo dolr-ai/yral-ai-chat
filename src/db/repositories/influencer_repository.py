@@ -17,7 +17,7 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, created_at, updated_at, metadata
+                is_active, is_nsfw, created_at, updated_at, metadata
             FROM ai_influencers
             ORDER BY CASE is_active
                 WHEN 'active' THEN 1
@@ -37,7 +37,7 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, created_at, updated_at, metadata
+                is_active, is_nsfw, created_at, updated_at, metadata
             FROM ai_influencers
             WHERE id = $1 AND is_active = 'active'
         """
@@ -52,7 +52,7 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, created_at, updated_at, metadata
+                is_active, is_nsfw, created_at, updated_at, metadata
             FROM ai_influencers
             WHERE name = $1 AND is_active = 'active'
         """
@@ -63,7 +63,8 @@ class InfluencerRepository:
     async def count_all(self) -> int:
         """Count all influencers (both active and inactive)"""
         query = "SELECT COUNT(*) FROM ai_influencers"
-        return await db.fetchval(query)
+        result = await db.fetchval(query)
+        return int(result) if result is not None else 0
 
     async def get_with_conversation_count(self, influencer_id: str) -> AIInfluencer | None:
         """Get influencer with conversation count"""
@@ -72,7 +73,7 @@ class InfluencerRepository:
                 i.id, i.name, i.display_name, i.avatar_url, i.description,
                 i.category, i.system_instructions, i.personality_traits,
                 i.initial_greeting, i.suggested_messages,
-                i.is_active, i.created_at, i.updated_at, i.metadata,
+                i.is_active, i.is_nsfw, i.created_at, i.updated_at, i.metadata,
                 COUNT(c.id) as conversation_count
             FROM ai_influencers i
             LEFT JOIN conversations c ON i.id = c.influencer_id
@@ -85,7 +86,7 @@ class InfluencerRepository:
             return None
 
         influencer = self._row_to_influencer(row)
-        influencer.conversation_count = row["conversation_count"]
+        influencer.conversation_count = int(row["conversation_count"]) if row["conversation_count"] else 0
         return influencer
 
     def _row_to_influencer(self, row) -> AIInfluencer:
@@ -117,6 +118,10 @@ class InfluencerRepository:
         else:
             is_active_enum = InfluencerStatus.ACTIVE if is_active_value else InfluencerStatus.DISCONTINUED
 
+        # Extract is_nsfw flag (SQLite stores as 0/1)
+        is_nsfw = row.get("is_nsfw", 0)
+        is_nsfw_bool = bool(is_nsfw)
+
         return AIInfluencer(
             id=row["id"],
             name=row["name"],
@@ -129,9 +134,40 @@ class InfluencerRepository:
             initial_greeting=row.get("initial_greeting"),
             suggested_messages=suggested_messages,
             is_active=is_active_enum,
+            is_nsfw=is_nsfw_bool,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             metadata=metadata,
         )
+
+    async def is_nsfw(self, influencer_id: str) -> bool:
+        """Check if an influencer is tagged as NSFW"""
+        query = "SELECT is_nsfw FROM ai_influencers WHERE id = $1"
+        result = await db.fetchval(query, influencer_id)
+        return bool(result) if result is not None else False
+
+    async def list_nsfw(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
+        """List all NSFW influencers that are active"""
+        query = """
+            SELECT
+                id, name, display_name, avatar_url, description,
+                category, system_instructions, personality_traits,
+                initial_greeting, suggested_messages,
+                is_active, is_nsfw, created_at, updated_at, metadata
+            FROM ai_influencers
+            WHERE is_nsfw = 1 AND is_active = 'active'
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+        """
+
+        rows = await db.fetch(query, limit, offset)
+        return [self._row_to_influencer(row) for row in rows]
+
+    async def count_nsfw(self) -> int:
+        """Count all NSFW influencers that are active"""
+        query = "SELECT COUNT(*) FROM ai_influencers WHERE is_nsfw = 1 AND is_active = 'active'"
+        result = await db.fetchval(query)
+        return int(result) if result else 0
+
 
 
