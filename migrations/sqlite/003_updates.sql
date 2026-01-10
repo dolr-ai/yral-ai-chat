@@ -256,5 +256,5 @@ WHERE name IN ('ahaanfitness', 'arunpandit', 'Kshitij', 'DrTanya');
 -- Deactivate all other influencers
 UPDATE ai_influencers 
 SET is_active = 'discontinued' 
-WHERE name NOT IN ('ahaanfitness', 'arunpandit', 'Kshitij', 'DrTanya');
+WHERE name NOT IN ('ahaanfitness', 'arunpandit', 'Kshitij', 'DrTanya', 'savita_bhabhi');
 

@@ -54,6 +54,7 @@ class AIInfluencer(BaseModel):
     initial_greeting: str | None = None
     suggested_messages: list[str] = Field(default_factory=list)
     is_active: InfluencerStatus = InfluencerStatus.ACTIVE
+    is_nsfw: bool = Field(default=False, description="Whether this influencer handles NSFW content")
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, object] = Field(default_factory=dict)

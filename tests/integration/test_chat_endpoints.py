@@ -686,8 +686,8 @@ def test_send_message_accepts_uppercase_text_type(client, clean_conversation_id,
 
 def test_send_message_accepts_uppercase_multimodal_type(client, clean_conversation_id, auth_headers):
     """Test that MULTIMODAL message type can be sent in uppercase and is normalized to lowercase"""
-    # Use provided image URL
-    image_url = "https://yral-profile.hel1.your-objectstorage.com/users/upzvo-glz6l-actg5-izx2o-bsufp-hacvl-e6yeh-wyxl2-qf2gq-c3ndy-2ae/profile-1767637456.jpg"
+    # Use a reliable public image URL for CI (verified direct link to avoid redirects)
+    image_url = "https://fastly.picsum.photos/id/866/200/300.jpg?hmac=rcadCENKh4rD6MAp6V_ma-AyWv641M4iiOpe1RyFHeI"
     
     test_cases = [
         ("MULTIMODAL", "multimodal"),
