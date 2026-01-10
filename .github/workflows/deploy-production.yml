@@ -130,6 +130,12 @@ jobs:
           LITESTREAM_BUCKET=${{ secrets.LITESTREAM_BUCKET }}
           LITESTREAM_ENDPOINT=${{ secrets.LITESTREAM_ENDPOINT }}
           LITESTREAM_REGION=${{ secrets.LITESTREAM_REGION }}
+
+          # Beszel Monitoring
+          BESZEL_LISTEN_PORT=${{ secrets.BESZEL_LISTEN_PORT || '45876' }}
+          BESZEL_KEY=${{ secrets.BESZEL_KEY }}
+          BESZEL_TOKEN=${{ secrets.BESZEL_TOKEN }}
+          BESZEL_HUB_URL=${{ secrets.BESZEL_HUB_URL || 'https://beszel.yral.com' }}
           EOF
       
       - name: Copy .env file to server
@@ -256,6 +262,11 @@ jobs:
             echo "[INFO] Metabase production initial logs:"
             docker compose -f docker-compose.prod.yml logs --tail=30 metabase || true
             
+            # Step 6.5: Start Beszel Monitoring Agent
+            echo "[INFO] Starting Beszel monitoring agent"
+            docker compose -f docker-compose.prod.yml up -d beszel-agent || echo "[WARN] Beszel agent failed to start"
+            docker compose -f docker-compose.prod.yml ps beszel-agent || true
+
             # Wait a moment for Metabase to start accepting connections
             echo "[INFO] Waiting 10s for Metabase production to initialize..."
             sleep 10

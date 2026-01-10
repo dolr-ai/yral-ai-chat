@@ -130,6 +130,12 @@ jobs:
           LITESTREAM_BUCKET=${{ secrets.LITESTREAM_BUCKET }}
           LITESTREAM_ENDPOINT=${{ secrets.LITESTREAM_ENDPOINT }}
           LITESTREAM_REGION=${{ secrets.LITESTREAM_REGION }}
+
+          # Beszel Monitoring (Must persist even in staging deployments)
+          BESZEL_LISTEN_PORT=${{ secrets.BESZEL_LISTEN_PORT || '45876' }}
+          BESZEL_KEY=${{ secrets.BESZEL_KEY }}
+          BESZEL_TOKEN=${{ secrets.BESZEL_TOKEN }}
+          BESZEL_HUB_URL=${{ secrets.BESZEL_HUB_URL || 'https://beszel.yral.com' }}
           EOF
       
       - name: Copy .env file to server
