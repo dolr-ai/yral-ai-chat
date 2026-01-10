@@ -92,3 +92,6 @@ gradio-demo/.gradio/
 *.jpeg
 media_upload.py
 .github/copilot-instructions.md
+
+# Beszel Monitoring
+beszel_agent_data/
