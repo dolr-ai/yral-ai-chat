@@ -5,8 +5,9 @@ dbs:
   - path: /app/data/yral_chat.db
     replicas:
       - type: s3
+        force-path-style: true
         bucket: ${LITESTREAM_BUCKET}
-        path: yral-ai-chat/yral_chat.db
+        path: postgres-1-backup/yral-ai-chat/db
         endpoint: ${LITESTREAM_ENDPOINT}
         region: ${LITESTREAM_REGION}
         access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
