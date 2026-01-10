@@ -124,7 +124,7 @@ class StorageService:
         if url_or_key.startswith(public_base):
             return url_or_key[len(public_base):].lstrip("/")
 
-        logger.warning(f"Could not extract storage key from URL: {url_or_key}")
+        logger.debug(f"External URL or non-S3 link detected: {url_or_key}")
         return url_or_key
 
     def _get_mime_type(self, file_ext: str) -> str:
