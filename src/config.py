@@ -140,6 +140,15 @@ class Settings(BaseSettings):
         """Convert MB to bytes"""
         return self.max_audio_size_mb * 1024 * 1024
 
+    # ===========================================
+    # Litestream Configuration
+    # ===========================================
+    litestream_access_key_id: str = Field(default="", alias="LITESTREAM_ACCESS_KEY_ID")
+    litestream_secret_access_key: str = Field(default="", alias="LITESTREAM_SECRET_ACCESS_KEY")
+    litestream_bucket: str = Field(default="", alias="LITESTREAM_BUCKET")
+    litestream_endpoint: str = Field(default="", alias="LITESTREAM_ENDPOINT")
+    litestream_region: str = Field(default="", alias="LITESTREAM_REGION")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

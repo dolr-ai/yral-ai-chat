@@ -23,6 +23,7 @@ class DatabaseHealth(BaseModel):
     path: str = Field(..., description="Database file path")
     size_mb: float = Field(..., description="Database size in MB")
     pool_size: int = Field(..., description="Connection pool size")
+    table_count: int | None = Field(None, description="Total number of tables in the database")
     error: str | None = Field(None, description="Error message if status is down")
 
 
@@ -33,6 +34,34 @@ class GeminiHealth(BaseModel):
     status: str = Field(..., description="Service status: up or down")
     latency_ms: int | None = Field(None, description="API call latency in milliseconds")
     error: str | None = Field(None, description="Error message if status is down")
+
+
+class StorageHealth(BaseModel):
+    """Storage (S3) health check result"""
+    model_config = ConfigDict(from_attributes=True)
+
+    status: str = Field(..., description="Service status: up or down")
+    latency_ms: int | None = Field(None, description="API call latency in milliseconds")
+    error: str | None = Field(None, description="Error message if status is down")
+
+
+class ServiceHealth(BaseModel):
+    """General service health check result"""
+    model_config = ConfigDict(from_attributes=True)
+
+    status: str = Field(..., description="Service status: up, down, or unconfigured")
+    latency_ms: int | None = Field(None, description="Latency in milliseconds")
+    error: str | None = Field(None, description="Error message")
+    details: dict | None = Field(None, description="Additional health details")
+
+
+class ConfigHealth(BaseModel):
+    """Application configuration validation result"""
+    model_config = ConfigDict(from_attributes=True)
+
+    status: str = Field(..., description="Configuration status: valid or invalid")
+    errors: list[str] = Field(default_factory=list, description="List of configuration errors")
+    details: dict = Field(..., description="Configuration details (sanitized)")
 
 
 class CacheStats(BaseModel):
