@@ -22,6 +22,7 @@ from src.core.metrics import MetricsMiddleware, metrics_endpoint
 from src.db.base import db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
 from src.middleware.versioning import APIVersionMiddleware
+from src.services.monitoring_service import monitoring_service
 
 
 def get_git_branch() -> str | None:
@@ -82,12 +83,16 @@ async def lifespan(app: FastAPI):
     logger.info(f"Environment: {settings.environment}")
 
     await db.connect()
+    
+    # Start Uptime Kuma heartbeat service
+    await monitoring_service.start()
 
     logger.info("All services initialized")
 
     yield
 
     logger.info("Shutting down...")
+    await monitoring_service.stop()
     await db.disconnect()
     # GeminiClient instances and HTTP clients are cleaned up automatically
     logger.info("Shutdown complete")

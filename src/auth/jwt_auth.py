@@ -10,6 +10,7 @@ from fastapi import Header, HTTPException
 from loguru import logger
 from pydantic import BaseModel, ConfigDict
 
+from src.config import settings
 from src.models.internal import JWTPayload
 
 
@@ -135,6 +136,21 @@ async def get_current_user(authorization: str | None = Header(None)) -> CurrentU
         )
 
     token = parts[1]
+    
+    # Support static monitoring token bypass
+    if settings.monitoring_token and token == settings.monitoring_token:
+        user_id = "monitoring-bot"
+        sentry_sdk.set_user({"id": user_id})
+        logger.info(f"Authenticated via static monitoring token: {user_id}")
+        return CurrentUser(
+            user_id=user_id,
+            payload=JWTPayload(
+                sub=user_id,
+                iss="https://chat.yral.com/health",
+                exp=int(time.time()) + 3600  # Mock 1 hour expiry
+            )
+        )
+
     payload = decode_jwt(token)
 
     user_id = payload.sub

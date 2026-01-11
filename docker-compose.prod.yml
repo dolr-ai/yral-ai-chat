@@ -70,6 +70,9 @@ services:
       - LITESTREAM_BUCKET=${LITESTREAM_BUCKET}
       - LITESTREAM_ENDPOINT=${LITESTREAM_ENDPOINT}
       - LITESTREAM_REGION=${LITESTREAM_REGION}
+      - UPTIME_KUMA_PUSH_URL=${UPTIME_KUMA_PUSH_URL}
+      - GOOGLE_CHAT_WEBHOOK_URL=${GOOGLE_CHAT_WEBHOOK_URL}
+      - MONITORING_TOKEN=${MONITORING_TOKEN}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
@@ -136,6 +139,21 @@ services:
       KEY: ${BESZEL_KEY}
       TOKEN: ${BESZEL_TOKEN}
       HUB_URL: ${BESZEL_HUB_URL:-https://beszel.yral.com}
+
+  # Uptime Kuma - Self-hosted Monitoring Dashboard
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./kuma-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "node test-healthcheck.js || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   # Metabase metadata storage (dashboards, queries, settings)

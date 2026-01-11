@@ -66,6 +66,7 @@ data/
 
 # Litestream config (contains S3 credentials)
 config/litestream-local.yml
+
 # Keep config/litestream.yml as it uses env vars
 
 # Uploads

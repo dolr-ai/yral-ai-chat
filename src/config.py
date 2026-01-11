@@ -104,6 +104,24 @@ class Settings(BaseSettings):
         description="Profiling sample rate (0.0 to 1.0). Default: 0.0 (disabled)"
     )
 
+    uptime_kuma_push_url: str | None = Field(
+        default=None,
+        alias="UPTIME_KUMA_PUSH_URL",
+        description="Uptime Kuma Push URL for heartbeats"
+    )
+
+    google_chat_webhook_url: str | None = Field(
+        default=None,
+        alias="GOOGLE_CHAT_WEBHOOK_URL",
+        description="Google Chat Webhook URL for direct notifications"
+    )
+
+    monitoring_token: str | None = Field(
+        default=None,
+        alias="MONITORING_TOKEN",
+        description="Static token for monitoring authentication (bypasses JWT)"
+    )
+
     @property
     def sentry_environment(self) -> str:
         """Map application environment to Sentry environment"""
