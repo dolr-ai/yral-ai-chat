@@ -88,7 +88,7 @@ services:
 
   # Metabase BI Dashboard - Staging
   # Accessible at: https://chat.yral.com/staging/metabase/
-  # Reads SQLite databases from ./data directory (read-only)
+  # Reads SQLite databases from ./data directory 
   metabase-staging:
     image: metabase/metabase:latest
     container_name: yral-ai-chat-metabase-staging
@@ -96,8 +96,8 @@ services:
     ports:
       - "3001:3000"
     volumes:
-      # Mount SQLite databases for read-only access
-      - ./data:/data:ro
+      # Mount SQLite databases for read and write access
+      - ./data:/data:rw
       # Persist Metabase metadata (dashboards, queries, settings) - separate for staging
       - metabase-staging-data:/metabase-data
     environment:
