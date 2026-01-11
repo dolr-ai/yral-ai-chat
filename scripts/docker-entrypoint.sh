@@ -56,7 +56,7 @@ dbs:
         region: ${LITESTREAM_REGION}
         access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
         secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
-        sync-interval: 10s
+        sync-interval: 30s
         retention: 24h
         retention-check-interval: 1h
         snapshot-interval: 1h
