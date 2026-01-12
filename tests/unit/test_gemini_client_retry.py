@@ -258,7 +258,7 @@ class TestGeminiClientRetry:
         with pytest.raises(TimeoutError):
             await gemini_client_mock._generate_content([{"role": "user", "parts": [{"text": "test"}]}])
         
-        assert mock_aio_models.generate_content.call_count == 3
+        assert mock_aio_models.generate_content.call_count == 5
 
     @pytest.mark.asyncio
     async def test_transcribe_audio_retries(self, gemini_client_mock):
@@ -343,7 +343,7 @@ class TestGeminiClientRetry:
         assert result.status == "down"
         assert result.error is not None
         assert result.latency_ms is None
-        assert mock_aio_models.generate_content.call_count == 3
+        assert mock_aio_models.generate_content.call_count == 5
 
     @pytest.mark.asyncio
     async def test_success_on_first_attempt_no_retry(self, gemini_client_mock):
