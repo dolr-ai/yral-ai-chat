@@ -21,21 +21,21 @@ services:
       - DEBUG=${DEBUG:-False}
       - HOST=0.0.0.0
       - PORT=8000
-      
+
       # Database (SQLite)
       - DATABASE_PATH=${DATABASE_PATH:-/app/data/yral_chat.db}
-      
+
       # JWT Authentication (REQUIRED)
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - JWT_ISSUER=${JWT_ISSUER:-yral_auth}
-      
+
       # Google Gemini API (REQUIRED)
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       - GEMINI_MAX_TOKENS=${GEMINI_MAX_TOKENS:-2048}
       - GEMINI_TEMPERATURE=${GEMINI_TEMPERATURE:-0.7}
-      
+
       # Media Storage - S3 (Required)
       - MAX_IMAGE_SIZE_MB=${MAX_IMAGE_SIZE_MB:-10}
       - MAX_AUDIO_SIZE_MB=${MAX_AUDIO_SIZE_MB:-20}
@@ -46,23 +46,28 @@ services:
       - AWS_REGION=${AWS_REGION}
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
       - S3_PUBLIC_URL_BASE=${S3_PUBLIC_URL_BASE}
-      
+
       # Optional: Whisper API
       - USE_WHISPER=${USE_WHISPER:-false}
       - WHISPER_API_KEY=${WHISPER_API_KEY:-}
-      
+
       # CORS Configuration
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
       - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS:-true}
-      
+
       # Rate Limiting
       - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60}
       - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-1000}
-      
+
       # Logging
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
-      
+
+      # Sentry Error Tracking & Performance Monitoring
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-1.0}
+      - SENTRY_PROFILES_SAMPLE_RATE=${SENTRY_PROFILES_SAMPLE_RATE:-0.0}
+
       # Litestream Configuration
       - ENABLE_LITESTREAM=${ENABLE_LITESTREAM:-true}
       - LITESTREAM_ACCESS_KEY_ID=${LITESTREAM_ACCESS_KEY_ID}
@@ -71,7 +76,7 @@ services:
       - LITESTREAM_ENDPOINT=${LITESTREAM_ENDPOINT}
       - LITESTREAM_REGION=${LITESTREAM_REGION}
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -91,7 +96,7 @@ services:
     depends_on:
       - yral-ai-chat
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
+      test: [ "CMD", "nginx", "-t" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -116,7 +121,7 @@ services:
       - JAVA_TIMEZONE=UTC
       - MB_SITE_URL=https://chat.yral.com/metabase
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'java.*metabase' > /dev/null || exit 1"]
+      test: [ "CMD-SHELL", "pgrep -f 'java.*metabase' > /dev/null || exit 1" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -141,4 +146,3 @@ volumes:
   # Metabase metadata storage (dashboards, queries, settings)
   metabase-data:
     driver: local
-

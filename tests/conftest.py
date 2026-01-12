@@ -23,6 +23,12 @@ from fastapi.testclient import TestClient
 from src.main import app
 
 
+@pytest.fixture(autouse=True)
+def disable_sentry_during_tests(monkeypatch):
+    """Explicitly disable Sentry for all tests by wiping its DSN"""
+    monkeypatch.setenv("SENTRY_DSN", "")
+
+
 def _encode_jwt(payload: dict) -> str:
     """Create a dummy ES256-style JWT without real signature verification."""
     header = {

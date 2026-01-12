@@ -101,7 +101,7 @@ def check_litestream_process() -> ServiceHealth:  # noqa: PLR0911
     # Check if litestream process is running
     try:
         # Use ps to check for litestream replicate process
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603
             ["ps", "aux"],  # noqa: S607
             capture_output=True,
             text=True,
@@ -123,7 +123,7 @@ def check_litestream_process() -> ServiceHealth:  # noqa: PLR0911
         # If ps command fails, try alternative method
         # Check if litestream binary exists and is accessible
         try:
-            subprocess.run(
+            subprocess.run(  # noqa: S603
                 ["litestream", "version"],  # noqa: S607
                 capture_output=True,
                 timeout=2,
