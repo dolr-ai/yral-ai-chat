@@ -70,6 +70,11 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
 
+      # Sentry Error Tracking & Performance Monitoring
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      - SENTRY_PROFILES_SAMPLE_RATE=${SENTRY_PROFILES_SAMPLE_RATE:-0.0}
+
       # Litestream Configuration
       - ENABLE_LITESTREAM=${ENABLE_LITESTREAM:-true}
       - LITESTREAM_ACCESS_KEY_ID=${LITESTREAM_ACCESS_KEY_ID}

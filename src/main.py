@@ -2,9 +2,9 @@
 Yral AI Chat API - Main Application
 """
 import os
-import shutil
-import subprocess
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import sentry_sdk
 from fastapi import FastAPI, Request, status
@@ -23,36 +23,16 @@ from src.db.base import db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
 from src.middleware.versioning import APIVersionMiddleware
 
+# Improved detection for various test environments
+is_running_tests = (
+    os.getenv("PYTEST_CURRENT_TEST") is not None or
+    "pytest" in sys.modules or
+    Path(sys.argv[0]).name.startswith("pytest")
+)
+# Use ENVIRONMENT variable directly for Sentry environment tagging
+sentry_env = settings.environment if settings.environment in ("production", "staging") else None
 
-def get_git_branch() -> str | None:
-    """Get current git branch name"""
-    try:
-        git_path = shutil.which("git")
-        if not git_path:
-            return None
-        result = subprocess.run(  # noqa: S603
-            [git_path, "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=2,
-        )
-        return result.stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
-        return None
-
-
-def get_sentry_environment() -> str | None:
-    """Determine Sentry environment based on git branch"""
-    branch = get_git_branch()
-    if branch == "main":
-        return "production"
-    return "staging"
-
-
-is_running_tests = os.getenv("PYTEST_CURRENT_TEST") is not None
-sentry_env = get_sentry_environment()
-
+# Sentry is disabled during pytest runs (is_running_tests=True) and development environments
 if not is_running_tests and settings.sentry_dsn and sentry_env:
     try:
         sentry_sdk.init(

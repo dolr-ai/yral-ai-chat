@@ -18,9 +18,19 @@ from pathlib import Path
 
 import pytest
 import requests
+from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
+# Load environment variables from .env for tests
+load_dotenv()
+
 from src.main import app
+
+
+@pytest.fixture(autouse=True)
+def disable_sentry_during_tests(monkeypatch):
+    """Explicitly disable Sentry for all tests by wiping its DSN"""
+    monkeypatch.setenv("SENTRY_DSN", "")
 
 
 def _encode_jwt(payload: dict) -> str:
