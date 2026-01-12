@@ -26,7 +26,7 @@ def test_list_influencers_includes_savita_bhabhi(client):
     )
 
     assert savita is not None, "Savita Bhabhi not found in influencers list"
-    assert savita["display_name"] == "Savita Bhabhi"
+    assert savita["display_name"] == "NSFW BOT"
     assert savita["category"] == "nsfw"
     assert savita["is_active"] == "active"
 
@@ -49,7 +49,7 @@ def test_get_savita_bhabhi_influencer(client):
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "savita_bhabhi"
-    assert data["display_name"] == "Savita Bhabhi"
+    assert data["display_name"] == "NSFW BOT"
     assert data["category"] == "nsfw"
 
 
