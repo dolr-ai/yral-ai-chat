@@ -47,9 +47,24 @@ class ConnectionPool:
 
         await conn.execute("PRAGMA foreign_keys = ON")
         await conn.execute("PRAGMA journal_mode = WAL")
-        await conn.execute(f"PRAGMA busy_timeout = {max(busy_timeout_ms, 30000)}") # Increase busy_timeout to 30 seconds for better Litestream compatibility (Litestream Bug)
+        
+        # Litestream optimization: Prevent WAL from growing too large
+        await conn.execute("PRAGMA wal_autocheckpoint = 1000") 
+        await conn.execute("PRAGMA journal_size_limit = 4194304") # 4MB
+        
+        # Timeout handling
+        # We set a high busy_timeout to allow queuing during checkpoints
+        actual_timeout = max(busy_timeout_ms, 30000)
+        await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
+        
         await conn.execute("PRAGMA synchronous = NORMAL")
-        await conn.execute("PRAGMA cache_size = -64000")
+        
+        # Verify timeout setting
+        async with conn.execute("PRAGMA busy_timeout") as cursor:
+            row = await cursor.fetchone()
+            timeout_setting = row[0] if row else "unknown"
+            if self._created_connections == 0: # Only log for the first connection to reduce noise
+                logger.info(f"Database initialized with busy_timeout={timeout_setting}ms (requested={actual_timeout}ms)")
 
         conn.row_factory = aiosqlite.Row
 
