@@ -24,8 +24,6 @@ from fastapi.testclient import TestClient
 # Load environment variables from .env for tests
 load_dotenv()
 
-from src.main import app
-
 
 @pytest.fixture(autouse=True)
 def disable_sentry_during_tests(monkeypatch):
@@ -184,6 +182,7 @@ def client():
         yield RemoteClient(test_api_url)
     else:
         # Local mode: use TestClient (no uvicorn needed)
+        from src.main import app
         with TestClient(app) as test_client:
             yield test_client
 

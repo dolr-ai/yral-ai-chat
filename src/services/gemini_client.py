@@ -282,7 +282,7 @@ class GeminiClient:
             mime_type = response.headers.get("content-type", "image/jpeg")
             logger.info(f"Successfully downloaded image ({len(image_data)} bytes, type: {mime_type})")
         except Exception as e:
-            logger.error(f"Error in _download_image for {url}: {str(e)}")
+            logger.error(f"Error in _download_image for {url}: {e!s}")
             raise
         else:
             return {

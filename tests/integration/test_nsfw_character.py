@@ -8,8 +8,8 @@ Tests cover:
 - Conversation history with NSFW bots
 """
 import os
-import pytest
 
+import pytest
 
 
 def test_list_influencers_includes_savita_bhabhi(client):

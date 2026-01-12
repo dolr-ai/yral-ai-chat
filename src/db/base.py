@@ -49,7 +49,7 @@ class ConnectionPool:
         await conn.execute("PRAGMA journal_mode = WAL")
         
         # Litestream optimization: Prevent WAL from growing too large
-        await conn.execute("PRAGMA wal_autocheckpoint = 1000") 
+        await conn.execute("PRAGMA wal_autocheckpoint = 1000")
         await conn.execute("PRAGMA journal_size_limit = 4194304") # 4MB
         
         # Timeout handling
