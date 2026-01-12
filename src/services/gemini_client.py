@@ -54,6 +54,8 @@ def _is_retryable_http_error(exception: Exception) -> bool:
         "timeout",
         "connection",
         "network",
+        "overloaded",
+        "unavailable",
     ]
     return any(pattern in error_str for pattern in retryable_patterns)
 
@@ -61,8 +63,8 @@ def _is_retryable_http_error(exception: Exception) -> bool:
 def _gemini_retry_decorator[T](func: Callable[..., T]) -> Callable[..., T]:
     """Retry decorator for Gemini API calls with exponential backoff"""
     return retry(  # type: ignore[return-value]
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=30),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=60),
         retry=retry_if_exception_type(ConnectionError | TimeoutError | httpx.RequestError)
         | retry_if_exception(_is_retryable_http_error),
         before_sleep=before_sleep_log(logger, "WARNING"),
