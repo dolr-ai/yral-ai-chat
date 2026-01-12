@@ -49,6 +49,7 @@ jobs:
           S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
           S3_PUBLIC_URL_BASE: ${{ secrets.S3_PUBLIC_URL_BASE }}
           ENVIRONMENT: development
+          # NOTE: SENTRY_DSN is intentionally NOT set to prevent test errors from being sent to Sentry
         run: |
           pytest -v --tb=short
 
@@ -136,6 +137,11 @@ jobs:
           BESZEL_KEY=${{ secrets.BESZEL_KEY }}
           BESZEL_TOKEN=${{ secrets.BESZEL_TOKEN }}
           BESZEL_HUB_URL=${{ secrets.BESZEL_HUB_URL || 'https://beszel.yral.com' }}
+
+          # Sentry Error Tracking & Performance Monitoring
+          SENTRY_DSN=${{ secrets.SENTRY_DSN || '' }}
+          SENTRY_TRACES_SAMPLE_RATE=${{ secrets.SENTRY_TRACES_SAMPLE_RATE || '1.0' }}
+          SENTRY_PROFILES_SAMPLE_RATE=${{ secrets.SENTRY_PROFILES_SAMPLE_RATE || '0.0' }}
           EOF
       
       - name: Copy .env file to server
