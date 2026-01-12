@@ -4,6 +4,7 @@ Yral AI Chat API - Main Application
 import os
 import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import sentry_sdk
 from fastapi import FastAPI, Request, status
@@ -26,7 +27,7 @@ from src.middleware.versioning import APIVersionMiddleware
 is_running_tests = (
     os.getenv("PYTEST_CURRENT_TEST") is not None or
     "pytest" in sys.modules or
-    os.path.basename(sys.argv[0]).startswith("pytest")
+    Path(sys.argv[0]).name.startswith("pytest")
 )
 # Use ENVIRONMENT variable directly for Sentry environment tagging
 sentry_env = settings.environment if settings.environment in ("production", "staging") else None
