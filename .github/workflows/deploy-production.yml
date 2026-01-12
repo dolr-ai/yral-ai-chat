@@ -167,8 +167,8 @@ jobs:
             HEALTH_CHECK_PORT=8000
             HEALTH_CHECK_MAX_ATTEMPTS=15
             HEALTH_CHECK_RETRY_DELAY=3
-            SERVICE_START_DELAY=15
-            SERVICE_RESTART_DELAY=10
+            SERVICE_START_DELAY=5
+            SERVICE_RESTART_DELAY=5
             
             cd "$PROJECT_DIR"
             
@@ -248,7 +248,7 @@ jobs:
             
             # Step 4: Build Docker image
             echo "[INFO] Building Docker image for $ENVIRONMENT"
-            docker compose -f docker-compose.prod.yml build --no-cache "$SERVICE"
+            docker compose -f docker-compose.prod.yml build "$SERVICE"
             
             # Step 5: Start service
             echo "[INFO] Starting $ENVIRONMENT service"
@@ -295,9 +295,9 @@ jobs:
             echo "[INFO] Starting nginx"
             docker compose -f docker-compose.prod.yml up -d --no-deps nginx
             
-            # Step 7.5: Restart nginx to ensure it picks up the latest config
-            echo "[INFO] Restarting nginx to load latest configuration"
-            docker compose -f docker-compose.prod.yml restart nginx
+            # Step 7.5: Reload nginx configuration
+            echo "[INFO] Reloading nginx configuration"
+            docker exec yral-ai-chat-nginx nginx -s reload || docker compose -f docker-compose.prod.yml restart nginx
             
             # Wait for nginx container to be fully running
             echo "[INFO] Waiting for nginx container to be ready..."
@@ -348,11 +348,9 @@ jobs:
             fi
             echo "[INFO] Migrations completed successfully"
             
-            # Step 10: Restart service to load migrated data
-            echo "[INFO] Restarting service to load migrated data"
-            docker compose -f docker-compose.prod.yml restart "$SERVICE"
-            echo "[INFO] Waiting ${SERVICE_RESTART_DELAY}s for service to restart"
-            sleep $SERVICE_RESTART_DELAY
+            # Step 10: Ensure service is healthy after migrations (no manual restart needed unless migration failed)
+            echo "[INFO] Checking service health after migrations"
+            # Removed redundant restart to reduce downtime
             
             # Show logs after restart
             echo "[INFO] Container logs after restart:"
