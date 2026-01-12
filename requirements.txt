@@ -2,7 +2,9 @@ fastapi==0.115.6
 uvicorn[standard]==0.32.1
 python-multipart==0.0.20
 
-aiosqlite==0.20.0
+sqlalchemy==2.0.45
+asyncpg==0.31.0
+psycopg2-binary==2.9.10
 
 pyjwt==2.9.0
 cryptography==43.0.3

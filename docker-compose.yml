@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  yral-ai-chat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yral-ai-chat-local
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    environment:
+      - APP_NAME=Yral AI Chat API (Local)
+      - APP_VERSION=1.0.0
+      - ENVIRONMENT=development
+      - DEBUG=True
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-yral_chat}
+
+      # Secrets (Mocked for local)
+      - JWT_SECRET_KEY=dev_secret_key
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
+      - AWS_REGION=${AWS_REGION}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      - S3_PUBLIC_URL_BASE=${S3_PUBLIC_URL_BASE}
+
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: yral-ai-chat-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-yral_chat}
+    volumes:
+      - postgres-data-local:/var/lib/postgresql/data
+
+volumes:
+  postgres-data-local:

@@ -22,8 +22,8 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
 
-      # Database (SQLite)
-      - DATABASE_PATH=${DATABASE_PATH:-/app/data/yral_chat.db}
+      # Database (PostgreSQL)
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
 
       # JWT Authentication (REQUIRED)
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
@@ -142,7 +142,47 @@ services:
       TOKEN: ${BESZEL_TOKEN}
       HUB_URL: ${BESZEL_HUB_URL:-https://beszel.yral.com}
 
+  # PostgreSQL Backup to S3 Sidecar
+  backup-s3:
+    image: eeshugerman/postgres-backup-s3:16
+    container_name: yral-ai-chat-backup-s3
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DATABASE=${POSTGRES_DB:-yral_chat}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - S3_ACCESS_KEY_ID=${LITESTREAM_ACCESS_KEY_ID}
+      - S3_SECRET_ACCESS_KEY=${LITESTREAM_SECRET_ACCESS_KEY}
+      - S3_BUCKET=${LITESTREAM_BUCKET}
+      - S3_PREFIX=postgres-backups
+      - S3_REGION=${LITESTREAM_REGION}
+      - S3_ENDPOINT=${LITESTREAM_ENDPOINT}
+      - SCHEDULE=@hourly
+      - BACKUP_KEEP_DAYS=7
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: yral-ai-chat-postgres
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-yral_chat}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   # Metabase metadata storage (dashboards, queries, settings)
   metabase-data:
+    driver: local
+  postgres-data:
     driver: local
