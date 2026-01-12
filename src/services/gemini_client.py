@@ -78,7 +78,14 @@ class GeminiClient:
         """Initialize Gemini client with API key and tokenizer"""
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.model_name = settings.gemini_model
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        self.http_client = httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+            }
+        )
         try:
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
         except Exception as e:
@@ -261,13 +268,21 @@ class GeminiClient:
     async def _download_image(self, url: str) -> dict[str, object]:
         """Download and encode image for Gemini"""
         try:
+            logger.info(f"Downloading image from URL: {url}")
             response = await self.http_client.get(url)
+            if response.status_code != 200:
+                logger.error(
+                    f"Failed to download image from {url}. Status: {response.status_code}. "
+                    f"Request headers: {dict(response.request.headers)}. "
+                    f"Response headers: {dict(response.headers)}"
+                )
             response.raise_for_status()
 
             image_data = response.content
             mime_type = response.headers.get("content-type", "image/jpeg")
+            logger.info(f"Successfully downloaded image ({len(image_data)} bytes, type: {mime_type})")
         except Exception as e:
-            logger.error(f"Failed to download image {url}: {e}")
+            logger.error(f"Error in _download_image for {url}: {str(e)}")
             raise
         else:
             return {

@@ -36,6 +36,10 @@ services:
       - GEMINI_MAX_TOKENS=${GEMINI_MAX_TOKENS:-2048}
       - GEMINI_TEMPERATURE=${GEMINI_TEMPERATURE:-0.7}
 
+      # OpenRouter API
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - OPENROUTER_MODEL=${OPENROUTER_MODEL:-google/gemini-2.5-flash}
+
       # Media Storage - S3 (Required)
       - MAX_IMAGE_SIZE_MB=${MAX_IMAGE_SIZE_MB:-10}
       - MAX_AUDIO_SIZE_MB=${MAX_AUDIO_SIZE_MB:-20}
