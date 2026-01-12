@@ -48,31 +48,6 @@ def run_migrations():
             )
         """)
         
-        # Check for legacy schema state (specifically if 005 was already applied)
-        # We check if the table is empty, and if the column 'is_nsfw' exists in ai_influencers
-        cursor = conn.execute("SELECT count(*) FROM _migrations")
-        if cursor.fetchone()[0] == 0:
-            try:
-                # Check if ai_influencers table exists
-                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_influencers'")
-                if cursor.fetchone():
-                    # Check if is_nsfw column exists
-                    cursor = conn.execute("PRAGMA table_info(ai_influencers)")
-                    columns = [info[1] for info in cursor.fetchall()]
-                    if "is_nsfw" in columns:
-                        print("Detected existing schema with is_nsfw column. Marking 001-005 as applied.")  # noqa: T201
-                        existing = [
-                            "001_init_schema.sql",
-                            "002_seed_influencers.sql",
-                            "003_updates.sql",
-                            "004_dashboard_views.sql",
-                            "005_add_nsfw_flag.sql"
-                        ]
-                        for f in existing:
-                            conn.execute("INSERT OR IGNORE INTO _migrations (filename) VALUES (?)", (f,))
-                        conn.commit()
-            except Exception as e:
-                print(f"Warning during legacy schema check: {e}")  # noqa: T201
 
         # Get set of applied migrations
         applied_migrations = {row[0] for row in conn.execute("SELECT filename FROM _migrations")}
