@@ -1,6 +1,7 @@
 """
 Chat service - Business logic for conversations and messages
 """
+import sqlite3
 from uuid import UUID
 
 from loguru import logger
@@ -58,7 +59,18 @@ class ChatService:
             existing.influencer = influencer
             return existing, False
 
-        conversation = await self.conversation_repo.create(user_id, influencer_id)
+        try:
+            conversation = await self.conversation_repo.create(user_id, influencer_id)
+        except sqlite3.IntegrityError:
+            logger.warning(
+                f"Race condition detected creating conversation for user {user_id} "
+                f"and influencer {influencer_id}. Retrying fetch."
+            )
+            existing = await self.conversation_repo.get_existing(user_id, influencer_id)
+            if existing:
+                existing.influencer = influencer
+                return existing, False
+            raise
         logger.info(f"Created new conversation: {conversation.id}")
 
         if influencer.initial_greeting:

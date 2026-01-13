@@ -54,7 +54,7 @@ class ConnectionPool:
         
         # Timeout handling
         # We set a high busy_timeout to allow queuing during checkpoints
-        actual_timeout = max(busy_timeout_ms, 30000)
+        actual_timeout = max(busy_timeout_ms, 60000)
         await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
         
         await conn.execute("PRAGMA synchronous = NORMAL")
@@ -169,8 +169,8 @@ class Database:
         query = self._convert_query(query)
         conn = await self._pool.acquire()
         start_time = time.time()
-        max_retries = 3
-        retry_delay = 0.1
+        max_retries = 10
+        retry_delay = 0.2
         last_error: Exception | None = None
         
         try:
@@ -185,12 +185,21 @@ class Database:
                 except Exception as e:
                     last_error = e
                     error_str = str(e).lower()
+                    
+                    # Always rollback on any execution error to prevent transaction leaks
+                    try:
+                        await conn.rollback()
+                    except Exception as rollback_err:
+                        logger.error(f"Failed to rollback after execution error: {rollback_err}")
+
                     if ("database is locked" in error_str or "locked" in error_str) and attempt < max_retries - 1:
                         # Random jitter to prevent thundering herd
-                        actual_delay = retry_delay * (2 ** attempt) + (secrets.SystemRandom().random() * 0.1)
+                        # Increased backoff: 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8...
+                        actual_delay = retry_delay * (2 ** attempt) + (secrets.SystemRandom().random() * 0.5)
                         logger.warning(f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})")
                         await asyncio.sleep(actual_delay)
                         continue
+                    
                     logger.error(f"Execute error: {e}, Query: {query[:100]}")
                     raise
             if last_error:
