@@ -98,4 +98,3 @@ BEGIN
             RAISE(ABORT, 'Invalid is_active value. Must be one of: active, coming_soon, discontinued')
     END;
 END;
-

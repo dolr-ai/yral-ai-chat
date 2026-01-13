@@ -211,4 +211,3 @@ ON conversations(user_id, updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_conversations_influencer_updated 
 ON conversations(influencer_id, updated_at DESC);
-

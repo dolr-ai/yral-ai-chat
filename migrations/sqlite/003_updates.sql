@@ -257,4 +257,3 @@ WHERE name IN ('ahaanfitness', 'arunpandit', 'Kshitij', 'DrTanya');
 UPDATE ai_influencers 
 SET is_active = 'discontinued' 
 WHERE name NOT IN ('ahaanfitness', 'arunpandit', 'Kshitij', 'DrTanya');
-
