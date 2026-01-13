@@ -3,6 +3,9 @@
 # We accept these risks as we cannot rebuild Litestream easily and they are mostly related to
 # functionality (SSH, net/netip) that is less critical for our S3 replication use case.
 
+# starlette: Starlette DoS via Range header merging (Blocked by FastAPI dependency)
+CVE-2025-62727
+
 # golang.org/x/crypto/ssh: Misuse of ServerConfig.PublicKeyCallback
 CVE-2024-45337
 # golang.org/x/crypto/ssh: Denial of Service in the Key Exchange
