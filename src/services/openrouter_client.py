@@ -309,7 +309,13 @@ class OpenRouterClient(BaseAIClient):
         
         # Add conversation history
         if conversation_history:
-            for msg in conversation_history[-10:]:  # Last 10 messages for context
+            # consistency with Gemini: ensure we start with user message if possible
+            # by dropping valid initial assistant greeting if it's the first message
+            start_index = 0
+            if conversation_history[-10:] and conversation_history[-10:][0].role == MessageRole.ASSISTANT:
+                start_index = 1
+
+            for msg in conversation_history[-10:][start_index:]:  # Last 10 messages for context
                 role = "user" if msg.role == MessageRole.USER else "assistant"
                 content = msg.content or ""
                 
