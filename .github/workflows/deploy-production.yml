@@ -378,4 +378,3 @@ jobs:
             echo "[SUCCESS] $ENVIRONMENT deployment complete"
             docker compose -f docker-compose.prod.yml ps
           DEPLOY_SCRIPT
-          DEPLOY_SCRIPT
