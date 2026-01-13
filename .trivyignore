@@ -1,0 +1,29 @@
+# Litestream v0.3.13 is the latest release (Dec 2023) but built with older Go versions.
+# These vulnerabilities are in the Go standard library of the binary, not our application code.
+# We accept these risks as we cannot rebuild Litestream easily and they are mostly related to
+# functionality (SSH, net/netip) that is less critical for our S3 replication use case.
+
+# golang.org/x/crypto/ssh: Misuse of ServerConfig.PublicKeyCallback
+CVE-2024-45337
+# golang.org/x/crypto/ssh: Denial of Service in the Key Exchange
+CVE-2025-22869
+# golang: net/http, x/net/http2: rapid stream resets (Rapid Reset)
+CVE-2023-39325
+# golang.org/x/oauth2/jws: Unexpected memory consumption
+CVE-2025-22868
+# gRPC-Go HTTP/2 Rapid Reset
+GHSA-m425-mq94-257g
+# golang: net/netip: Unexpected behavior from Is methods
+CVE-2024-24790
+# The filepath package does not recognize paths with a \??\ prefix
+CVE-2023-45283
+# golang: net/http, x/net/http2: unlimited number of CONTINUATION frames
+CVE-2023-45288
+# encoding/gob: golang: Calling Decoder.Decode on a message which contains deeply nested structures
+CVE-2024-34156
+# database/sql: Postgres Scan Race Condition (Not used, we use SQLite)
+CVE-2025-47907
+# golang: archive/tar: Unbounded allocation
+CVE-2025-58183
+# crypto/x509: golang: Denial of Service due to excessive resource consumption
+CVE-2025-61729
