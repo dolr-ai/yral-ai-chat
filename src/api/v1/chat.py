@@ -344,6 +344,7 @@ async def send_message(
         media_urls=request.media_urls or [],
         audio_url=request.audio_url,
         audio_duration_seconds=request.audio_duration_seconds,
+        background_tasks=background_tasks,
     )
 
     # Check if we hit the fallback error message

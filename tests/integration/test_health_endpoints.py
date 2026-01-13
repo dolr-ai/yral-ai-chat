@@ -39,7 +39,7 @@ def test_health_endpoint(client):
     assert "services" in data
 
     # Verify overall status
-    assert data["status"] in ["healthy", "unhealthy"]
+    assert data["status"] in ["healthy", "unhealthy", "degraded"]
 
     # Verify timestamp is valid ISO format
     timestamp = datetime.fromisoformat(data["timestamp"])

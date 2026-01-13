@@ -2,7 +2,11 @@
 Chat service - Business logic for conversations and messages
 """
 import sqlite3
+from typing import TYPE_CHECKING
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from fastapi import BackgroundTasks
 
 from loguru import logger
 
@@ -176,11 +180,13 @@ class ChatService:
         conversation: Conversation,
         user_message: str,
         assistant_response: str,
-        memories: dict[str, object]
+        memories: dict[str, object],
+        is_nsfw: bool = False
     ) -> None:
-        """Extract and update memories from conversation"""
+        """Extract and update memories from conversation using appropriate client"""
         try:
-            updated_memories = await self.gemini_client.extract_memories(
+            ai_client = self._select_ai_client(is_nsfw)
+            updated_memories = await ai_client.extract_memories(
                 user_message=user_message,
                 assistant_response=assistant_response,
                 existing_memories=memories.copy()
@@ -195,13 +201,14 @@ class ChatService:
 
     async def send_message(
         self,
-        conversation_id: UUID,
+        conversation_id: str,
         user_id: str,
-        content: str | None,
-        message_type: MessageType,
-        media_urls: list[str] = None,
+        content: str,
+        message_type: str = "text",
+        media_urls: list[str] | None = None,
         audio_url: str | None = None,
-        audio_duration_seconds: int | None = None
+        audio_duration_seconds: int | None = None,
+        background_tasks: "BackgroundTasks | None" = None
     ) -> tuple[Message, Message]:
         """
         Send a message and get AI response
@@ -306,13 +313,25 @@ class ChatService:
 
         logger.info(f"Assistant message saved: {assistant_message.id}")
 
-        await self._update_conversation_memories(
-            conversation_id,
-            conversation,
-            ai_input_content,
-            response_text,
-            memories
-        )
+        if background_tasks:
+            background_tasks.add_task(
+                self._update_conversation_memories,
+                conversation_id,
+                conversation,
+                ai_input_content,
+                response_text,
+                memories,
+                is_nsfw=influencer.is_nsfw
+            )
+        else:
+            await self._update_conversation_memories(
+                conversation_id,
+                conversation,
+                ai_input_content,
+                response_text,
+                memories,
+                is_nsfw=influencer.is_nsfw
+            )
 
         return user_message, assistant_message
 

@@ -32,6 +32,7 @@ class InfluencerService:
             raise NotFoundException("Influencer not found")
         return influencer
 
+    @cached(ttl=600, key_prefix="is_nsfw")  # Cache for 10 minutes
     async def is_nsfw(self, influencer_id: str) -> bool:
         """Check if an influencer is tagged as NSFW"""
         return await self.influencer_repo.is_nsfw(influencer_id)

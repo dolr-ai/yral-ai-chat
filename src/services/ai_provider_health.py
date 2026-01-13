@@ -4,7 +4,7 @@ Handles health checks for both Gemini and OpenRouter providers
 """
 from loguru import logger
 
-from src.models.internal import GeminiHealth
+from src.models.internal import AIProviderHealth
 from src.services.gemini_client import GeminiClient
 from src.services.openrouter_client import OpenRouterClient
 
@@ -20,45 +20,39 @@ class AIProviderHealthService:
         self.gemini_client = gemini_client
         self.openrouter_client = openrouter_client
 
-    async def check_gemini_health(self) -> GeminiHealth:
-        """Check Gemini API health"""
-        logger.info("Checking Gemini API health...")
-        health = await self.gemini_client.health_check()
+    async def check_provider_health(self, provider_name: str) -> AIProviderHealth:
+        """Check specific AI provider API health"""
+        client = None
+        if provider_name.lower() == "gemini":
+            client = self.gemini_client
+        elif provider_name.lower() == "openrouter":
+            client = self.openrouter_client
         
-        if health.status == "up":
-            logger.info(f"✓ Gemini API is healthy (latency: {health.latency_ms}ms)")
-        else:
-            logger.error(f"✗ Gemini API is down: {health.error}")
-        
-        return health
-
-    async def check_openrouter_health(self) -> GeminiHealth:
-        """Check OpenRouter API health"""
-        if not self.openrouter_client:
-            logger.warning("OpenRouter client not configured, skipping health check")
-            return GeminiHealth(
+        if not client:
+            logger.warning(f"Provider {provider_name} not configured, skipping health check")
+            return AIProviderHealth(
                 status="unconfigured",
-                error="OpenRouter client not configured",
+                error=f"Provider {provider_name} not configured",
                 latency_ms=None
             )
         
-        logger.info("Checking OpenRouter API health...")
-        health = await self.openrouter_client.health_check()
+        logger.info(f"Checking {provider_name} API health...")
+        health = await client.health_check()
         
         if health.status == "up":
-            logger.info(f"✓ OpenRouter API is healthy (latency: {health.latency_ms}ms)")
+            logger.info(f"✓ {provider_name} API is healthy (latency: {health.latency_ms}ms)")
         else:
-            logger.error(f"✗ OpenRouter API is down: {health.error}")
+            logger.error(f"✗ {provider_name} API is down: {health.error}")
         
         return health
 
-    async def check_all_providers(self) -> dict[str, GeminiHealth]:
+    async def check_all_providers(self) -> dict[str, AIProviderHealth]:
         """Check health of all configured providers"""
         logger.info("Performing comprehensive AI provider health check...")
         
         health_results = {
-            "gemini": await self.check_gemini_health(),
-            "openrouter": await self.check_openrouter_health(),
+            "gemini": await self.check_provider_health("Gemini"),
+            "openrouter": await self.check_provider_health("OpenRouter"),
         }
         
         # Log summary

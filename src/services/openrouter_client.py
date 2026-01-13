@@ -3,13 +3,11 @@ OpenRouter AI Client - OpenAI-compatible API wrapper for OpenRouter
 Used for NSFW content handling via alternative LLM providers
 """
 import base64
-import json
 import time
 from collections.abc import Callable
 from typing import TypeVar
 
 import httpx
-import tiktoken
 from loguru import logger
 from tenacity import (
     retry,
@@ -22,7 +20,8 @@ from tenacity import (
 from src.config import settings
 from src.core.exceptions import AIServiceException, TranscriptionException
 from src.models.entities import Message, MessageRole, MessageType
-from src.models.internal import GeminiHealth
+from src.models.internal import AIProviderHealth
+from src.services.base_ai_client import BaseAIClient
 
 T = TypeVar("T")
 
@@ -67,11 +66,12 @@ def _openrouter_retry_decorator[T](func: Callable[..., T]) -> Callable[..., T]:
     )(func)
 
 
-class OpenRouterClient:
+class OpenRouterClient(BaseAIClient):
     """OpenRouter AI client wrapper - OpenAI-compatible API"""
 
     def __init__(self):
         """Initialize OpenRouter client"""
+        super().__init__(provider_name="OpenRouter")
         if not settings.openrouter_api_key:
             logger.warning("OpenRouter API key not configured - NSFW bots will not work")
         
@@ -80,20 +80,14 @@ class OpenRouterClient:
         self.max_tokens = settings.openrouter_max_tokens
         self.temperature = settings.openrouter_temperature
         self.api_base = "https://openrouter.ai/api/v1"
-        self.http_client = httpx.AsyncClient(
-            timeout=settings.openrouter_timeout,
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "HTTP-Referer": "https://yral.com",
-                "X-Title": "Yral AI Chat",
-            }
-        )
         
-        try:
-            self.tokenizer = tiktoken.get_encoding("cl100k_base")
-        except Exception as e:
-            logger.warning(f"Failed to initialize tiktoken for OpenRouter, falling back to approximate counting: {e}")
-            self.tokenizer = None
+        # Override BaseAIClient's http_client if needed or just update headers
+        self.http_client.headers.update({
+            "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer": "https://yral.com",
+            "X-Title": "Yral AI Chat",
+        })
+        self.http_client.timeout = settings.openrouter_timeout
         
         logger.info(f"OpenRouter client initialized with model: {self.model_name}")
 
@@ -255,126 +249,8 @@ class OpenRouterClient:
         data = response.json()
         return data["choices"][0]["message"]["content"].strip()
 
-    async def _download_audio(self, url: str) -> dict[str, object]:
-        """Download and encode audio"""
-        try:
-            response = await self.http_client.get(url)
-            response.raise_for_status()
 
-            audio_data = response.content
-            mime_type = response.headers.get("content-type", "audio/mpeg")
-        except Exception as e:
-            logger.error(f"Failed to download audio {url}: {e}")
-            raise
-        else:
-            return {
-                "mime_type": mime_type,
-                "data": audio_data
-            }
-
-    @_openrouter_retry_decorator
-    async def _extract_memories_with_retry(self, prompt: str) -> str:
-        """Extract memories with retry logic"""
-        messages = [{"role": "user", "content": prompt}]
-
-        payload = {
-            "model": self.model_name,
-            "messages": messages,
-            "temperature": 0.3,  # Lower temperature for memory extraction
-            "max_tokens": 512,
-        }
-
-        response = await self.http_client.post(
-            f"{self.api_base}/chat/completions",
-            json=payload
-        )
-
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"].strip()
-
-    def _extract_json_from_response(self, response_text: str) -> dict:
-        """Extract JSON object from response text, handling nested braces"""
-        try:
-            return json.loads(response_text)
-        except json.JSONDecodeError:
-            brace_count = 0
-            start_idx = -1
-            for i, char in enumerate(response_text):
-                if char == "{":
-                    if brace_count == 0:
-                        start_idx = i
-                    brace_count += 1
-                elif char == "}":
-                    brace_count -= 1
-                    if brace_count == 0 and start_idx != -1:
-                        json_str = response_text[start_idx:i+1]
-                        try:
-                            return json.loads(json_str)
-                        except json.JSONDecodeError:
-                            continue
-            return {}
-
-    async def extract_memories(
-        self,
-        user_message: str,
-        assistant_response: str,
-        existing_memories: dict[str, str] | None = None
-    ) -> dict[str, str]:
-        """
-        Extract memories (like height, weight, name, preferences) from conversation
-        
-        Args:
-            user_message: Latest user message
-            assistant_response: Latest assistant response
-            existing_memories: Current memories dict to merge with
-            
-        Returns:
-            Updated memories dict
-        """
-        try:
-            existing_memories = existing_memories or {}
-            
-            existing_memories_text = ""
-            if existing_memories:
-                existing_memories_text = "\n\nCurrent memories:\n" + "\n".join(
-                    f"- {key}: {value}" for key, value in existing_memories.items()
-                )
-            
-            prompt = f"""Extract any factual information about the user from this conversation that should be remembered for future interactions.
-
-Examples of things to remember:
-- Physical attributes: height, weight, age, appearance
-- Personal information: name, location, occupation, interests
-- Preferences: favorite foods, hobbies, goals
-- Context: relationship status, family, pets
-
-Recent conversation:
-User: {user_message}
-Assistant: {assistant_response}
-{existing_memories_text}
-
-Return ONLY a JSON object with key-value pairs. Use lowercase keys with underscores (e.g., "height", "weight", "name").
-If no new information was provided, return an empty object {{}}.
-If information updates an existing memory, use the new value.
-Format: {{"key1": "value1", "key2": "value2"}}"""
-
-            response_text = await self._extract_memories_with_retry(prompt)
-            extracted = self._extract_json_from_response(response_text)
-            
-            if extracted and isinstance(extracted, dict):
-                existing_memories.update(extracted)
-                logger.info(f"Extracted {len(extracted)} new/updated memories using OpenRouter")
-            else:
-                logger.debug("No new memories extracted from conversation")
-                
-            return existing_memories
-            
-        except Exception as e:
-            logger.error(f"Memory extraction failed: {e}")
-            return existing_memories or {}
-
-    async def health_check(self) -> GeminiHealth:
+    async def health_check(self) -> AIProviderHealth:
         """Check OpenRouter API health"""
         try:
             start = time.time()
@@ -382,13 +258,13 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
             latency_ms = int((time.time() - start) * 1000)
         except Exception as e:
             logger.error(f"OpenRouter health check failed: {e}")
-            return GeminiHealth(
+            return AIProviderHealth(
                 status="down",
                 error=str(e),
                 latency_ms=None
             )
         else:
-            return GeminiHealth(
+            return AIProviderHealth(
                 status="up",
                 latency_ms=latency_ms,
                 error=None

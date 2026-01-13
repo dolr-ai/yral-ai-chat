@@ -26,8 +26,8 @@ class DatabaseHealth(BaseModel):
     error: str | None = Field(None, description="Error message if status is down")
 
 
-class GeminiHealth(BaseModel):
-    """Gemini API health check result"""
+class AIProviderHealth(BaseModel):
+    """AI Provider API health check result"""
     model_config = ConfigDict(from_attributes=True)
 
     status: str = Field(..., description="Service status: up or down")
