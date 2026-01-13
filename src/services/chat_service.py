@@ -10,11 +10,14 @@ from src.core.exceptions import ForbiddenException, NotFoundException
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
 from src.models.entities import Conversation, Message, MessageRole, MessageType
 from src.services.gemini_client import GeminiClient
+from src.services.openrouter_client import OpenRouterClient
 from src.services.storage_service import StorageService
 
 
 class ChatService:
     """Service for chat operations"""
+
+    FALLBACK_ERROR_MESSAGE = "I'm having trouble generating a response right now. Please try again."
 
     def __init__(
         self,
@@ -23,12 +26,22 @@ class ChatService:
         conversation_repo: ConversationRepository,
         message_repo: MessageRepository,
         storage_service: StorageService | None = None,
+        openrouter_client: OpenRouterClient | None = None,
     ):
         self.influencer_repo = influencer_repo
         self.conversation_repo = conversation_repo
         self.message_repo = message_repo
         self.storage_service = storage_service
         self.gemini_client = gemini_client
+        self.openrouter_client = openrouter_client
+
+    def _select_ai_client(self, is_nsfw: bool):
+        """Select appropriate AI client based on content type (NSFW or regular)"""
+        if is_nsfw and self.openrouter_client:
+            logger.info("Using OpenRouter client for NSFW influencer")
+            return self.openrouter_client
+        logger.info("Using Gemini client for regular influencer")
+        return self.gemini_client
 
     async def create_conversation(
         self,
@@ -103,10 +116,17 @@ class ChatService:
             return None
         try:
             s3_key = self.storage_service.extract_key_from_url(storage_key)
-            return self.storage_service.generate_presigned_url(s3_key)
+            # If s3_key is still a full URL, it means it's external and not in our storage
+            if s3_key.startswith(("http://", "https://")):
+                logger.info(f"Media URL {storage_key} is external, returning as-is")
+                return storage_key
+            url = self.storage_service.generate_presigned_url(s3_key)
+            logger.info(f"Converted storage key {s3_key} to presigned URL: {url[:50]}...")
+            return url
         except Exception as e:
             logger.warning(f"Failed to convert storage key {storage_key} to presigned URL: {e}")
             if storage_key.startswith(("http://", "https://")):
+                logger.info(f"Falling back to original URL: {storage_key}")
                 return storage_key
             return None
 
@@ -249,15 +269,31 @@ class ChatService:
             media_urls_for_ai = self._convert_media_urls_for_ai(media_urls)
 
         try:
-            response_text, token_count = await self.gemini_client.generate_response(
+            # Select appropriate AI client based on influencer's NSFW status
+            ai_client = self._select_ai_client(influencer.is_nsfw)
+            provider_name = "OpenRouter" if influencer.is_nsfw else "Gemini"
+            logger.info(
+                f"Generating response for influencer {influencer.id} ({influencer.display_name}) "
+                f"using {provider_name} provider"
+            )
+            response_text, token_count = await ai_client.generate_response(
                 user_message=ai_input_content,
                 system_instructions=enhanced_system_instructions,
                 conversation_history=history,
                 media_urls=media_urls_for_ai
             )
+            logger.info(
+                f"Response generated successfully from {provider_name}: "
+                f"{len(response_text)} chars, {token_count} tokens"
+            )
         except Exception as e:
-            logger.error(f"AI response generation failed: {e}")
-            response_text = "I'm having trouble generating a response right now. Please try again."
+            logger.error(
+                "AI response generation failed for influencer {}: {}",
+                influencer.id,
+                str(e),
+                exc_info=True
+            )
+            response_text = self.FALLBACK_ERROR_MESSAGE
             token_count = 0
 
         assistant_message = await self.message_repo.create(
