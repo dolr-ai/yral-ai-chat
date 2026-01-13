@@ -160,6 +160,16 @@ class OpenRouterClient:
     async def _generate_content(self, messages: list[dict]) -> tuple[str, int]:
         """Generate content using OpenRouter API with retry logic"""
         logger.info(f"Generating OpenRouter response with {len(messages)} messages")
+        
+        # Debug: Log message roles and content previews
+        for i, msg in enumerate(messages):
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                preview = content[:80] + "..." if len(content) > 80 else content
+            else:
+                preview = f"[{len(content)} content items]"
+            logger.debug(f"  Message {i}: role={role}, content={preview}")
 
         payload = {
             "model": self.model_name,
@@ -433,7 +443,19 @@ Format: {{"key1": "value1", "key2": "value2"}}"""
         
         # Add conversation history
         if conversation_history:
-            for msg in conversation_history[-10:]:  # Last 10 messages for context
+            history_to_add = conversation_history[-10:]  # Last 10 messages for context
+            
+            # If history starts with an assistant message (initial greeting),
+            # inject a synthetic user message to establish proper conversation flow.
+            # This helps LLMs understand the greeting is their own prior output.
+            if history_to_add and history_to_add[0].role == MessageRole.ASSISTANT:
+                messages.append({
+                    "role": "user", 
+                    "content": "[Conversation started]"
+                })
+                logger.debug("Injected synthetic user message before initial greeting")
+            
+            for msg in history_to_add:
                 role = "user" if msg.role == MessageRole.USER else "assistant"
                 content = msg.content or ""
                 
