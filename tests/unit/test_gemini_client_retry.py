@@ -105,9 +105,8 @@ class TestGeminiRetryLogic:
         mock_aio_models.generate_content.side_effect = error_500
 
         # Step 2: Verify it raises after retries (default max retries is 3 in code)
-        with patch("asyncio.sleep", return_value=None):
-            with pytest.raises(AIServiceException):
-                await client.generate_response("test prompt", "system instructions")
+        with patch("asyncio.sleep", return_value=None), pytest.raises(AIServiceException):
+            await client.generate_response("test prompt", "system instructions")
         
         # 1 initial + 4 retries = 5 total calls
         assert mock_aio_models.generate_content.call_count == 5
