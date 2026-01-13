@@ -200,7 +200,14 @@ class Database:
                         await asyncio.sleep(actual_delay)
                         continue
                     
-                    logger.error(f"Execute error: {e}, Query: {query[:100]}")
+                    # Enhanced logging for FK constraint failures
+                    if "foreign key" in error_str:
+                        logger.error(
+                            f"FOREIGN KEY constraint failed. Query: {query[:200]}, "
+                            f"Args count: {len(args)}, Error: {e}"
+                        )
+                    else:
+                        logger.error(f"Execute error: {e}, Query: {query[:100]}")
                     raise
             if last_error:
                 raise last_error
