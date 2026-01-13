@@ -118,7 +118,7 @@ class TestInfluencerServiceNSFW:
         from src.services.influencer_service import InfluencerService
 
         mock_influencer1 = MagicMock(spec=AIInfluencer)
-        mock_influencer1.name = "savita_bhabhi"
+        mock_influencer1.name = "taaarraaah"
         mock_influencer1.is_nsfw = True
 
         mock_influencer2 = MagicMock(spec=AIInfluencer)
