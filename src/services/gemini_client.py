@@ -105,16 +105,21 @@ class GeminiClient(BaseAIClient):
         try:
             user_message_str = str(user_message) if not isinstance(user_message, str) else user_message
             
-            contents = self._build_system_instructions(system_instructions)
-            
+            # Build conversation history
+            contents = []
             if conversation_history:
                 history_contents = await self._build_history_contents(conversation_history)
                 contents.extend(history_contents)
+
+            # Ensure we don't start with a 'model' role (Gemini requires user first or alternating)
+            # If history starts with model (e.g. initial greeting), remove it so we start with user
+            if contents and contents[0].get("role") == "model":
+                contents.pop(0)
             
             current_message = await self._build_current_message(user_message_str, media_urls)
             contents.append(current_message)
 
-            response_text, token_count = await self._generate_content(contents)
+            response_text, token_count = await self._generate_content(contents, system_instructions)
             
             return response_text, int(token_count)
 
@@ -123,19 +128,6 @@ class GeminiClient(BaseAIClient):
         except Exception as e:
             logger.error(f"Gemini API error: {e}")
             raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
-
-    def _build_system_instructions(self, system_instructions: str) -> list[dict]:
-        """Build system instruction messages"""
-        return [
-            {
-                "role": "user",
-                "parts": [{"text": f"""System Instructions: {system_instructions}. Lastly, always answer in the same language as the user's message."""}]
-            },
-            {
-                "role": "model",
-                "parts": [{"text": "Understood. I will follow these instructions."}]
-            }
-        ]
 
     async def _build_history_contents(self, conversation_history: list[Message]) -> list[dict]:
         """Build conversation history contents"""
@@ -189,17 +181,24 @@ class GeminiClient(BaseAIClient):
                     raise AIServiceException(f"Failed to process image: {e}") from e
 
     @_gemini_retry_decorator
-    async def _generate_content(self, contents: list[dict]) -> tuple[str, int]:
+    async def _generate_content(self, contents: list[dict], system_instructions: str | None = None) -> tuple[str, int]:
         """Generate content using Gemini API with retry logic"""
         logger.info(f"Generating Gemini response with {len(contents)} messages")
+
+        config_args = {
+            "max_output_tokens": settings.gemini_max_tokens,
+            "temperature": settings.gemini_temperature
+        }
+        
+        if system_instructions:
+            # Append language instruction to system prompt as it was in the manual prompt
+            full_instructions = f"{system_instructions}. Lastly, always answer in the same language as the user's message."
+            config_args["system_instruction"] = full_instructions
 
         response = await self.client.aio.models.generate_content(
             model=self.model_name,
             contents=contents,
-            config=types.GenerateContentConfig(
-            max_output_tokens=settings.gemini_max_tokens,
-            temperature=settings.gemini_temperature
-        )
+            config=types.GenerateContentConfig(**config_args)
         )
 
         response_text = response.text
