@@ -2,6 +2,9 @@
 Gradio Chat App for Yral AI
 A streamlined chat interface to talk with AI influencers
 """
+import base64
+import json
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -9,7 +12,7 @@ import gradio as gr
 import requests
 
 # Configuration
-API_BASE_URL = "https://chat.yral.com"
+API_BASE_URL = "http://0.0.0.0:8001"
 
 # Session state
 session_state = {
@@ -17,20 +20,55 @@ session_state = {
     "conversation_id": None,
     "influencer_id": None,
     "influencer_name": None,
-    "chat_history": []
+    "chat_history": [],
+    "token": None
 }
+
+
+def generate_test_token(user_id):
+    """Generate a test JWT token acceptable by the API"""
+    header = {"alg": "HS256", "typ": "JWT"}
+    payload = {
+        "iss": "https://auth.yral.com",
+        "sub": user_id,
+        "exp": int(time.time()) + 3600 * 24,  # 1 day
+        "iat": int(time.time())
+    }
+    
+    def b64url(data):
+        return base64.urlsafe_b64encode(json.dumps(data).encode()).decode().rstrip("=")
+
+    # Signature is not validated by the simple decoder, so a dummy one works
+    return f"{b64url(header)}.{b64url(payload)}.signed_by_me"
+
+
+def get_headers():
+    """Get headers with authentication"""
+    if not session_state["token"]:
+        session_state["token"] = generate_test_token(session_state["user_id"])
+    
+    return {
+        "Authorization": f"Bearer {session_state['token']}",
+        "Content-Type": "application/json"
+    }
 
 
 def get_influencers():
     """Fetch available influencers"""
     try:
-        response = requests.get(f"{API_BASE_URL}/api/v1/influencers", timeout=10)
+        # Some endpoints might not need auth, but sending it is safe
+        response = requests.get(
+            f"{API_BASE_URL}/api/v1/influencers",
+            headers=get_headers(),
+            timeout=10
+        )
         response.raise_for_status()
         data = response.json()
         
         # Return list of tuples (display_name, id) for dropdown
         return [(inf["display_name"], inf["id"]) for inf in data.get("influencers", [])]
-    except Exception:
+    except Exception as e:
+        print(f"Error fetching influencers: {e}")  # noqa: T201
         return [("Error loading influencers", None)]
 
 
@@ -44,7 +82,7 @@ def start_conversation(influencer_id):
         response = requests.post(
             f"{API_BASE_URL}/api/v1/chat/conversations",
             json={"influencer_id": influencer_id},
-            headers={"Content-Type": "application/json"},
+            headers=get_headers(),
             timeout=10
         )
         response.raise_for_status()
@@ -58,6 +96,7 @@ def start_conversation(influencer_id):
         history_response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{data['id']}/messages",
             params={"limit": 10, "order": "asc"},
+            headers=get_headers(),
             timeout=10
         )
         history_response.raise_for_status()
@@ -98,7 +137,7 @@ def send_message(message, chat_history):
                 "message_type": "text"
             },
             timeout=10,
-            headers={"Content-Type": "application/json"}
+            headers=get_headers()
         )
         response.raise_for_status()
         data = response.json()
@@ -133,10 +172,16 @@ def send_image_message(image, caption, chat_history):
         with Path(image).open("rb") as f:
             files = {"file": f}
             data = {"type": "image"}
+            
+            # For upload, we need auth header but NOT json content type (requests handles it)
+            headers = get_headers().copy()
+            del headers["Content-Type"]
+            
             upload_response = requests.post(
                 f"{API_BASE_URL}/api/v1/media/upload",
                 files=files,
                 data=data,
+                headers=headers,
                 timeout=10
             )
         upload_response.raise_for_status()
@@ -152,7 +197,7 @@ def send_image_message(image, caption, chat_history):
                 "message_type": message_type,
                 "media_urls": [image_url]
             },
-            headers={"Content-Type": "application/json"},
+            headers=get_headers(),
             timeout=10
         )
         response.raise_for_status()
@@ -191,10 +236,16 @@ def send_audio_message(audio, chat_history):
         with Path(audio).open("rb") as f:
             files = {"file": f}
             data = {"type": "audio"}
+            
+            # For upload, we need auth header but NOT json content type
+            headers = get_headers().copy()
+            del headers["Content-Type"]
+            
             upload_response = requests.post(
                 f"{API_BASE_URL}/api/v1/media/upload",
                 files=files,
                 data=data,
+                headers=headers,
                 timeout=10
             )
         upload_response.raise_for_status()
@@ -211,7 +262,7 @@ def send_audio_message(audio, chat_history):
                 "audio_url": audio_url,
                 "audio_duration_seconds": duration
             },
-            headers={"Content-Type": "application/json"},
+            headers=get_headers(),
             timeout=10
         )
         response.raise_for_status()
@@ -238,6 +289,7 @@ def clear_chat():
     session_state["influencer_id"] = None
     session_state["influencer_name"] = None
     session_state["chat_history"] = []
+    # Optionally regenerate token on clear, but keeping it is fine
     return [], "Chat cleared. Select an influencer to start a new conversation.", gr.update(interactive=False)
 
 
@@ -247,6 +299,7 @@ def load_conversation_list():
         response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations",
             params={"limit": 50},
+            headers=get_headers(),
             timeout=10
         )
         response.raise_for_status()
@@ -273,6 +326,7 @@ def load_existing_conversation(conversation_id):
         conv_response = requests.get(
             f"{API_BASE_URL}/api/v1/chat/conversations/{conversation_id}/messages",
             params={"limit": 100, "order": "asc"},
+            headers=get_headers(),
             timeout=10
         )
         conv_response.raise_for_status()

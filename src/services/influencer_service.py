@@ -32,3 +32,32 @@ class InfluencerService:
             raise NotFoundException("Influencer not found")
         return influencer
 
+    @cached(ttl=600, key_prefix="is_nsfw")  # Cache for 10 minutes
+    async def is_nsfw(self, influencer_id: str) -> bool:
+        """Check if an influencer is tagged as NSFW"""
+        return await self.influencer_repo.is_nsfw(influencer_id)
+
+    @cached(ttl=600, key_prefix="nsfw_influencers")  # Cache for 10 minutes
+    async def list_nsfw_influencers(
+        self,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple[list[AIInfluencer], int]:
+        """List all NSFW influencers (cached)"""
+        influencers = await self.influencer_repo.list_nsfw(limit=limit, offset=offset)
+        total = await self.influencer_repo.count_nsfw()
+        return influencers, total
+
+    async def get_ai_provider_for_influencer(self, influencer: AIInfluencer) -> str:
+        """
+        Determine which AI provider should be used for this influencer
+        
+        Args:
+            influencer: The influencer entity
+            
+        Returns:
+            "openrouter" for NSFW influencers, "gemini" otherwise
+        """
+        return "openrouter" if influencer.is_nsfw else "gemini"
+
+

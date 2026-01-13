@@ -774,4 +774,3 @@ SELECT
 FROM ai_influencers
 WHERE name IN ('dr_meera_iyer', 'kunal_jain', 'priya_nair', 'DrTanya', 'neha_gupta', 'arjun_singh')
 ORDER BY name;
-

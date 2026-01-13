@@ -208,15 +208,6 @@ def test_send_message_with_valid_token(client, test_influencer_id):
     data = response.json()
     assert "user_message" in data
     assert "assistant_message" in data
-    
-    # Cleanup: Delete the conversation
-    try:
-        client.delete(
-            f"/api/v1/chat/conversations/{conversation_id}",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-    except Exception:
-        pass  # Ignore cleanup errors
 
 
 def test_send_message_without_token(client, clean_conversation_id):

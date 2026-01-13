@@ -5,10 +5,15 @@ on:
     branches:
       - main
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     
     steps:
       - name: Checkout code
@@ -42,21 +47,68 @@ jobs:
           JWT_ALGORITHM: HS256
           JWT_ISSUER: yral_auth
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
           AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
           S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
           S3_PUBLIC_URL_BASE: ${{ secrets.S3_PUBLIC_URL_BASE }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL || 'google/gemini-2.5-flash' }}
           ENVIRONMENT: development
           # NOTE: SENTRY_DSN is intentionally NOT set to prevent test errors from being sent to Sentry
         run: |
           pytest -v --tb=short
 
+  quality-checks:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+      
+      - name: Run Ruff Lint
+        run: ruff check --fix .
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Build image for scanning
+        run: docker build -t yral-ai-chat:${{ github.sha }} .
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'yral-ai-chat:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
   deploy:
     name: Deploy Production
     runs-on: ubuntu-latest
-    needs: test  # Only deploy if tests pass
+    needs: [test, quality-checks, security-scan]  # Require all checks to pass
+    timeout-minutes: 20
     
     steps:
       - name: Checkout code
@@ -94,6 +146,10 @@ jobs:
           GEMINI_MODEL=${{ secrets.GEMINI_MODEL || 'gemini-2.5-flash' }}
           GEMINI_MAX_TOKENS=${{ secrets.GEMINI_MAX_TOKENS || '2048' }}
           GEMINI_TEMPERATURE=${{ secrets.GEMINI_TEMPERATURE || '0.7' }}
+          
+          # OpenRouter API (for NSFW content)
+          OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL=${{ secrets.OPENROUTER_MODEL || 'google/gemini-2.5-flash' }}
           
           # Media Storage
           MAX_IMAGE_SIZE_MB=${{ secrets.MAX_IMAGE_SIZE_MB || '10' }}
@@ -152,7 +208,7 @@ jobs:
       - name: Deploy to server
         run: |
           ssh -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'DEPLOY_SCRIPT'
-            set -e
+            set -euo pipefail
             
             ENVIRONMENT="production"
             SERVICE="yral-ai-chat"
@@ -161,14 +217,36 @@ jobs:
             HEALTH_CHECK_PORT=8000
             HEALTH_CHECK_MAX_ATTEMPTS=15
             HEALTH_CHECK_RETRY_DELAY=3
-            SERVICE_START_DELAY=15
-            SERVICE_RESTART_DELAY=10
+            SERVICE_START_DELAY=5
             
             cd "$PROJECT_DIR"
             
-            # Set environment variable for docker-compose
-            export PRODUCTION_ENV=production
-            
+            # Helper function: Print logs and exit
+            fail() {
+              echo "[ERROR] $1"
+              echo "[INFO] Recent container logs:"
+              docker compose -f docker-compose.prod.yml logs --tail=100 "$SERVICE" || true
+              exit 1
+            }
+
+            # Helper function: Rollback
+            rollback() {
+              echo "[CRITICAL] Deployment failed! Attempting rollback to previous state..."
+              if docker images | grep -q "${SERVICE}_previous"; then
+                echo "[INFO] Reverting to previous image..."
+                docker tag "${SERVICE}_previous:latest" "${SERVICE}:latest"
+                docker compose -f docker-compose.prod.yml up -d "$SERVICE"
+                echo "[INFO] Rollback container started. Re-checking health..."
+                if ! check_service_health "$SERVICE" "$HEALTH_CHECK_PORT" 5 3; then
+                  echo "[ERROR] Rollback health check failed!"
+                else
+                  echo "[SUCCESS] Rollback successfuly completed."
+                fi
+              else
+                echo "[WARN] No previous image found to rollback to."
+              fi
+            }
+
             # Helper function: Check service health
             check_service_health() {
               local service_name=$1
@@ -185,8 +263,6 @@ jobs:
                 # Check if container is running
                 if ! docker compose -f docker-compose.prod.yml ps "$service_name" | grep -q "Up"; then
                   echo "[ERROR] Container $service_name is not running"
-                  docker compose -f docker-compose.prod.yml ps "$service_name"
-                  docker compose -f docker-compose.prod.yml logs --tail=50 "$service_name"
                   return 1
                 fi
                 
@@ -196,21 +272,10 @@ jobs:
                   2>&1; then
                   echo "[OK] $service_name health check passed"
                   return 0
-                else
-                  echo "[WARN] Health check failed, checking container logs..."
-                  docker compose -f docker-compose.prod.yml logs --tail=20 "$service_name"
                 fi
                 
                 if [ $attempt -eq $max_attempts ]; then
                   echo "[ERROR] $service_name health check failed after $max_attempts attempts"
-                  echo "[ERROR] Container status:"
-                  docker compose -f docker-compose.prod.yml ps "$service_name"
-                  echo "[ERROR] Full container logs:"
-                  docker compose -f docker-compose.prod.yml logs --tail=200 "$service_name"
-                  echo "[ERROR] Checking if process is running inside container:"
-                  docker compose -f docker-compose.prod.yml exec -T "$service_name" ps aux || true
-                  echo "[ERROR] Checking if port is listening:"
-                  docker compose -f docker-compose.prod.yml exec -T "$service_name" netstat -tlnp 2>/dev/null || docker compose -f docker-compose.prod.yml exec -T "$service_name" ss -tlnp 2>/dev/null || echo "Cannot check ports"
                   return 1
                 fi
                 
@@ -220,190 +285,97 @@ jobs:
               done
             }
             
+            # Step 0: Backup current image for rollback
+            echo "[INFO] Backing up current image..."
+            docker tag "${SERVICE}:latest" "${SERVICE}_previous:latest" 2>/dev/null || echo "[INFO] No existing image to backup"
+
             # Step 1: Update code from repository
             echo "[INFO] Pulling latest code from $BRANCH branch"
             git fetch origin
-            # Discard any local changes and reset branch to match remote exactly
             git checkout -B "$BRANCH" "origin/$BRANCH"
             
             # Step 2: Validate nginx configuration
-            echo "[INFO] Validating nginx configuration"
-            docker run --rm \
+            echo "[INFO] Validating nginx configuration before build"
+            if ! docker run --rm \
               -v "$(pwd)/nginx/rate-limit-zones.conf:/etc/nginx/conf.d/rate-limit-zones.conf:ro" \
               -v "$(pwd)/nginx/yral-ai-chat.conf:/etc/nginx/conf.d/default.conf:ro" \
               -v "$(pwd)/nginx/nginx.conf.wrapper:/etc/nginx/nginx.conf:ro" \
               -v /etc/letsencrypt:/etc/letsencrypt:ro \
-              nginx:alpine nginx -t
-            
-            # Step 3: Stop legacy systemd service if exists
-            echo "[INFO] Stopping legacy systemd service"
-            systemctl stop yral-ai-chat.service 2>/dev/null || true
-            systemctl disable yral-ai-chat.service 2>/dev/null || true
+              nginx:alpine nginx -t; then
+              fail "Nginx configuration validation failed. Aborting deployment."
+            fi
             
             # Step 4: Build Docker image
             echo "[INFO] Building Docker image for $ENVIRONMENT"
-            docker compose -f docker-compose.prod.yml build --no-cache "$SERVICE"
+            if ! docker compose -f docker-compose.prod.yml build "$SERVICE"; then
+              fail "Docker build failed"
+            fi
             
             # Step 5: Start service
             echo "[INFO] Starting $ENVIRONMENT service"
-            docker compose -f docker-compose.prod.yml up -d "$SERVICE"
-            
-            # Show container status immediately
-            echo "[INFO] Container status after start:"
-            docker compose -f docker-compose.prod.yml ps "$SERVICE" || true
-            
-            # Show initial logs
-            echo "[INFO] Initial container logs:"
-            docker compose -f docker-compose.prod.yml logs --tail=50 "$SERVICE" || true
-            
-            # Step 6: Start Metabase production service
-            echo "[INFO] Starting Metabase production service"
-            docker compose -f docker-compose.prod.yml up -d metabase || echo "[WARN] Metabase production container may already be running"
-            
-            # Show Metabase production container status
-            echo "[INFO] Metabase production container status:"
-            docker compose -f docker-compose.prod.yml ps metabase || true
-            
-            # Show Metabase production initial logs
-            echo "[INFO] Metabase production initial logs:"
-            docker compose -f docker-compose.prod.yml logs --tail=30 metabase || true
-            
-            # Step 6.5: Start Beszel Monitoring Agent
-            echo "[INFO] Starting Beszel monitoring agent"
-            docker compose -f docker-compose.prod.yml up -d beszel-agent || echo "[WARN] Beszel agent failed to start"
-            docker compose -f docker-compose.prod.yml ps beszel-agent || true
-
-            # Wait a moment for Metabase to start accepting connections
-            echo "[INFO] Waiting 10s for Metabase production to initialize..."
-            sleep 10
-            
-            # Test if Metabase production is responding
-            echo "[INFO] Testing Metabase production health..."
-            if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
-              echo "[OK] Metabase production is ready"
-            else
-              echo "[WARN] Metabase production may still be initializing (this is normal, can take up to 60s)"
+            if ! docker compose -f docker-compose.prod.yml up -d "$SERVICE"; then
+              rollback
+              fail "Docker up failed"
             fi
             
-            # Step 7: Start nginx (without starting dependencies to avoid affecting staging)
-            echo "[INFO] Starting nginx"
-            docker compose -f docker-compose.prod.yml up -d --no-deps nginx
-            
-            # Step 7.5: Restart nginx to ensure it picks up the latest config
-            echo "[INFO] Restarting nginx to load latest configuration"
-            docker compose -f docker-compose.prod.yml restart nginx
-            
-            # Wait for nginx container to be fully running
-            echo "[INFO] Waiting for nginx container to be ready..."
-            max_wait=10
-            wait_count=0
-            while [ $wait_count -lt $max_wait ]; do
-              if docker ps --filter "name=yral-ai-chat-nginx" --filter "status=running" --format "{{.Names}}" | grep -q yral-ai-chat-nginx; then
-                sleep 2  # Give it a moment to fully initialize
-                break
-              fi
-              sleep 1
-              wait_count=$((wait_count + 1))
-            done
-            
-            # Step 7.6: Verify nginx config is valid and reloaded
-            echo "[INFO] Verifying nginx configuration"
-            if docker exec yral-ai-chat-nginx nginx -t > /dev/null 2>&1; then
-              echo "[OK] Nginx configuration is valid"
-              # Try graceful reload first
-              if docker exec yral-ai-chat-nginx nginx -s reload > /dev/null 2>&1; then
-                echo "[OK] Nginx configuration reloaded successfully"
-              else
-                echo "[WARN] Nginx reload failed, container was restarted above"
-              fi
-            else
-              echo "[ERROR] Nginx configuration test failed"
-              docker exec yral-ai-chat-nginx nginx -t || true
-              echo "[WARN] Continuing despite nginx test failure (container was restarted)"
+            # Step 6: Start auxiliary services
+            echo "[INFO] Starting auxiliary services"
+            docker compose -f docker-compose.prod.yml up -d metabase beszel-agent || echo "[WARN] Auxiliary services failed to start"
+
+            # Step 7: Nginx Management
+            echo "[INFO] Reloading nginx"
+            if ! docker compose -f docker-compose.prod.yml up -d --no-deps nginx; then
+              fail "Failed to start nginx container"
+            fi
+
+            if ! docker exec yral-ai-chat-nginx nginx -t; then
+              docker logs yral-ai-chat-nginx --tail 20
+              fail "Nginx configuration is invalid inside container"
+            fi
+
+            if ! docker exec yral-ai-chat-nginx nginx -s reload; then
+              echo "[WARN] Nginx reload failed, attempting restart..."
+              docker compose -f docker-compose.prod.yml restart nginx || fail "Nginx service failed to restart"
             fi
             
             # Step 8: Wait for service to start
-            echo "[INFO] Waiting ${SERVICE_START_DELAY}s for service to start"
+            echo "[INFO] Waiting ${SERVICE_START_DELAY}s for service stability"
             sleep $SERVICE_START_DELAY
             
-            # Show logs again after wait
-            echo "[INFO] Container logs after ${SERVICE_START_DELAY}s wait:"
-            docker compose -f docker-compose.prod.yml logs --tail=50 "$SERVICE" || true
-            
             # Step 9: Run database migrations
-            echo "[INFO] Running database migrations for $ENVIRONMENT"
-            echo "[INFO] Container logs before migrations:"
-            docker compose -f docker-compose.prod.yml logs --tail=30 "$SERVICE" || true
-            if ! docker compose -f docker-compose.prod.yml exec -T "$SERVICE" python scripts/run_migrations.py 2>&1; then
-              echo "[ERROR] $ENVIRONMENT migrations failed"
-              echo "[ERROR] Container logs after migration failure:"
-              docker compose -f docker-compose.prod.yml logs --tail=100 "$SERVICE"
-              exit 1
+            echo "[INFO] Running database migrations"
+            
+            # 9.1 Create Backup
+            echo "[INFO] Creating pre-migration database backup..."
+            BACKUP_NAME="yral_chat.db.bak_$(date +%s)"
+            if docker compose -f docker-compose.prod.yml exec -T "$SERVICE" cp /app/data/yral_chat.db "/app/data/$BACKUP_NAME" 2>/dev/null; then
+              echo "[OK] Database backup created: $BACKUP_NAME"
+            else
+              echo "[WARN] Failed to create database backup (database might not exist yet or exec failed)"
+              # We continue because it might be a fresh install
             fi
-            echo "[INFO] Migrations completed successfully"
+
+            # 9.2 Run Migrations
+            if ! docker compose -f docker-compose.prod.yml exec -T "$SERVICE" python scripts/run_migrations.py; then
+              rollback
+              fail "Migrations failed. Rolled back service image."
+            fi
             
-            # Step 10: Restart service to load migrated data
-            echo "[INFO] Restarting service to load migrated data"
-            docker compose -f docker-compose.prod.yml restart "$SERVICE"
-            echo "[INFO] Waiting ${SERVICE_RESTART_DELAY}s for service to restart"
-            sleep $SERVICE_RESTART_DELAY
-            
-            # Show logs after restart
-            echo "[INFO] Container logs after restart:"
-            docker compose -f docker-compose.prod.yml logs --tail=50 "$SERVICE" || true
-            
-            # Step 11: Health check
-            echo "[INFO] Running health checks for $ENVIRONMENT"
+            # Step 11: Final Health check
+            echo "[INFO] Running final health checks"
             if ! check_service_health "$SERVICE" "$HEALTH_CHECK_PORT" "$HEALTH_CHECK_MAX_ATTEMPTS" "$HEALTH_CHECK_RETRY_DELAY"; then
-              exit 1
-            fi
-            
-            # Step 12: Metabase health checks
-            echo "[INFO] Checking Metabase services..."
-            if curl -f http://localhost:3000/api/health > /dev/null 2>&1; then
-              echo "[OK] Metabase (production) service is healthy"
-            else
-              echo "[WARN] Metabase (production) service health check failed (may still be initializing)"
-            fi
-            
-            if curl -f http://localhost:3001/api/health > /dev/null 2>&1; then
-              echo "[OK] Metabase (staging) service is healthy"
-            else
-              echo "[WARN] Metabase (staging) service health check failed (may still be initializing)"
-            fi
-            
-            # Verify nginx can reach Metabase production
-            echo "[INFO] Verifying nginx can reach Metabase production..."
-            if docker exec yral-ai-chat-nginx wget -q -O- http://127.0.0.1:3000/api/health > /dev/null 2>&1; then
-              echo "[OK] Nginx container can reach Metabase production on port 3000"
-            else
-              echo "[WARN] Nginx container cannot reach Metabase production on port 3000"
+              rollback
+              fail "Service unhealthy after deployment. Rolled back."
             fi
             
             # Step 13: Final connectivity tests
-            echo "[DEBUG] Final connectivity tests:"
-            echo "[DEBUG] Testing production health from host:"
-            curl -v http://127.0.0.1:8000/health 2>&1 | head -20 || echo "Failed"
-            echo "[DEBUG] Testing staging health from host:"
-            curl -v http://127.0.0.1:8001/health 2>&1 | head -20 || echo "Failed"
-            echo "[DEBUG] Testing via nginx (if accessible):"
-            curl -k -v https://127.0.0.1/health 2>&1 | head -20 || curl -v http://127.0.0.1/health 2>&1 | head -20 || echo "Cannot test via nginx"
-            
-            # Step 14: Deployment summary
-            echo ""
+            echo "[INFO] Running final connectivity tests..."
+            if ! curl -s -f http://127.0.0.1:8000/health > /dev/null; then
+              rollback
+              fail "Final connectivity test failed. Rolled back."
+            fi
+
             echo "[SUCCESS] $ENVIRONMENT deployment complete"
-            echo "[INFO] Service status:"
-            docker compose -f docker-compose.prod.yml ps "$SERVICE"
-            echo ""
-            echo "[INFO] All services:"
             docker compose -f docker-compose.prod.yml ps
-            echo ""
-            echo "[INFO] Recent logs:"
-            docker compose -f docker-compose.prod.yml logs --tail=20 "$SERVICE"
-            echo ""
-            echo "🌐 Services available at:"
-            echo "   - Production API: http://localhost:8000"
-            echo "   - Staging API: http://localhost:8001"
-            echo "   - Metabase (Production): https://chat.yral.com/metabase/"
-            echo "   - Metabase (Staging): https://chat.yral.com/staging/metabase/"
+          DEPLOY_SCRIPT
           DEPLOY_SCRIPT

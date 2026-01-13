@@ -3,7 +3,7 @@ Repository for Conversation operations
 """
 import json
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from src.db.base import db
@@ -159,7 +159,7 @@ class ConversationRepository:
             created_at_val = row.get("created_at")
             
             role = MessageRole(role_str) if isinstance(role_str, str) else MessageRole.USER
-            created_at = created_at_val if isinstance(created_at_val, datetime) else datetime.now()
+            created_at = created_at_val if isinstance(created_at_val, datetime) else datetime.now(UTC)
             
             return LastMessageInfo(
                 content=str(content) if content is not None else None,
