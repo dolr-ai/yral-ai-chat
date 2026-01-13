@@ -192,7 +192,7 @@ class GeminiClient(BaseAIClient):
         
         if system_instructions:
             # Append language instruction to system prompt as it was in the manual prompt
-            full_instructions = f"{system_instructions}. Lastly, always answer in the same language as the user's message."
+            full_instructions = f"{system_instructions}"
             config_args["system_instruction"] = full_instructions
 
         response = await self.client.aio.models.generate_content(

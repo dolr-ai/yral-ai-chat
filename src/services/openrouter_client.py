@@ -129,26 +129,13 @@ class OpenRouterClient(BaseAIClient):
 
     async def _build_image_content(self, image_url: str) -> dict | None:
         """Build image content dict for OpenAI-compatible API"""
-        try:
-            # Download image and convert to base64
-            response = await self.http_client.get(image_url)
-            response.raise_for_status()
-            
-            image_data = response.content
-            mime_type = response.headers.get("content-type", "image/jpeg")
-            
-            # Convert to base64
-            base64_image = base64.standard_b64encode(image_data).decode("utf-8")
-            
-            return {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:{mime_type};base64,{base64_image}"
-                }
+        # Pass URL directly - User confirmed these are public signed URLs
+        return {
+            "type": "image_url",
+            "image_url": {
+                "url": image_url
             }
-        except Exception as e:
-            logger.error(f"Failed to process image: {e}")
-            raise
+        }
 
     @_openrouter_retry_decorator
     async def _generate_content(self, messages: list[dict]) -> tuple[str, int]:
@@ -291,6 +278,37 @@ class OpenRouterClient(BaseAIClient):
         """Close HTTP client"""
         await self.http_client.aclose()
 
+    async def _construct_message_content(
+        self,
+        text_content: str,
+        image_urls: list[str] | None,
+        max_images: int = 3,
+        warn_on_error: bool = True
+    ) -> str | list[dict]:
+        """Helper to construct message content with optional images"""
+        if not image_urls:
+            return text_content or ""
+
+        content_list = [{"type": "text", "text": text_content}] if text_content else []
+        
+        for image_url in image_urls[:max_images]:
+            try:
+                image_content = await self._build_image_content(image_url)
+                if image_content:
+                    content_list.append(image_content)
+            except Exception as e:
+                if warn_on_error:
+                    logger.warning(f"Failed to load image: {e}")
+                else:
+                    logger.error(f"Failed to download image {image_url}: {e}")
+                    raise AIServiceException(f"Failed to process image: {e}") from e
+        
+        # If we only have the text part (no images successfully added), return simple string
+        if len(content_list) <= 1 and text_content:
+            return text_content
+            
+        return content_list
+
     async def _build_messages(
         self,
         user_message: str,
@@ -304,7 +322,7 @@ class OpenRouterClient(BaseAIClient):
         # Add system instructions
         messages.append({
             "role": "system",
-            "content": f"{system_instructions}. Lastly, always answer in the same language as the user's message."
+            "content": f"{system_instructions}"
         })
         
         # Add conversation history
@@ -319,33 +337,26 @@ class OpenRouterClient(BaseAIClient):
                 role = "user" if msg.role == MessageRole.USER else "assistant"
                 content = msg.content or ""
                 
-                # Build content with potential images
-                if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and msg.media_urls:
-                    content_list = [{"type": "text", "text": content}] if content else []
-                    for image_url in msg.media_urls[:3]:
-                        try:
-                            image_content = await self._build_image_content(image_url)
-                            if image_content:
-                                content_list.append(image_content)
-                        except Exception as e:
-                            logger.warning(f"Failed to load image from history: {e}")
-                    if content_list:
-                        messages.append({"role": role, "content": content_list})
-                else:
-                    messages.append({"role": role, "content": content})
+                # Check for images in history
+                msg_media_urls = None
+                if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
+                    msg_media_urls = msg.media_urls
+
+                message_content = await self._construct_message_content(
+                    str(content),
+                    msg_media_urls,
+                    max_images=3,
+                    warn_on_error=True
+                )
+                messages.append({"role": role, "content": message_content})
         
         # Add current message with optional images
-        current_content = [{"type": "text", "text": user_message}]
-        if media_urls:
-            for image_url in media_urls[:5]:
-                try:
-                    image_content = await self._build_image_content(image_url)
-                    if image_content:
-                        current_content.append(image_content)
-                except Exception as e:
-                    logger.error(f"Failed to download image {image_url}: {e}")
-                    raise AIServiceException(f"Failed to process image: {e}") from e
-        
-        messages.append({"role": "user", "content": current_content if len(current_content) > 1 else user_message})
+        current_content = await self._construct_message_content(
+            user_message,
+            media_urls,
+            max_images=5,
+            warn_on_error=False
+        )
+        messages.append({"role": "user", "content": current_content})
         
         return messages
