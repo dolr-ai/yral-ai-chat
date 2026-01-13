@@ -1,5 +1,5 @@
--- Force sync Savita Bhabhi prompts and data for existing databases
--- This ensures the staging database reflects the new configuration even if it was already seeded.
+-- Force sync Savita Bhabhi prompts and data for existing databases (V2)
+-- This ensures the staging database reflects the new configuration by using a new filename.
 
 UPDATE ai_influencers
 SET 
