@@ -6,8 +6,12 @@ class NotificationService:
     """Service to handle sending notifications to Google Chat"""
 
     async def send_sentry_notification(self, resource: str, action: str, data: dict):
-        """Dispatches notifications to Google Chat"""
+        """Dispatches notifications to Google Chat (Production only)"""
         
+        if settings.environment != "production":
+            logger.debug(f"Skipping Sentry notification for {settings.environment} environment")
+            return
+
         if settings.google_chat_webhook_url:
             await self._send_to_google_chat(resource, action, data)
         else:
