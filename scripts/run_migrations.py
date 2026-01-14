@@ -34,12 +34,19 @@ def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
         conn.commit()
     except sqlite3.OperationalError as e:
         error_msg = str(e).lower()
+        # If it's a "already exists" error, we might be able to recover
         if "duplicate column name" in error_msg or "already exists" in error_msg:
-            print(f"  [INFO] Script failed with '{e}', trying statement-by-statement...") # noqa: T201
+            print(f"  [INFO] Script failed with '{e}', applying improved resilience...") # noqa: T201
             conn.rollback()
             
-            # Simple line-based splitting for fallback (only for simple ALTER TABLEs)
-            # This is NOT perfect for triggers, but the 'is_nsfw' migration is simple.
+            # CAUTION: If the file contains triggers, naive semicolon splitting will break it.
+            # Fortunately, our 001_init_schema uses IF NOT EXISTS, so it shouldn't trigger this fallback.
+            if "CREATE TRIGGER" in sql_text.upper():
+                msg = f"Migration {migration_file.name} contains triggers and failed. Cannot safely fallback to statement-by-statement execution."
+                print(f"  [WARNING] {msg}") # noqa: T201
+                raise RuntimeError(msg) from e
+            
+            # Simple statement splitting fallback (safe for simple ALTER TABLEs)
             statements = [s.strip() for s in sql_text.split(";") if s.strip()]
             for cmd in statements:
                 try:
