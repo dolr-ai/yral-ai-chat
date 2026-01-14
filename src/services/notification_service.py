@@ -1,6 +1,8 @@
 import httpx
 from loguru import logger
+
 from src.config import settings
+
 
 class NotificationService:
     """Service to handle sending notifications to Google Chat"""
