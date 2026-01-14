@@ -1,8 +1,11 @@
 """
 Tests for chat endpoints
 """
+import asyncio
 from datetime import datetime
 from uuid import UUID
+
+from src.db.base import db
 
 
 def test_create_conversation(client, test_influencer_id, auth_headers):
@@ -727,8 +730,7 @@ def test_send_message_with_deleted_conversation_fk_constraint(client, auth_heade
     
     This is a regression test for the Sentry error: IntegrityError: FOREIGN KEY constraint failed
     """
-    from src.db.base import db
-    
+
     # Create a conversation
     create_response = client.post(
         "/api/v1/chat/conversations",
@@ -737,12 +739,11 @@ def test_send_message_with_deleted_conversation_fk_constraint(client, auth_heade
     )
     assert create_response.status_code == 201
     conversation_id = create_response.json()["id"]
-    
+
     # Manually delete the conversation from the database (simulating a race condition)
     # This will cause FK constraint failure when trying to create messages
-    import asyncio
     asyncio.run(db.execute("DELETE FROM conversations WHERE id = $1", conversation_id))
-    
+
     # Try to send a message to the deleted conversation
     response = client.post(
         f"/api/v1/chat/conversations/{conversation_id}/messages",
@@ -752,7 +753,7 @@ def test_send_message_with_deleted_conversation_fk_constraint(client, auth_heade
         },
         headers=auth_headers
     )
-    
+
     # Should return 404 not found with descriptive error message
     # Instead of crashing with IntegrityError
     assert response.status_code == 404
@@ -761,4 +762,3 @@ def test_send_message_with_deleted_conversation_fk_constraint(client, auth_heade
     assert data["error"] == "not_found"
     # The error message should indicate the conversation is no longer valid
     assert "conversation" in data["message"].lower()
-
