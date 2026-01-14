@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
-from src.api.v1 import chat, health, influencers, media
+from src.api.v1 import chat, health, influencers, media, sentry
 from src.config import settings
 from src.core.exceptions import BaseAPIException
 from src.core.metrics import MetricsMiddleware, metrics_endpoint
@@ -205,6 +205,7 @@ app.include_router(health.router)
 app.include_router(influencers.router)
 app.include_router(chat.router)
 app.include_router(media.router)
+app.include_router(sentry.router, prefix="/v1")
 
 @app.get("/metrics", tags=["Monitoring"])
 async def get_metrics():
