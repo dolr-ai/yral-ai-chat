@@ -25,10 +25,34 @@ MIGRATIONS_DIR = PROJECT_ROOT / "migrations" / "sqlite"
 
 
 def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
-    """Execute a regular migration file"""
-    sql = migration_file.read_text(encoding="utf-8")
-    conn.executescript(sql)
-    conn.commit()
+    """Execute a migration file. Tries executescript first, falls back if needed."""
+    sql_text = migration_file.read_text(encoding="utf-8")
+    
+    try:
+        # Try running as a single script first (most reliable for complex triggers)
+        conn.executescript(sql_text)
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        error_msg = str(e).lower()
+        if "duplicate column name" in error_msg or "already exists" in error_msg:
+            print(f"  [INFO] Script failed with '{e}', trying statement-by-statement...") # noqa: T201
+            conn.rollback()
+            
+            # Simple line-based splitting for fallback (only for simple ALTER TABLEs)
+            # This is NOT perfect for triggers, but the 'is_nsfw' migration is simple.
+            statements = [s.strip() for s in sql_text.split(";") if s.strip()]
+            for cmd in statements:
+                try:
+                    conn.execute(cmd)
+                except sqlite3.OperationalError as inner_e:
+                    inner_msg = str(inner_e).lower()
+                    if "duplicate column name" in inner_msg or "already exists" in inner_msg:
+                        print(f"  [INFO] Skipping: {cmd[:50]}...") # noqa: T201
+                    else:
+                        raise
+            conn.commit()
+        else:
+            raise
 
 
 def run_migrations():
