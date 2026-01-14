@@ -87,6 +87,7 @@ def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
                 pass
             raise
 
+
 def run_migrations():
     """Main Orchestrator"""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
