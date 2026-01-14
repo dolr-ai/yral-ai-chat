@@ -1,8 +1,11 @@
 """
 Tests for chat endpoints
 """
+import asyncio
 from datetime import datetime
 from uuid import UUID
+
+from src.db.base import db
 
 
 def test_create_conversation(client, test_influencer_id, auth_headers):
@@ -718,3 +721,44 @@ def test_send_message_accepts_uppercase_multimodal_type(client, clean_conversati
         assert user_msg["content"] == "What's in this image?"
         assert len(user_msg["media_urls"]) > 0
         assert user_msg["role"] == "user"
+
+
+def test_send_message_with_deleted_conversation_fk_constraint(client, auth_headers, test_influencer_id):
+    """
+    Test that FK constraint errors are handled gracefully when conversation is deleted
+    during message processing.
+    
+    This is a regression test for the Sentry error: IntegrityError: FOREIGN KEY constraint failed
+    """
+
+    # Create a conversation
+    create_response = client.post(
+        "/api/v1/chat/conversations",
+        json={"influencer_id": test_influencer_id},
+        headers=auth_headers
+    )
+    assert create_response.status_code == 201
+    conversation_id = create_response.json()["id"]
+
+    # Manually delete the conversation from the database (simulating a race condition)
+    # This will cause FK constraint failure when trying to create messages
+    asyncio.run(db.execute("DELETE FROM conversations WHERE id = $1", conversation_id))
+
+    # Try to send a message to the deleted conversation
+    response = client.post(
+        f"/api/v1/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": "This should fail gracefully",
+            "message_type": "text"
+        },
+        headers=auth_headers
+    )
+
+    # Should return 404 not found with descriptive error message
+    # Instead of crashing with IntegrityError
+    assert response.status_code == 404
+    data = response.json()
+    assert "error" in data
+    assert data["error"] == "not_found"
+    # The error message should indicate the conversation is no longer valid
+    assert "conversation" in data["message"].lower()

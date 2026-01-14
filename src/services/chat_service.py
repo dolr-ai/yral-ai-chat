@@ -303,13 +303,23 @@ class ChatService:
             response_text = self.FALLBACK_ERROR_MESSAGE
             token_count = 0
 
-        assistant_message = await self.message_repo.create(
-            conversation_id=conversation_id,
-            role=MessageRole.ASSISTANT,
-            content=response_text,
-            message_type=MessageType.TEXT,
-            token_count=token_count
-        )
+        try:
+            assistant_message = await self.message_repo.create(
+                conversation_id=conversation_id,
+                role=MessageRole.ASSISTANT,
+                content=response_text,
+                message_type=MessageType.TEXT,
+                token_count=token_count
+            )
+        except sqlite3.IntegrityError as e:
+            # Handle race condition where conversation is deleted
+            if "foreign key" in str(e).lower():
+                logger.warning(
+                    f"Failed to save assistant message: Conversation {conversation_id} was deleted. "
+                    f"User: {user_id}"
+                )
+                raise NotFoundException("Conversation no longer exists") from e
+            raise
 
         logger.info(f"Assistant message saved: {assistant_message.id}")
 
