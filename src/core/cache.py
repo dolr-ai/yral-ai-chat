@@ -179,6 +179,12 @@ def cached(ttl: int = 300, key_prefix: str = ""):
             cache.set(key, result, ttl=ttl)
 
             return result
+            
+        def invalidate_all():
+            """Invalidate all cache entries for this function"""
+            invalidate_cache_pattern(f"{key_prefix}:{func.__name__}")
+            
+        wrapper.invalidate_all = invalidate_all
 
         return wrapper
     return decorator

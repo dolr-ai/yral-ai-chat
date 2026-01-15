@@ -1,8 +1,20 @@
 """AI Influencer endpoints"""
+from datetime import UTC
+
 from fastapi import APIRouter, Query
 
-from src.core.dependencies import InfluencerServiceDep
-from src.models.responses import InfluencerResponse, ListInfluencersResponse
+from src.core.dependencies import CharacterGeneratorServiceDep, InfluencerServiceDep
+from src.models.requests import (
+    CreateInfluencerRequest,
+    GeneratePromptRequest,
+    ValidateMetadataRequest,
+)
+from src.models.responses import (
+    GeneratedMetadataResponse,
+    InfluencerResponse,
+    ListInfluencersResponse,
+    SystemPromptResponse,
+)
 
 router = APIRouter(prefix="/api/v1/influencers", tags=["Influencers"])
 
@@ -94,5 +106,85 @@ async def get_influencer(
         is_active=influencer.is_active,
         created_at=influencer.created_at,
     )
+
+
+@router.post(
+    "/generate-prompt",
+    response_model=SystemPromptResponse,
+    operation_id="generatePrompt",
+    summary="Generate system instructions",
+    description="Generate system instructions from a character concept prompt",
+)
+async def generate_prompt(
+    request: GeneratePromptRequest,
+    character_generator: CharacterGeneratorServiceDep,
+):
+    """Generate system instructions"""
+    return await character_generator.generate_system_instructions(request.prompt)
+
+
+@router.post(
+    "/validate-and-generate-metadata",
+    response_model=GeneratedMetadataResponse,
+    operation_id="validateAndGenerateMetadata",
+    summary="Validate instructions and generate metadata",
+    description="Validate system instructions and generate metadata + avatar",
+)
+async def validate_and_generate_metadata(
+    request: ValidateMetadataRequest,
+    character_generator: CharacterGeneratorServiceDep,
+):
+    """Validate system instructions and generate metadata using AI"""
+    return await character_generator.validate_and_generate_metadata(request.system_instructions)
+
+
+@router.post(
+    "/create",
+    response_model=InfluencerResponse,
+    operation_id="createInfluencer",
+    summary="Create a new influencer",
+    description="Create a new AI influencer character",
+)
+async def create_influencer(
+    request: CreateInfluencerRequest,
+    influencer_service: InfluencerServiceDep,
+):
+    """Create a new AI influencer"""
+    import uuid
+    from datetime import datetime
+
+    from src.models.entities import AIInfluencer, InfluencerStatus
+
+    influencer = AIInfluencer(
+        id=str(uuid.uuid4()),
+        name=request.name,
+        display_name=request.display_name,
+        avatar_url=request.avatar_url,
+        description=request.description,
+        category=request.category,
+        system_instructions=request.system_instructions,
+        personality_traits=request.personality_traits,
+        initial_greeting=request.initial_greeting,
+        suggested_messages=request.suggested_messages,
+        is_active=InfluencerStatus.ACTIVE,
+        is_nsfw=False,  # Enforce non-NSFW for all new characters
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        metadata={}
+    )
+
+    created = await influencer_service.create_influencer(influencer)
+
+    return InfluencerResponse(
+        id=created.id,
+        name=created.name,
+        display_name=created.display_name,
+        avatar_url=created.avatar_url,
+        description=created.description,
+        category=created.category,
+        is_active=created.is_active,
+        created_at=created.created_at,
+    )
+
 
 

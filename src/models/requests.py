@@ -180,3 +180,34 @@ class SendMessageRequest(BaseModel):
             raise ValueError("audio_url is required for audio messages")
 
 
+class GeneratePromptRequest(BaseModel):
+    """Request to generate system instructions from a prompt"""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    prompt: str = Field(..., max_length=1000, description="Character concept prompt", examples=["a geeky teacher"])
+
+
+class ValidateMetadataRequest(BaseModel):
+    """Request to validate instructions and generate metadata"""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    system_instructions: str = Field(..., description="System instructions to validate")
+
+
+class CreateInfluencerRequest(BaseModel):
+    """Request to create a new influencer"""
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(..., min_length=1, max_length=50, description="Internal name (slug)")
+    display_name: str = Field(..., min_length=1, max_length=100, description="Display name")
+    description: str | None = Field(None, max_length=500, description="Short bio")
+    system_instructions: str = Field(..., description="System prompts for the AI")
+    initial_greeting: str | None = Field(None, description="First message sent by the AI")
+    suggested_messages: list[str] = Field(default_factory=list, max_length=10, description="Suggested user starters")
+    personality_traits: dict[str, object] = Field(default_factory=dict, description="Key-value pairs of traits")
+    category: str | None = Field(None, description="Character category")
+    avatar_url: str | None = Field(None, description="URL of the avatar image")
+    is_nsfw: bool = Field(default=False, description="Whether the character is NSFW (Ignored: Enforced to False)")
+
+
+

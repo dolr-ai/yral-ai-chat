@@ -202,3 +202,27 @@ class ErrorResponse(BaseModel):
     details: dict[str, object] | None = None
 
 
+class SystemPromptResponse(BaseModel):
+    """Response containing generated system instructions"""
+    model_config = ConfigDict(from_attributes=True)
+
+    system_instructions: str
+
+
+class GeneratedMetadataResponse(BaseModel):
+    """Response containing generated character metadata"""
+    model_config = ConfigDict(from_attributes=True)
+
+    is_valid: bool
+    reason: str | None = None
+    name: str | None = None
+    display_name: str | None = None
+    bio: str | None = None
+    initial_greeting: str | None = None
+    suggested_messages: list[str] | None = None
+    personality_traits: dict[str, object] | None = None
+    category: str | None = None
+    avatar_url: str | None = None
+
+
+

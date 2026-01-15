@@ -227,6 +227,11 @@ class Database:
                 rows = await cursor.fetchall()
                 duration_ms = int((time.time() - start_time) * 1000)
                 row_list = [dict(row) for row in rows]
+                
+                # Commit if it's a mutation (e.g. INSERT ... RETURNING)
+                if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+                    await conn.commit()
+                    
                 if duration_ms > 100:
                     logger.warning(f"Slow query ({duration_ms}ms, {len(row_list)} rows): {query[:200]}")
                 return row_list
@@ -246,6 +251,11 @@ class Database:
         try:
             async with conn.execute(query, args) as cursor:
                 row = await cursor.fetchone()
+                
+                # Commit if it's a mutation (e.g. INSERT ... RETURNING)
+                if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+                    await conn.commit()
+                    
                 duration_ms = int((time.time() - start_time) * 1000)
                 if duration_ms > 50:
                     logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")

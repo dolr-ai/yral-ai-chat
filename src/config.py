@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     max_image_size_mb: int = Field(default=10, ge=1, le=100, alias="MAX_IMAGE_SIZE_MB")
     max_audio_size_mb: int = Field(default=20, ge=1, le=200, alias="MAX_AUDIO_SIZE_MB")
     max_audio_duration_seconds: int = Field(default=300, ge=1, le=600, alias="MAX_AUDIO_DURATION_SECONDS")
+    
+    # ===========================================
+    # Replicate API (for Image Generation)
+    # ===========================================
+    replicate_api_token: str = Field(default="", min_length=0, alias="REPLICATE_API_TOKEN")
+    replicate_model: str = Field(default="black-forest-labs/flux-dev", alias="REPLICATE_MODEL")
 
     aws_access_key_id: str = Field(..., min_length=1, alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str = Field(..., min_length=1, alias="AWS_SECRET_ACCESS_KEY")

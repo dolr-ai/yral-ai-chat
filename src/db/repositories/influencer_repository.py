@@ -169,5 +169,55 @@ class InfluencerRepository:
         result = await db.fetchval(query)
         return int(result) if result else 0
 
+    async def create(self, influencer: AIInfluencer) -> AIInfluencer:
+        """Create a new influencer"""
+        query = """
+            INSERT INTO ai_influencers (
+                id, name, display_name, avatar_url, description,
+                category, system_instructions, personality_traits,
+                initial_greeting, suggested_messages,
+                is_active, is_nsfw, created_at, updated_at, metadata
+            ) VALUES (
+                $1, $2, $3, $4, $5,
+                $6, $7, $8,
+                $9, $10,
+                $11, $12, $13, $14, $15
+            )
+            RETURNING *
+        """
+        
+        # Serialize dicts/lists to JSON strings
+        personality_traits_json = json.dumps(influencer.personality_traits)
+        suggested_messages_json = json.dumps(influencer.suggested_messages)
+        metadata_json = json.dumps(influencer.metadata)
+        
+        # Convert enum/bool to db format
+        is_active_str = influencer.is_active.value
+        is_nsfw_int = 1 if influencer.is_nsfw else 0
+        
+        row = await db.fetchone(
+            query,
+            influencer.id,
+            influencer.name,
+            influencer.display_name,
+            influencer.avatar_url,
+            influencer.description,
+            influencer.category,
+            influencer.system_instructions,
+            personality_traits_json,
+            influencer.initial_greeting,
+            suggested_messages_json,
+            is_active_str,
+            is_nsfw_int,
+            influencer.created_at,
+            influencer.updated_at,
+            metadata_json
+        )
+        
+        if not row:
+            raise RuntimeError("Failed to create influencer")
+            
+        return self._row_to_influencer(row)
+
 
 

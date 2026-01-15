@@ -59,5 +59,14 @@ class InfluencerService:
             "openrouter" for NSFW influencers, "gemini" otherwise
         """
         return "openrouter" if influencer.is_nsfw else "gemini"
+        
+    async def create_influencer(self, influencer: AIInfluencer) -> AIInfluencer:
+        """Create a new influencer and clear cache"""
+        created = await self.influencer_repo.create(influencer)
+        # Clear caches
+        self.list_influencers.invalidate_all()
+        if created.is_nsfw:
+             self.list_nsfw_influencers.invalidate_all()
+        return created
 
 

@@ -77,8 +77,48 @@ class TestInfluencerService:
         
         # Step 3: Verify output
         assert len(items) == 1
+        # Step 3: Verify output
+        assert len(items) == 1
         assert items[0].id == sample_influencer.id
         assert total_count == 1
+
+    @pytest.mark.asyncio
+    async def test_create_influencer_clears_cache(self, service, mock_repo, sample_influencer):
+        """
+        GIVEN a new influencer request
+        WHEN we create the influencer
+        THEN the repository should create it AND the service should invalidate caches
+        """
+        # Step 1: Mock setup
+        mock_repo.create = AsyncMock(return_value=sample_influencer)
+        # Mock the cached methods to verify invalidation
+        # Note: We must mock on __func__ for bound methods or just check call on the service
+        # But since we want to verify it's called, we can just mock the invocation in the code?
+        # Actually, let's just mock the method itself to be a MagicMock that has invalidate_all
+        
+        # Changing strategy: The service code calls self.list_influencers.invalidate_all()
+        # In a unit test, 'service' is a real instance.
+        # We can't easily replace the bound method's attribute.
+        # But we can replace the whole method on the instance with a Mock object
+        
+        service.list_influencers = MagicMock()
+        service.list_influencers.invalidate_all = MagicMock()
+        
+        service.list_nsfw_influencers = MagicMock()
+        service.list_nsfw_influencers.invalidate_all = MagicMock()
+
+        # Step 2: Call create
+        result = await service.create_influencer(sample_influencer)
+
+        # Step 3: Verify creation
+        mock_repo.create.assert_called_once_with(sample_influencer)
+        assert result == sample_influencer
+
+        # Step 4: Verify cache invalidation
+        # Since sample_influencer.is_nsfw is False (from fixture), only list_influencers should be cleared
+        service.list_influencers.invalidate_all.assert_called_once()
+        service.list_nsfw_influencers.invalidate_all.assert_not_called()
+
 
 # ============================================================================
 # StorageService Tests

@@ -88,7 +88,8 @@ class GeminiClient(BaseAIClient):
         user_message: str,
         system_instructions: str,
         conversation_history: list[Message] | None = None,
-        media_urls: list[str] | None = None
+        media_urls: list[str] | None = None,
+        max_tokens: int | None = None
     ) -> tuple[str, int]:
         """
         Generate AI response
@@ -119,7 +120,7 @@ class GeminiClient(BaseAIClient):
             current_message = await self._build_current_message(user_message_str, media_urls)
             contents.append(current_message)
 
-            response_text, token_count = await self._generate_content(contents, system_instructions)
+            response_text, token_count = await self._generate_content(contents, system_instructions, max_tokens)
             
             return response_text, int(token_count)
 
@@ -181,12 +182,12 @@ class GeminiClient(BaseAIClient):
                     raise AIServiceException(f"Failed to process image: {e}") from e
 
     @_gemini_retry_decorator
-    async def _generate_content(self, contents: list[dict], system_instructions: str | None = None) -> tuple[str, int]:
+    async def _generate_content(self, contents: list[dict], system_instructions: str | None = None, max_tokens: int | None = None) -> tuple[str, int]:
         """Generate content using Gemini API with retry logic"""
         logger.info(f"Generating Gemini response with {len(contents)} messages")
 
         config_args = {
-            "max_output_tokens": settings.gemini_max_tokens,
+            "max_output_tokens": max_tokens or settings.gemini_max_tokens,
             "temperature": settings.gemini_temperature
         }
         
