@@ -57,7 +57,12 @@ class ConnectionPool:
         actual_timeout = max(busy_timeout_ms, 60000)
         await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
         
+        # Performance tuning
         await conn.execute("PRAGMA synchronous = NORMAL")
+        await conn.execute("PRAGMA mmap_size = 268435456")  # 256MB
+        await conn.execute("PRAGMA cache_size = -20000")    # 20MB
+        await conn.execute("PRAGMA temp_store = MEMORY")
+
         
         # Verify timeout setting
         async with conn.execute("PRAGMA busy_timeout") as cursor:
@@ -173,15 +178,24 @@ class Database:
         retry_delay = 0.2
         last_error: Exception | None = None
         
+        total_start_time = time.time()
         try:
             for attempt in range(max_retries):
+                # BEGIN IMMEDIATE to acquire write lock early and prevent deadlock
                 try:
+                    await conn.execute("BEGIN IMMEDIATE")
+                    exec_start_time = time.time()
                     async with conn.execute(query, args) as cursor:
                         await conn.commit()
-                        duration_ms = int((time.time() - start_time) * 1000)
-                        if duration_ms > 100:
-                            logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")
+                        total_duration_ms = int((time.time() - total_start_time) * 1000)
+                        exec_duration_ms = int((time.time() - exec_start_time) * 1000)
+                        if total_duration_ms > 100:
+                            logger.warning(
+                                f"Slow execute ({total_duration_ms}ms total, {exec_duration_ms}ms query, "
+                                f"attempt {attempt + 1}): {query[:200]}"
+                            )
                         return f"Rows affected: {cursor.rowcount}"
+
                 except Exception as e:
                     last_error = e
                     error_str = str(e).lower()
