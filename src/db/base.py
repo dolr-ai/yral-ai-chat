@@ -53,8 +53,8 @@ class ConnectionPool:
         await conn.execute("PRAGMA journal_size_limit = 4194304") # 4MB
         
         # Timeout handling
-        # We set a high busy_timeout to allow queuing during checkpoints
-        actual_timeout = max(busy_timeout_ms, 60000)
+        # Reduced to 5s since we now have Read Replica and isolated writes
+        actual_timeout = 5000
         await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
         
         await conn.execute("PRAGMA synchronous = NORMAL")
@@ -164,41 +164,6 @@ class Database:
 
     async def execute(self, query: str, *args) -> str:
         """Execute a query without returning results"""
-        if not self._pool:
-            raise RuntimeError("Database connection pool not initialized")
-        query = self._convert_query(query)
-        conn = await self._pool.acquire()
-        start_time = time.time()
-        max_retries = 10
-        retry_delay = 0.2
-        last_error: Exception | None = None
-        
-        try:
-            for attempt in range(max_retries):
-                try:
-                    async with conn.execute(query, args) as cursor:
-                        await conn.commit()
-                        duration_ms = int((time.time() - start_time) * 1000)
-                        if duration_ms > 100:
-                            logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")
-                        return f"Rows affected: {cursor.rowcount}"
-                except Exception as e:
-                    last_error = e
-                    error_str = str(e).lower()
-                    
-                    # Always rollback on any execution error to prevent transaction leaks
-                    try:
-                        await conn.rollback()
-                    except Exception as rollback_err:
-                        logger.error(f"Failed to rollback after execution error: {rollback_err}")
-
-                    if ("database is locked" in error_str or "locked" in error_str) and attempt < max_retries - 1:
-                        # Random jitter to prevent thundering herd
-                        # Increased backoff: 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8...
-                        actual_delay = retry_delay * (2 ** attempt) + (secrets.SystemRandom().random() * 0.5)
-                        logger.warning(f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})")
-                        await asyncio.sleep(actual_delay)
-                        continue
                     
                     # Enhanced logging for FK constraint failures
                     if "foreign key" in error_str:

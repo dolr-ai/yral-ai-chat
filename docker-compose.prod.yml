@@ -107,7 +107,7 @@ services:
 
   # Metabase BI Dashboard - Production
   # Accessible at: https://chat.yral.com/metabase/
-  # Reads SQLite databases from ./data directory (read-only)
+  # Reads SQLite databases from ./data-replica directory (read-only)
   metabase:
     image: metabase/metabase:latest
     container_name: yral-ai-chat-metabase
@@ -115,8 +115,8 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Mount SQLite databases for read-only access
-      - ./data:/data:ro
+      # Mount REPLICA database for read-only access (Isolates Production DB from Locks)
+      - ./data-replica:/data:ro
       # Persist Metabase metadata (dashboards, queries, settings)
       - metabase-data:/metabase-data
     environment:
@@ -132,6 +132,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    depends_on:
+      - db-replicator
+
+  # Database Replicator Sidecar
+  # Safely mirrors production DB to replica DB for analytics to prevent locking
+  db-replicator:
+    image: keinos/sqlite3:latest
+    container_name: yral-ai-chat-db-replicator
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data:ro # Read-only access to source
+      - ./data-replica:/app/data-replica # Write access to target
+      - ./scripts/replicate_db.sh:/usr/local/bin/replicate_db.sh:ro
+    entrypoint: [ "/bin/sh", "/usr/local/bin/replicate_db.sh" ]
+    user: "root" # Required to write to mounted volumes in some setups
 
   # Beszel Monitoring Agent
   beszel-agent:
