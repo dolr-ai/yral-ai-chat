@@ -167,40 +167,47 @@ class Database:
         if not self._pool:
             raise RuntimeError("Database connection pool not initialized")
         query = self._convert_query(query)
+        
+        start_wait = time.time()
         conn = await self._pool.acquire()
-        start_time = time.time()
+        wait_duration_ms = int((time.time() - start_wait) * 1000)
+        
         max_retries = 10
         retry_delay = 0.2
         last_error: Exception | None = None
         
         try:
             for attempt in range(max_retries):
+                start_exec = time.time()
                 try:
+                    # Use BEGIN IMMEDIATE for write operations to avoid lock upgrade deadlocks
+                    await conn.execute("BEGIN IMMEDIATE")
                     async with conn.execute(query, args) as cursor:
                         await conn.commit()
-                        duration_ms = int((time.time() - start_time) * 1000)
-                        if duration_ms > 100:
-                            logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")
+                        
+                        exec_duration_ms = int((time.time() - start_exec) * 1000)
+                        total_duration_ms = wait_duration_ms + exec_duration_ms
+                        
+                        if total_duration_ms > 100:
+                            logger.warning(
+                                f"Slow execute ({total_duration_ms}ms total, {exec_duration_ms}ms query, {wait_duration_ms}ms wait, attempt {attempt + 1}): {query[:200]}"
+                            )
                         return f"Rows affected: {cursor.rowcount}"
                 except Exception as e:
                     last_error = e
-                    error_str = str(e).lower()
-                    
-                    # Always rollback on any execution error to prevent transaction leaks
+                    # Rollback on error
                     try:
                         await conn.rollback()
                     except Exception as rollback_err:
                         logger.error(f"Failed to rollback after execution error: {rollback_err}")
-
+                        
+                    error_str = str(e).lower()
                     if ("database is locked" in error_str or "locked" in error_str) and attempt < max_retries - 1:
-                        # Random jitter to prevent thundering herd
-                        # Increased backoff: 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8...
                         actual_delay = retry_delay * (2 ** attempt) + (secrets.SystemRandom().random() * 0.5)
                         logger.warning(f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})")
                         await asyncio.sleep(actual_delay)
                         continue
                     
-                    # Enhanced logging for FK constraint failures
                     if "foreign key" in error_str:
                         logger.error(
                             f"FOREIGN KEY constraint failed. Query: {query[:200]}, "
