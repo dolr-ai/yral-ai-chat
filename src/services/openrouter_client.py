@@ -89,7 +89,7 @@ class OpenRouterClient(BaseAIClient):
         })
         self.http_client.timeout = settings.openrouter_timeout
         
-        logger.info(f"OpenRouter client initialized with model: {self.model_name}")
+        logger.debug(f"OpenRouter client initialized with model: {self.model_name}")
 
     async def generate_response(
         self,

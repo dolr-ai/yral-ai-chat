@@ -81,7 +81,7 @@ class GeminiClient(BaseAIClient):
         super().__init__(provider_name="Gemini")
         self.client = genai.Client(api_key=settings.gemini_api_key)
         self.model_name = settings.gemini_model
-        logger.info(f"Gemini client initialized with model: {settings.gemini_model}")
+        logger.debug(f"Gemini client initialized with model: {settings.gemini_model}")
 
     async def generate_response(
         self,
@@ -203,8 +203,8 @@ class GeminiClient(BaseAIClient):
 
         response_text = response.text
         
-        if response.candidates and response.candidates[0].finish_reason != 1:
-            logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (not STOP)")
+        if response.candidates and response.candidates[0].finish_reason != types.FinishReason.STOP:
+            logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (expected STOP)")
 
         # Use tiktoken for accurate token counting
         if self.tokenizer:

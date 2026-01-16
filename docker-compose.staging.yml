@@ -102,8 +102,8 @@ services:
     ports:
       - "3001:3000"
     volumes:
-      # Mount SQLite databases for read and write access
-      - ./data:/data:rw
+      # Mount SQLite databases for read-only access (to prevent lock contention)
+      - ./data:/data:ro
       # Persist Metabase metadata (dashboards, queries, settings) - separate for staging
       - metabase-staging-data:/metabase-data
     environment:
