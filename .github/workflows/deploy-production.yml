@@ -199,6 +199,7 @@ jobs:
           SENTRY_TRACES_SAMPLE_RATE=${{ secrets.SENTRY_TRACES_SAMPLE_RATE || '1.0' }}
           SENTRY_PROFILES_SAMPLE_RATE=${{ secrets.SENTRY_PROFILES_SAMPLE_RATE || '0.0' }}
           SENTRY_WEBHOOK_SECRET=${{ secrets.SENTRY_WEBHOOK_SECRET }}
+          GOOGLE_CHAT=${{ secrets.GOOGLE_CHAT }}
           EOF
       
       - name: Copy .env file to server
