@@ -3,6 +3,7 @@ Internal Pydantic models for service layer
 """
 
 from pydantic import BaseModel, ConfigDict, Field
+
 from src.models.entities import MessageType
 
 

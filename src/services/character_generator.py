@@ -111,4 +111,4 @@ class CharacterGeneratorService:
             if isinstance(e, AIServiceException):
                 raise
             logger.error(f"Failed to process character metadata: {e}")
-            raise AIServiceException(f"Failed to process character metadata: {str(e)}") from e
+            raise AIServiceException(f"Failed to process character metadata: {e!s}") from e

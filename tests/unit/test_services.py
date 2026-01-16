@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.core.exceptions import BadRequestException, NotFoundException
+from src.models.internal import AIResponse, SendMessageParams
 from src.services.chat_service import ChatService
 from src.services.influencer_service import InfluencerService
 from src.services.storage_service import StorageService
-from src.models.internal import AIResponse, SendMessageParams
 
 # ============================================================================
 # InfluencerService Tests

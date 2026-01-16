@@ -3,11 +3,7 @@ Chat service - Business logic for conversations and messages
 """
 
 import sqlite3
-from typing import TYPE_CHECKING
 from uuid import UUID
-
-if TYPE_CHECKING:
-    from fastapi import BackgroundTasks
 
 from loguru import logger
 from pydantic import validate_call
@@ -15,7 +11,7 @@ from pydantic import validate_call
 from src.core.exceptions import ForbiddenException, NotFoundException
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
 from src.models.entities import Conversation, Message, MessageRole, MessageType
-from src.models.internal import AIResponse, LLMGenerateParams, SendMessageParams
+from src.models.internal import LLMGenerateParams, SendMessageParams
 from src.services.gemini_client import GeminiClient
 from src.services.openrouter_client import OpenRouterClient
 from src.services.storage_service import StorageService

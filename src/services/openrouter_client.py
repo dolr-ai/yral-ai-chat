@@ -6,7 +6,7 @@ Used for NSFW content handling via alternative LLM providers
 import base64
 import time
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import TypeVar
 
 import httpx
 from loguru import logger
@@ -111,8 +111,8 @@ class OpenRouterClient(BaseAIClient):
 
             # Build messages for OpenAI-compatible API
             messages = await self._build_messages(
-                user_message_str, 
-                params.system_instructions, 
+                user_message_str,
+                params.system_instructions,
                 params.conversation_history,  # type: ignore[arg-type]
                 params.media_urls
             )
