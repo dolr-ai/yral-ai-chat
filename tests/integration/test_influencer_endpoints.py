@@ -1,6 +1,7 @@
 """
 Tests for influencer endpoints
 """
+
 from datetime import datetime
 
 
@@ -59,7 +60,7 @@ def test_list_influencers_response_structure(client):
     assert "category" in influencer
     assert "is_active" in influencer
     assert "created_at" in influencer
-    
+
     # Verify data types
     assert isinstance(influencer["id"], str)
     assert isinstance(influencer["name"], str)

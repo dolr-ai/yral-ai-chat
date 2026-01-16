@@ -1,6 +1,7 @@
 """
 Repository for Conversation operations
 """
+
 import json
 import uuid
 from datetime import UTC, datetime
@@ -157,10 +158,10 @@ class ConversationRepository:
             content = row.get("content")
             role_str = row.get("role")
             created_at_val = row.get("created_at")
-            
+
             role = MessageRole(role_str) if isinstance(role_str, str) else MessageRole.USER
             created_at = created_at_val if isinstance(created_at_val, datetime) else datetime.now(UTC)
-            
+
             return LastMessageInfo(
                 content=str(content) if content is not None else None,
                 role=role,
@@ -208,5 +209,3 @@ class ConversationRepository:
         )
 
         return conversation
-
-

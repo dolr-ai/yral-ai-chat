@@ -1,6 +1,7 @@
 """
 Yral AI Chat API - Main Application
 """
+
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -25,9 +26,9 @@ from src.middleware.versioning import APIVersionMiddleware
 
 # Improved detection for various test environments
 is_running_tests = (
-    os.getenv("PYTEST_CURRENT_TEST") is not None or
-    "pytest" in sys.modules or
-    Path(sys.argv[0]).name.startswith("pytest")
+    os.getenv("PYTEST_CURRENT_TEST") is not None
+    or "pytest" in sys.modules
+    or Path(sys.argv[0]).name.startswith("pytest")
 )
 # Use ENVIRONMENT variable directly for Sentry environment tagging
 sentry_env = settings.environment if settings.environment in ("production", "staging") else None
@@ -72,6 +73,7 @@ async def lifespan(app: FastAPI):
     # GeminiClient instances and HTTP clients are cleaned up automatically
     logger.info("Shutdown complete")
 
+
 root_path: str | None = "/staging" if settings.environment == "staging" else None
 
 app = FastAPI(
@@ -82,38 +84,38 @@ app = FastAPI(
     root_path=root_path,  # type: ignore[arg-type]
     docs_url="/docs",
     redoc_url="/redoc",
-    swagger_ui_parameters={
-        "persistAuthorization": True
-    },
+    swagger_ui_parameters={"persistAuthorization": True},
     redoc_js_url="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js",
-    redoc_favicon_url="https://fastapi.tiangolo.com/img/favicon.png"
+    redoc_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
 )
+
 
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-    
+
     openapi_schema = get_openapi(
         title=settings.app_name,
         version=settings.app_version,
         description="AI Chat API for Yral with multimodal support",
         routes=app.routes,
     )
-    
+
     if settings.environment == "staging":
         openapi_schema["servers"] = [{"url": "/staging", "description": "Staging environment"}]
-    
+
     openapi_schema["components"]["securitySchemes"] = {
         "BearerAuth": {
             "type": "http",
             "scheme": "bearer",
             "bearerFormat": "JWT",
-            "description": "Enter your JWT token (without 'Bearer' prefix)"
+            "description": "Enter your JWT token (without 'Bearer' prefix)",
         }
     }
-    
+
     app.openapi_schema = openapi_schema
     return app.openapi_schema
+
 
 app.openapi = custom_openapi  # type: ignore[method-assign]
 
@@ -129,6 +131,7 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(APIVersionMiddleware)
 
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle Pydantic validation errors"""
@@ -142,7 +145,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "msg": error.get("msg"),
             "input": error.get("input"),
         }
-        
+
         if "ctx" in error:
             ctx = error["ctx"]
             if isinstance(ctx, dict):
@@ -155,10 +158,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
                 serialized_error["ctx"] = serialized_ctx
             else:
                 serialized_error["ctx"] = str(ctx)
-        
+
         if "url" in error:
             serialized_error["url"] = error["url"]
-            
+
         serialized_errors.append(serialized_error)
 
     return JSONResponse(
@@ -166,11 +169,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={
             "error": "validation_error",
             "message": "Request validation failed",
-            "details": {
-                "errors": serialized_errors,
-                "body": exc.body if settings.debug else None
-            }
-        }
+            "details": {"errors": serialized_errors, "body": exc.body if settings.debug else None},
+        },
     )
 
 
@@ -178,13 +178,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def api_exception_handler(request: Request, exc: BaseAPIException):
     """Handle custom API exceptions"""
     detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
-    logger.warning(
-        f"{exc.error_code} on {request.url.path}: {detail.get('message', 'Unknown error')}"
-    )
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=exc.detail
-    )
+    logger.warning(f"{exc.error_code} on {request.url.path}: {detail.get('message', 'Unknown error')}")
+    return JSONResponse(status_code=exc.status_code, content=exc.detail)
 
 
 @app.exception_handler(Exception)
@@ -196,8 +191,8 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={
             "error": "internal_server_error",
             "message": str(exc) if settings.debug else "An unexpected error occurred",
-            "details": {} if not settings.debug else {"exception_type": type(exc).__name__}
-        }
+            "details": {} if not settings.debug else {"exception_type": type(exc).__name__},
+        },
     )
 
 
@@ -206,10 +201,12 @@ app.include_router(influencers.router)
 app.include_router(chat.router)
 app.include_router(media.router)
 
+
 @app.get("/metrics", tags=["Monitoring"])
 async def get_metrics():
     """Prometheus metrics endpoint"""
     return await metrics_endpoint()
+
 
 @app.get("/", tags=["Root"])
 async def root():
@@ -220,18 +217,11 @@ async def root():
         "status": "running",
         "docs": "/docs",
         "health": "/health",
-        "metrics": "/metrics"
+        "metrics": "/metrics",
     }
-
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "src.main:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.debug
-    )
 
-
+    uvicorn.run("src.main:app", host=settings.host, port=settings.port, reload=settings.debug)

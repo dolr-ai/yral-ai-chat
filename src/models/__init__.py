@@ -1,4 +1,5 @@
 """Pydantic models package"""
+
 from src.models.entities import AIInfluencer, Conversation, Message, MessageRole, MessageType
 from src.models.requests import CreateConversationRequest, SendMessageRequest
 from src.models.responses import (
@@ -35,5 +36,3 @@ __all__ = [
     "SendMessageResponse",
     "StatusResponse",
 ]
-
-

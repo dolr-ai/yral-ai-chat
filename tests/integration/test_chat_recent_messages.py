@@ -1,6 +1,7 @@
 """
 Additional tests for recent_messages in conversation list
 """
+
 from datetime import datetime
 
 
@@ -14,7 +15,7 @@ def test_list_conversations_includes_recent_messages(client, clean_conversation_
                 "content": f"Recent message {i}",
                 "message_type": "text",
             },
-            headers=auth_headers
+            headers=auth_headers,
         )
         assert response.status_code == 200
 
@@ -51,4 +52,3 @@ def test_list_conversations_includes_recent_messages(client, clean_conversation_
         t1 = datetime.fromisoformat(recent_messages[0]["created_at"])
         t2 = datetime.fromisoformat(recent_messages[1]["created_at"])
         assert t1 >= t2
-

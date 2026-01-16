@@ -1,6 +1,7 @@
 """
 Repository for Message operations
 """
+
 import json
 import uuid
 from uuid import UUID
@@ -21,7 +22,7 @@ class MessageRepository:
         media_urls: list[str] = None,
         audio_url: str | None = None,
         audio_duration_seconds: int | None = None,
-        token_count: int | None = None
+        token_count: int | None = None,
     ) -> Message:
         """Create a new message"""
         message_id = str(uuid.uuid4())
@@ -45,7 +46,7 @@ class MessageRepository:
             media_urls_json,
             audio_url,
             audio_duration_seconds,
-            token_count
+            token_count,
         )
 
         return await self.get_by_id(UUID(message_id))
@@ -65,11 +66,7 @@ class MessageRepository:
         return self._row_to_message(row) if row else None
 
     async def list_by_conversation(
-        self,
-        conversation_id: UUID,
-        limit: int = 50,
-        offset: int = 0,
-        order: str = "desc"
+        self, conversation_id: UUID, limit: int = 50, offset: int = 0, order: str = "desc"
     ) -> list[Message]:
         """List messages in a conversation"""
         order_clause = "DESC" if order.lower() == "desc" else "ASC"
@@ -88,11 +85,7 @@ class MessageRepository:
         rows = await db.fetch(query, str(conversation_id), limit, offset)
         return [self._row_to_message(row) for row in rows]
 
-    async def get_recent_for_context(
-        self,
-        conversation_id: UUID,
-        limit: int = 10
-    ) -> list[Message]:
+    async def get_recent_for_context(self, conversation_id: UUID, limit: int = 10) -> list[Message]:
         """Get recent messages for AI context (ordered oldest to newest)"""
         query = """
             SELECT
@@ -153,7 +146,5 @@ class MessageRepository:
             audio_duration_seconds=row["audio_duration_seconds"],
             token_count=row["token_count"],
             created_at=row["created_at"],
-            metadata=metadata
+            metadata=metadata,
         )
-
-

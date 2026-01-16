@@ -2,6 +2,7 @@
 Simplified unit tests for AI provider health service.
 We avoid complex parametrization to keep the data flow obvious.
 """
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -18,10 +19,7 @@ class TestAIProviderHealthService:
     @pytest.fixture
     def service(self, mock_clients):
         """The health service being tested"""
-        return AIProviderHealthService(
-            gemini_client=mock_clients[0],
-            openrouter_client=mock_clients[1]
-        )
+        return AIProviderHealthService(gemini_client=mock_clients[0], openrouter_client=mock_clients[1])
 
     @pytest.mark.asyncio
     async def test_check_gemini_health_is_successful(self, service, mock_clients, sample_health_result):
@@ -66,7 +64,7 @@ class TestAIProviderHealthService:
         THEN it should ping both Gemini and OpenRouter
         """
         gemini_mock, openrouter_mock = mock_clients
-        
+
         # Setup both mocks to return 'up'
         gemini_mock.health_check = AsyncMock(return_value=sample_health_result)
         openrouter_mock.health_check = AsyncMock(return_value=sample_health_result)

@@ -1,6 +1,7 @@
 """
 Tests for JWT authentication
 """
+
 import base64
 import json
 import time
@@ -52,13 +53,13 @@ def generate_test_token(user_id: str = "test_user_123", expires_in_seconds: int 
 def test_create_conversation_with_valid_token(client, test_influencer_id):
     """Test creating a conversation with a valid JWT token"""
     token = generate_test_token(user_id="test_user_valid")
-    
+
     response = client.post(
         "/api/v1/chat/conversations",
         json={"influencer_id": test_influencer_id},
-        headers={"Authorization": f"Bearer {token}"}
+        headers={"Authorization": f"Bearer {token}"},
     )
-    
+
     assert response.status_code == 201
     data = response.json()
     assert "id" in data
@@ -68,11 +69,8 @@ def test_create_conversation_with_valid_token(client, test_influencer_id):
 
 def test_create_conversation_without_token(client, test_influencer_id):
     """Test creating a conversation without authorization header"""
-    response = client.post(
-        "/api/v1/chat/conversations",
-        json={"influencer_id": test_influencer_id}
-    )
-    
+    response = client.post("/api/v1/chat/conversations", json={"influencer_id": test_influencer_id})
+
     assert response.status_code == 401
     data = response.json()
     assert "detail" in data
@@ -85,9 +83,9 @@ def test_create_conversation_with_invalid_token_format(client, test_influencer_i
     response = client.post(
         "/api/v1/chat/conversations",
         json={"influencer_id": test_influencer_id},
-        headers={"Authorization": "invalid_token_format"}
+        headers={"Authorization": "invalid_token_format"},
     )
-    
+
     assert response.status_code == 401
     data = response.json()
     assert "detail" in data
@@ -103,9 +101,9 @@ def test_create_conversation_with_invalid_token(client, test_influencer_id):
     response = client.post(
         "/api/v1/chat/conversations",
         json={"influencer_id": test_influencer_id},
-        headers={"Authorization": f"Bearer {invalid_token}"}
+        headers={"Authorization": f"Bearer {invalid_token}"},
     )
-    
+
     assert response.status_code == 401
     data = response.json()
     assert "detail" in data
@@ -116,13 +114,13 @@ def test_create_conversation_with_expired_token(client, test_influencer_id):
     """Test creating a conversation with an expired JWT token"""
     # Generate an expired token (expired 1 hour ago)
     expired_token = generate_test_token(user_id="test_user", expires_in_seconds=-3600)
-    
+
     response = client.post(
         "/api/v1/chat/conversations",
         json={"influencer_id": test_influencer_id},
-        headers={"Authorization": f"Bearer {expired_token}"}
+        headers={"Authorization": f"Bearer {expired_token}"},
     )
-    
+
     assert response.status_code == 401
     data = response.json()
     assert "detail" in data
@@ -141,13 +139,13 @@ def test_create_conversation_with_wrong_issuer(client, test_influencer_id):
         "exp": now + 3600,
     }
     wrong_issuer_token = _encode_jwt(wrong_issuer_payload)
-    
+
     response = client.post(
         "/api/v1/chat/conversations",
         json={"influencer_id": test_influencer_id},
-        headers={"Authorization": f"Bearer {wrong_issuer_token}"}
+        headers={"Authorization": f"Bearer {wrong_issuer_token}"},
     )
-    
+
     assert response.status_code == 401
     data = response.json()
     assert "detail" in data
@@ -165,13 +163,13 @@ def test_create_conversation_with_missing_user_id(client, test_influencer_id):
         "exp": now + 3600,
     }
     token_without_sub = _encode_jwt(token_without_sub_payload)
-    
+
     response = client.post(
         "/api/v1/chat/conversations",
         json={"influencer_id": test_influencer_id},
-        headers={"Authorization": f"Bearer {token_without_sub}"}
+        headers={"Authorization": f"Bearer {token_without_sub}"},
     )
-    
+
     assert response.status_code == 401
     data = response.json()
     assert "detail" in data
@@ -184,26 +182,23 @@ def test_send_message_with_valid_token(client, test_influencer_id):
     # Use the same user_id for both creating conversation and sending message
     user_id = "test_user_valid"
     token = generate_test_token(user_id=user_id)
-    
+
     # Create a conversation with the same user_id
     create_response = client.post(
         "/api/v1/chat/conversations",
         json={"influencer_id": test_influencer_id},
-        headers={"Authorization": f"Bearer {token}"}
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert create_response.status_code == 201
     conversation_id = create_response.json()["id"]
-    
+
     # Now send a message to that conversation with the same user_id
     response = client.post(
         f"/api/v1/chat/conversations/{conversation_id}/messages",
-        json={
-            "content": "Hello, this is a test message!",
-            "message_type": "text"
-        },
-        headers={"Authorization": f"Bearer {token}"}
+        json={"content": "Hello, this is a test message!", "message_type": "text"},
+        headers={"Authorization": f"Bearer {token}"},
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert "user_message" in data
@@ -214,12 +209,9 @@ def test_send_message_without_token(client, clean_conversation_id):
     """Test sending a message without authorization header"""
     response = client.post(
         f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
-        json={
-            "content": "Hello, this is a test message!",
-            "message_type": "text"
-        }
+        json={"content": "Hello, this is a test message!", "message_type": "text"},
     )
-    
+
     assert response.status_code == 401
     data = response.json()
     assert "detail" in data
@@ -229,12 +221,9 @@ def test_send_message_without_token(client, clean_conversation_id):
 def test_list_conversations_with_valid_token(client):
     """Test listing conversations with a valid JWT token"""
     token = generate_test_token(user_id="test_user_valid")
-    
-    response = client.get(
-        "/api/v1/chat/conversations",
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    
+
+    response = client.get("/api/v1/chat/conversations", headers={"Authorization": f"Bearer {token}"})
+
     assert response.status_code == 200
     data = response.json()
     assert "conversations" in data
@@ -244,9 +233,8 @@ def test_list_conversations_with_valid_token(client):
 def test_list_conversations_without_token(client):
     """Test listing conversations without authorization header"""
     response = client.get("/api/v1/chat/conversations")
-    
+
     assert response.status_code == 401
     data = response.json()
     assert "detail" in data
     assert "Missing authorization header" in data["detail"]
-

@@ -1,4 +1,5 @@
 """Media upload endpoints"""
+
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -36,18 +37,20 @@ router = APIRouter(prefix="/api/v1/media", tags=["Media"])
         422: {"description": "Validation error - Invalid form data"},
         429: {"description": "Rate limit exceeded"},
         500: {"description": "Internal server error - Upload failed"},
-        503: {"description": "Service unavailable - Storage service unavailable"}
-    }
+        503: {"description": "Service unavailable - Storage service unavailable"},
+    },
 )
 async def upload_media(
     file: UploadFile = File(..., description="File to upload"),  # noqa: B008
-    media_type: str = Form(..., alias="type", pattern="^(image|audio)$", description="Type of media: 'image' or 'audio'"),
+    media_type: str = Form(
+        ..., alias="type", pattern="^(image|audio)$", description="Type of media: 'image' or 'audio'"
+    ),
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    storage_service: StorageServiceDep = None
+    storage_service: StorageServiceDep = None,
 ):
     """
     Upload media file (image or audio) to cloud storage.
-    
+
     Returns a presigned URL for immediate access and a stable storage_key.
     """
     if not file:
@@ -65,9 +68,7 @@ async def upload_media(
 
     try:
         s3_key, mime_type, file_size = await storage_service.save_file(
-            file_content=file_content,
-            filename=file.filename,
-            user_id=current_user.user_id
+            file_content=file_content, filename=file.filename, user_id=current_user.user_id
         )
     except Exception as e:
         logger.error(f"File upload failed: {e}")
@@ -88,7 +89,5 @@ async def upload_media(
         size=file_size,
         mime_type=mime_type,
         duration_seconds=duration_seconds,
-        uploaded_at=datetime.now(tz=UTC)
+        uploaded_at=datetime.now(tz=UTC),
     )
-
-

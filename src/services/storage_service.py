@@ -1,6 +1,7 @@
 """
 S3-compatible storage service for media uploads (Storj)
 """
+
 import asyncio
 from pathlib import Path
 from uuid import uuid4
@@ -8,6 +9,7 @@ from uuid import uuid4
 import boto3
 from botocore.config import Config
 from loguru import logger
+from pydantic import validate_call
 
 from src.config import settings
 from src.core.exceptions import BadRequestException
@@ -32,7 +34,7 @@ class StorageService:
                     aws_secret_access_key=settings.aws_secret_access_key,
                     endpoint_url=settings.s3_endpoint_url,
                     region_name=settings.aws_region,
-                    config=Config(signature_version="s3v4")
+                    config=Config(signature_version="s3v4"),
                 )
                 logger.info(f"Storage service initialized: bucket={self.bucket}, endpoint={settings.s3_endpoint_url}")
             except Exception as e:
@@ -40,20 +42,16 @@ class StorageService:
                 raise
         return self._s3_client
 
-    async def save_file(
-        self,
-        file_content: bytes,
-        filename: str,
-        user_id: str
-    ) -> tuple[str, str, int]:
+    @validate_call
+    async def save_file(self, file_content: bytes, filename: str, user_id: str) -> tuple[str, str, int]:
         """
         Save uploaded file to S3-compatible storage
-        
+
         Args:
             file_content: File binary content
             filename: Original filename
             user_id: User ID for organizing files
-            
+
         Returns:
             Tuple of (storage_key, mime_type, file_size)
         """
@@ -78,6 +76,7 @@ class StorageService:
 
         return s3_key, mime_type, file_size
 
+    @validate_call
     def generate_presigned_url(self, key: str, expires_in: int | None = None) -> str:
         """
         Generate a presigned URL for accessing an object.
@@ -122,7 +121,7 @@ class StorageService:
 
         public_base = settings.s3_public_url_base.rstrip("/")
         if url_or_key.startswith(public_base):
-            return url_or_key[len(public_base):].lstrip("/")
+            return url_or_key[len(public_base) :].lstrip("/")
 
         logger.debug(f"External URL or non-S3 link detected: {url_or_key}")
         return url_or_key
@@ -149,14 +148,10 @@ class StorageService:
         file_ext = Path(filename).suffix.lower()
 
         if file_ext not in allowed_extensions:
-            raise BadRequestException(
-                f"Unsupported image format. Allowed: {', '.join(allowed_extensions)}"
-            )
+            raise BadRequestException(f"Unsupported image format. Allowed: {', '.join(allowed_extensions)}")
 
         if file_size > settings.max_image_size_bytes:
-            raise BadRequestException(
-                f"Image too large. Max size: {settings.max_image_size_mb}MB"
-            )
+            raise BadRequestException(f"Image too large. Max size: {settings.max_image_size_mb}MB")
 
     @staticmethod
     def validate_audio(filename: str, file_size: int):
@@ -165,14 +160,10 @@ class StorageService:
         file_ext = Path(filename).suffix.lower()
 
         if file_ext not in allowed_extensions:
-            raise BadRequestException(
-                f"Unsupported audio format. Allowed: {', '.join(allowed_extensions)}"
-            )
+            raise BadRequestException(f"Unsupported audio format. Allowed: {', '.join(allowed_extensions)}")
 
         if file_size > settings.max_audio_size_bytes:
-            raise BadRequestException(
-                f"Audio too large. Max size: {settings.max_audio_size_mb}MB"
-            )
+            raise BadRequestException(f"Audio too large. Max size: {settings.max_audio_size_mb}MB")
 
     async def get_audio_duration(self, s3_key: str) -> int:
         """
@@ -180,4 +171,3 @@ class StorageService:
         TODO: Implement using mutagen or ffprobe (requires downloading file from storage)
         """
         return 0
-

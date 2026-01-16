@@ -7,16 +7,17 @@ This ensures all required tables, columns, indexes, and triggers exist.
 Usage:
     # Test against default database (from settings)
     pytest tests/integration/test_schema_validation.py -v
-    
+
     # Test against specific database path
     DATABASE_PATH=/path/to/prod.db pytest tests/integration/test_schema_validation.py -v
-    
+
     # Test against staging database
     DATABASE_PATH=/path/to/staging.db pytest tests/integration/test_schema_validation.py -v
-    
+
     # Or use pytest marker
     pytest tests/integration/test_schema_validation.py -v --db-path /path/to/db.db
 """
+
 import os
 import sqlite3
 from pathlib import Path
@@ -120,10 +121,10 @@ def get_db_connection():
     # Allow override via environment variable for testing prod/staging
     db_path_str = os.getenv("DATABASE_PATH") or settings.database_path
     db_path = Path(db_path_str)
-    
+
     if not db_path.exists():
         pytest.skip(f"Database not found at {db_path}")
-    
+
     conn = sqlite3.connect(str(db_path))
     # Enable foreign keys (required for SQLite, matches application behavior)
     conn.execute("PRAGMA foreign_keys = ON")
@@ -143,10 +144,7 @@ def get_table_info(conn: sqlite3.Connection, table_name: str) -> dict:
 
 def get_indexes(conn: sqlite3.Connection, table_name: str) -> list:
     """Get all indexes for a table"""
-    cursor = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?",
-        (table_name,)
-    )
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name=?", (table_name,))
     return [row[0] for row in cursor.fetchall()]
 
 
@@ -160,12 +158,10 @@ def test_all_required_tables_exist():
     """Test that all required tables exist"""
     conn = get_db_connection()
     try:
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
         existing_tables = {row[0] for row in cursor.fetchall()}
         expected_tables = set(EXPECTED_TABLES.keys())
-        
+
         missing_tables = expected_tables - existing_tables
         assert not missing_tables, f"Missing tables: {missing_tables}"
     finally:
@@ -180,18 +176,14 @@ def test_table_columns_exist():
             actual_columns = get_table_info(conn, table_name)
             expected_columns = table_spec["columns"]
             required_columns = table_spec["required_columns"]
-            
+
             # Check required columns exist
             missing_required = set(required_columns) - set(actual_columns.keys())
-            assert not missing_required, (
-                f"Table '{table_name}' missing required columns: {missing_required}"
-            )
-            
+            assert not missing_required, f"Table '{table_name}' missing required columns: {missing_required}"
+
             # Check all expected columns exist
             missing_expected = set(expected_columns.keys()) - set(actual_columns.keys())
-            assert not missing_expected, (
-                f"Table '{table_name}' missing expected columns: {missing_expected}"
-            )
+            assert not missing_expected, f"Table '{table_name}' missing expected columns: {missing_expected}"
     finally:
         conn.close()
 
@@ -203,21 +195,17 @@ def test_column_types_are_correct():
         for table_name, table_spec in EXPECTED_TABLES.items():
             actual_columns = get_table_info(conn, table_name)
             expected_columns = table_spec["columns"]
-            
+
             for col_name, expected_type in expected_columns.items():
                 if col_name not in actual_columns:
                     continue  # Already checked in test_table_columns_exist
-                
+
                 actual_type = actual_columns[col_name]
                 # SQLite type checking is flexible, but we check for critical ones
                 if expected_type == "TEXT" and actual_type not in ("TEXT", "VARCHAR"):
-                    pytest.fail(
-                        f"Table '{table_name}' column '{col_name}' should be TEXT, got {actual_type}"
-                    )
+                    pytest.fail(f"Table '{table_name}' column '{col_name}' should be TEXT, got {actual_type}")
                 elif expected_type == "INTEGER" and actual_type != "INTEGER":
-                    pytest.fail(
-                        f"Table '{table_name}' column '{col_name}' should be INTEGER, got {actual_type}"
-                    )
+                    pytest.fail(f"Table '{table_name}' column '{col_name}' should be INTEGER, got {actual_type}")
     finally:
         conn.close()
 
@@ -243,11 +231,9 @@ def test_required_indexes_exist():
         for table_name, table_spec in EXPECTED_TABLES.items():
             actual_indexes = get_indexes(conn, table_name)
             expected_indexes = table_spec["indexes"]
-            
+
             missing_indexes = set(expected_indexes) - set(actual_indexes)
-            assert not missing_indexes, (
-                f"Table '{table_name}' missing indexes: {missing_indexes}"
-            )
+            assert not missing_indexes, f"Table '{table_name}' missing indexes: {missing_indexes}"
     finally:
         conn.close()
 
@@ -280,12 +266,11 @@ def test_ai_influencers_has_suggested_messages():
     try:
         columns = get_table_info(conn, "ai_influencers")
         assert "suggested_messages" in columns, (
-            "suggested_messages column missing. "
-            "This column should exist in the schema."
+            "suggested_messages column missing. " "This column should exist in the schema."
         )
-        assert columns["suggested_messages"] == "TEXT", (
-            f"suggested_messages should be TEXT, got {columns['suggested_messages']}"
-        )
+        assert (
+            columns["suggested_messages"] == "TEXT"
+        ), f"suggested_messages should be TEXT, got {columns['suggested_messages']}"
     finally:
         conn.close()
 
@@ -294,16 +279,15 @@ def test_schema_summary(capsys):
     """Print a summary of the database schema (informational test)"""
     conn = get_db_connection()
     try:
-        
         for table_name in EXPECTED_TABLES:
             get_table_info(conn, table_name)
             get_indexes(conn, table_name)
-        
+
         get_triggers(conn)
-        
+
         # Check foreign keys
         cursor = conn.execute("PRAGMA foreign_keys")
         cursor.fetchone()[0]
-        
+
     finally:
         conn.close()
