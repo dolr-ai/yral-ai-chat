@@ -148,6 +148,7 @@ jobs:
           SENTRY_DSN=${{ secrets.SENTRY_DSN || '' }}
           SENTRY_TRACES_SAMPLE_RATE=${{ secrets.SENTRY_TRACES_SAMPLE_RATE || '0.1' }}
           SENTRY_PROFILES_SAMPLE_RATE=${{ secrets.SENTRY_PROFILES_SAMPLE_RATE || '0.0' }}
+          SENTRY_WEBHOOK_SECRET=${{ secrets.SENTRY_WEBHOOK_SECRET }}
           EOF
       
       - name: Copy .env file to server
