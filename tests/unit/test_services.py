@@ -175,6 +175,7 @@ class TestChatService:
         mock_repos["influencer"].get_by_id = AsyncMock(return_value=sample_influencer)
         mock_repos["conversation"].get_existing = AsyncMock(return_value=None) # No existing
         mock_repos["conversation"].create = AsyncMock(return_value=sample_conversation)
+        mock_repos["message"].create = AsyncMock() # Required for initial greeting
         
         # Step 2: Run the service logic
         conv, is_new = await service.create_conversation("user-456", sample_influencer.id)
