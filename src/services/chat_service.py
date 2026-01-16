@@ -79,19 +79,12 @@ class ChatService:
 
         if influencer.initial_greeting:
             logger.info(f"Creating initial greeting for conversation {conversation.id}")
-            try:
-                greeting_msg = await self.message_repo.create(
-                    conversation_id=conversation.id,
-                    role=MessageRole.ASSISTANT,
-                    content=influencer.initial_greeting,
-                    message_type=MessageType.TEXT
-                )
-                logger.info(f"Created initial greeting message {greeting_msg.id} for conversation {conversation.id}")
-            except Exception as e:
-                logger.error(
-                    f"Failed to create initial greeting message for conversation {conversation.id}: {e}",
-                    exc_info=True
-                )
+            await self._save_message(
+                conversation_id=conversation.id,
+                role=MessageRole.ASSISTANT,
+                content=influencer.initial_greeting,
+                message_type=MessageType.TEXT
+            )
         else:
             logger.info(f"No initial_greeting configured for influencer {influencer.id} ({influencer.display_name})")
 
@@ -242,7 +235,7 @@ class ChatService:
         if message_type == MessageType.AUDIO and audio_url:
             transcribed_content = await self._transcribe_audio(audio_url)
 
-        user_message = await self.message_repo.create(
+        user_message = await self._save_message(
             conversation_id=conversation_id,
             role=MessageRole.USER,
             content=transcribed_content or "",
@@ -303,23 +296,13 @@ class ChatService:
             response_text = self.FALLBACK_ERROR_MESSAGE
             token_count = 0
 
-        try:
-            assistant_message = await self.message_repo.create(
-                conversation_id=conversation_id,
-                role=MessageRole.ASSISTANT,
-                content=response_text,
-                message_type=MessageType.TEXT,
-                token_count=token_count
-            )
-        except sqlite3.IntegrityError as e:
-            # Handle race condition where conversation is deleted
-            if "foreign key" in str(e).lower():
-                logger.warning(
-                    f"Failed to save assistant message: Conversation {conversation_id} was deleted. "
-                    f"User: {user_id}"
-                )
-                raise NotFoundException("Conversation no longer exists") from e
-            raise
+        assistant_message = await self._save_message(
+            conversation_id=conversation_id,
+            role=MessageRole.ASSISTANT,
+            content=response_text,
+            message_type=MessageType.TEXT,
+            token_count=token_count
+        )
 
         logger.info(f"Assistant message saved: {assistant_message.id}")
 
@@ -419,4 +402,23 @@ class ChatService:
         logger.info(f"Deleted conversation {conversation_id} with {deleted_messages} messages")
 
         return deleted_messages
+
+    async def _save_message(self, **kwargs) -> Message:
+        """
+        Helper to save a message and handle conversation deletion race conditions.
+        
+        Automatically converts conversation_id to UUID if provided as string.
+        Raises NotFoundException if the conversation was deleted.
+        """
+        conv_id = kwargs.get("conversation_id")
+        if conv_id and isinstance(conv_id, str):
+            kwargs["conversation_id"] = UUID(conv_id)
+
+        try:
+            return await self.message_repo.create(**kwargs)
+        except sqlite3.IntegrityError as e:
+            if "foreign key" in str(e).lower():
+                logger.warning(f"Failed to save message: Conversation {conv_id} was deleted during processing.")
+                raise NotFoundException("Conversation no longer exists") from e
+            raise
 

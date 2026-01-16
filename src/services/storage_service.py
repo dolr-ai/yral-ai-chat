@@ -103,6 +103,18 @@ class StorageService:
             ExpiresIn=expiration,
         )
 
+    async def generate_presigned_urls_batch(self, keys: list[str]) -> dict[str, str]:
+        if not keys:
+            return {}
+            
+        unique_keys = list({k for k in keys if k})
+        
+        # Generate URLs in parallel
+        tasks = [asyncio.to_thread(self.generate_presigned_url, key) for key in unique_keys]
+        urls = await asyncio.gather(*tasks)
+        
+        return {k: u for k, u in zip(unique_keys, urls, strict=False) if u}
+
     def extract_key_from_url(self, url_or_key: str) -> str:
         """
         Extract storage key from either a storage key or an old public URL.

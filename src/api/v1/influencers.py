@@ -1,5 +1,5 @@
 """AI Influencer endpoints"""
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 
 from src.core.dependencies import InfluencerServiceDep
 from src.models.responses import InfluencerResponse, ListInfluencersResponse
@@ -24,6 +24,7 @@ async def list_influencers(
     limit: int = Query(default=50, ge=1, le=100, description="Number of influencers to return"),
     offset: int = Query(default=0, ge=0, description="Number of influencers to skip"),
     influencer_service: InfluencerServiceDep = None,
+    response: Response = None,
 ):
     """\
     List all AI influencers
@@ -36,6 +37,9 @@ async def list_influencers(
         limit=limit,
         offset=offset,
     )
+
+    # Add cache headers for browser/CDN caching (5 minutes)
+    response.headers["Cache-Control"] = "public, max-age=300"
 
     influencer_responses = [
         InfluencerResponse(
@@ -76,6 +80,7 @@ async def list_influencers(
 async def get_influencer(
     influencer_id: str,
     influencer_service: InfluencerServiceDep = None,
+    response: Response = None,
 ):
     """\
     Get specific AI influencer details
@@ -83,6 +88,9 @@ async def get_influencer(
     No authentication required
     """
     influencer = await influencer_service.get_influencer(influencer_id)
+
+    # Add cache headers (5 minutes)
+    response.headers["Cache-Control"] = "public, max-age=300"
 
     return InfluencerResponse(
         id=influencer.id,

@@ -19,8 +19,8 @@ class InfluencerService:
         limit: int = 50,
         offset: int = 0
     ) -> tuple[list[AIInfluencer], int]:
-        """List all influencers (active and inactive, cached)"""
-        influencers = await self.influencer_repo.list_all(limit=limit, offset=offset)
+        """List active influencers (summary only, cached)"""
+        influencers = await self.influencer_repo.list_active_summary(limit=limit, offset=offset)
         total = await self.influencer_repo.count_all()
         return influencers, total
 

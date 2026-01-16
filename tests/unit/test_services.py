@@ -69,7 +69,7 @@ class TestInfluencerService:
         """
         # Step 1: Setup mock data
         influencers_list = [sample_influencer]
-        mock_repo.list_all = AsyncMock(return_value=influencers_list)
+        mock_repo.list_active_summary = AsyncMock(return_value=influencers_list)
         mock_repo.count_all = AsyncMock(return_value=1)
         
         # Step 2: Call the service
@@ -79,6 +79,7 @@ class TestInfluencerService:
         assert len(items) == 1
         assert items[0].id == sample_influencer.id
         assert total_count == 1
+
 
 # ============================================================================
 # StorageService Tests
@@ -174,6 +175,7 @@ class TestChatService:
         mock_repos["influencer"].get_by_id = AsyncMock(return_value=sample_influencer)
         mock_repos["conversation"].get_existing = AsyncMock(return_value=None) # No existing
         mock_repos["conversation"].create = AsyncMock(return_value=sample_conversation)
+        mock_repos["message"].create = AsyncMock() # Required for initial greeting
         
         # Step 2: Run the service logic
         conv, is_new = await service.create_conversation("user-456", sample_influencer.id)

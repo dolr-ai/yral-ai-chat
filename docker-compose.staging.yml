@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: yral-ai-chat-staging
     restart: unless-stopped
+    stop_grace_period: 30s
     ports:
       - "8001:8000"
     volumes:
@@ -13,6 +14,11 @@ services:
       # Persist logs (staging)
       - ./logs:/app/logs
       # Note: Media files are stored in S3, not locally
+    shm_size: '2gb'
+    deploy:
+      resources:
+        reservations:
+          memory: 1G
     environment:
       # Application Settings
       - APP_NAME=${APP_NAME:-Yral AI Chat API}
@@ -75,6 +81,7 @@ services:
       - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
       - SENTRY_PROFILES_SAMPLE_RATE=${SENTRY_PROFILES_SAMPLE_RATE:-0.0}
       - SENTRY_WEBHOOK_SECRET=${SENTRY_WEBHOOK_SECRET}
+      - GOOGLE_CHAT=${GOOGLE_CHAT}
 
       # Litestream Configuration
       - ENABLE_LITESTREAM=${ENABLE_LITESTREAM:-true}
@@ -102,8 +109,8 @@ services:
     ports:
       - "3001:3000"
     volumes:
-      # Mount SQLite databases for read and write access
-      - ./data:/data:rw
+      # Mount SQLite databases for read-only access (to prevent lock contention)
+      - ./data:/data:ro
       # Persist Metabase metadata (dashboards, queries, settings) - separate for staging
       - metabase-staging-data:/metabase-data
     environment:

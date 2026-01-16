@@ -30,12 +30,21 @@ class ConnectionPool:
         self.timeout = timeout
         self._pool: asyncio.Queue[aiosqlite.Connection] = asyncio.Queue(maxsize=pool_size)
         self._created_connections = 0
-
     async def initialize(self):
         """Initialize the connection pool"""
-        for _ in range(self.pool_size):
-            conn = await self._create_connection()
-            await self._pool.put(conn)
+        # Create first connection sequentially to ensure DB is in WAL mode and safe
+        # This prevents race conditions when multiple connections try to set journal_mode=WAL
+        if self.pool_size > 0:
+            first_conn = await self._create_connection()
+            await self._pool.put(first_conn)
+
+        # Create remaining connections in parallel
+        if self.pool_size > 1:
+            tasks = [self._create_connection() for _ in range(self.pool_size - 1)]
+            connections = await asyncio.gather(*tasks)
+            
+            for conn in connections:
+                await self._pool.put(conn)
 
     async def _create_connection(self) -> aiosqlite.Connection:
         """Create a new database connection"""
@@ -49,15 +58,20 @@ class ConnectionPool:
         await conn.execute("PRAGMA journal_mode = WAL")
         
         # Litestream optimization: Prevent WAL from growing too large
-        await conn.execute("PRAGMA wal_autocheckpoint = 1000")
-        await conn.execute("PRAGMA journal_size_limit = 4194304") # 4MB
+        await conn.execute("PRAGMA wal_autocheckpoint = 4000")
+        await conn.execute("PRAGMA journal_size_limit = 16777216") # 16MB
         
         # Timeout handling
         # We set a high busy_timeout to allow queuing during checkpoints
         actual_timeout = max(busy_timeout_ms, 60000)
         await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
         
+        # Performance tuning
         await conn.execute("PRAGMA synchronous = NORMAL")
+        await conn.execute("PRAGMA mmap_size = 268435456")  # 256MB
+        await conn.execute("PRAGMA cache_size = -20000")    # 20MB
+        await conn.execute("PRAGMA temp_store = MEMORY")
+
         
         # Verify timeout setting
         async with conn.execute("PRAGMA busy_timeout") as cursor:
@@ -175,7 +189,7 @@ class Database:
             for attempt in range(max_retries):
                 start_exec = time.time()
                 try:
-                    # Use BEGIN IMMEDIATE for write operations to avoid lock upgrade deadlocks
+                    # BEGIN IMMEDIATE to acquire write lock early and prevent deadlock
                     await conn.execute("BEGIN IMMEDIATE")
                     async with conn.execute(query, args) as cursor:
                         await conn.commit()
@@ -185,9 +199,11 @@ class Database:
                         
                         if total_duration_ms > 100:
                             logger.warning(
-                                f"Slow execute ({total_duration_ms}ms total, {exec_duration_ms}ms query, {wait_duration_ms}ms wait, attempt {attempt + 1}): {query[:200]}"
+                                f"Slow execute ({total_duration_ms}ms total, {exec_duration_ms}ms query, "
+                                f"{wait_duration_ms}ms wait, attempt {attempt + 1}): {query[:200]}"
                             )
                         return f"Rows affected: {cursor.rowcount}"
+
                 except Exception as e:
                     last_error = e
                     # Rollback on error

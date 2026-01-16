@@ -10,6 +10,7 @@ import sentry_sdk
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -17,10 +18,17 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from src.api.v1 import chat, health, influencers, media, sentry
 from src.config import settings
+from src.core.dependencies import (
+    get_conversation_repository,
+    get_influencer_repository,
+    get_message_repository,
+    get_storage_service,
+)
 from src.core.exceptions import BaseAPIException, ServiceUnavailableException
 from src.core.metrics import MetricsMiddleware, metrics_endpoint
 from src.db.base import DatabaseConnectionPoolTimeoutError, db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
+from src.middleware.timing import TimingMiddleware
 from src.middleware.versioning import APIVersionMiddleware
 
 # Improved detection for various test environments
@@ -32,7 +40,7 @@ is_running_tests = (
 # Use ENVIRONMENT variable directly for Sentry environment tagging
 sentry_env = settings.environment if settings.environment in ("production", "staging") else None
 
-# Sentry is disabled during pytest runs (is_running_tests=True) and development environments
+# Sentry is disabled during pytest runs and dev
 if not is_running_tests and settings.sentry_dsn and sentry_env:
     try:
         sentry_sdk.init(
@@ -48,7 +56,7 @@ if not is_running_tests and settings.sentry_dsn and sentry_env:
         logger.info(f"Sentry initialized for {sentry_env}")
     except Exception as e:
         logger.error(f"Failed to initialize Sentry: {e}")
-        logger.warning("Application will continue without Sentry error tracking")
+
 
 
 @asynccontextmanager
@@ -63,7 +71,21 @@ async def lifespan(app: FastAPI):
 
     await db.connect()
 
-    logger.info("All services initialized")
+    # Pre-warm dependencies
+    logger.info("Pre-warming service dependencies...")
+    get_conversation_repository()
+    get_influencer_repository()
+    get_message_repository()
+    get_storage_service()
+    
+    # Initialize AI clients
+    from src.services.gemini_client import GeminiClient
+    from src.services.openrouter_client import OpenRouterClient
+    app.state.gemini_client = GeminiClient()
+    app.state.openrouter_client = OpenRouterClient()
+    logger.info("AI clients initialized")
+
+    logger.info("All services initialized and warmed up")
 
     yield
 
@@ -71,6 +93,7 @@ async def lifespan(app: FastAPI):
     await db.disconnect()
     # GeminiClient instances and HTTP clients are cleaned up automatically
     logger.info("Shutdown complete")
+
 
 root_path: str | None = "/staging" if settings.environment == "staging" else None
 
@@ -125,9 +148,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Middleware stack (order matters - last added = first executed)
+# Timing should be outermost to capture total request time
+app.add_middleware(TimingMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(APIVersionMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # Compress responses larger than 1KB
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
