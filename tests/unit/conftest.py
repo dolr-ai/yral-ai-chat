@@ -13,7 +13,7 @@ from src.models.internal import AIProviderHealth
 def sample_influencer():
     """Create a sample AIInfluencer entity"""
     return AIInfluencer(
-        id="infl-123",
+        id="00000000-0000-0000-0000-000000000001",
         name="test_ai",
         display_name="Test AI",
         system_instructions="You are a helpful assistant.",
@@ -28,9 +28,9 @@ def sample_influencer():
 def sample_conversation():
     """Create a sample Conversation entity"""
     return Conversation(
-        id="conv-123",
+        id="00000000-1111-0000-0000-000000000001",
         user_id="user-456",
-        influencer_id="infl-123",
+        influencer_id="00000000-0000-0000-0000-000000000001",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
         metadata={"memories": {}}
@@ -40,8 +40,8 @@ def sample_conversation():
 def sample_message():
     """Create a sample Message entity"""
     return Message(
-        id="msg-789",
-        conversation_id="conv-123",
+        id="00000000-2222-0000-0000-000000000001",
+        conversation_id="00000000-1111-0000-0000-000000000001",
         role=MessageRole.USER,
         content="Hello world",
         message_type=MessageType.TEXT,

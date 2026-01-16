@@ -107,65 +107,40 @@ class ChatService:
             logger.error(f"Transcription failed: {e}")
             return "[Audio message - transcription failed]"
 
-    def _convert_storage_key_to_url(self, storage_key: str) -> str | None:
-        """Convert a storage key to presigned URL, or return None if conversion fails"""
-        if not self.storage_service:
-            return None
-        try:
-            s3_key = self.storage_service.extract_key_from_url(storage_key)
-            # If s3_key is still a full URL, it means it's external and not in our storage
-            if s3_key.startswith(("http://", "https://")):
-                logger.info(f"Media URL {storage_key} is external, returning as-is")
-                return storage_key
-            url = self.storage_service.generate_presigned_url(s3_key)
-            logger.info(f"Converted storage key {s3_key} to presigned URL: {url[:50]}...")
-            return url
-        except Exception as e:
-            logger.warning(f"Failed to convert storage key {storage_key} to presigned URL: {e}")
-            if storage_key.startswith(("http://", "https://")):
-                logger.info(f"Falling back to original URL: {storage_key}")
-                return storage_key
-            return None
-
-    def _convert_history_storage_keys(self, history: list[Message]) -> None:
-        """Convert storage keys to presigned URLs in message history"""
-        if not self.storage_service:
+    async def _convert_history_storage_keys_async(self, history: list[Message]) -> None:
+        """Convert storage keys to presigned URLs in message history asynchronously"""
+        if not self.storage_service or not history:
             return
-        
+            
+        all_keys = []
         for msg in history:
             if msg.media_urls and msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
-                converted_urls = []
                 for media_key in msg.media_urls:
-                    if media_key:
-                        url = self._convert_storage_key_to_url(media_key)
-                        if url:
-                            converted_urls.append(url)
-                msg.media_urls = converted_urls
-            
+                    if media_key and not media_key.startswith(("http://", "https://")):
+                        all_keys.append(media_key)
             if msg.audio_url and msg.message_type == MessageType.AUDIO:
-                url = self._convert_storage_key_to_url(msg.audio_url)
-                if url:
-                    msg.audio_url = url
-                elif not msg.audio_url.startswith(("http://", "https://")):
-                    msg.audio_url = None
-
-    def _convert_media_urls_for_ai(self, media_urls: list[str] | None) -> list[str] | None:
-        """Convert storage keys to presigned URLs for AI processing"""
-        if not media_urls:
-            return None
+                if msg.audio_url and not msg.audio_url.startswith(("http://", "https://")):
+                    all_keys.append(msg.audio_url)
         
-        if not self.storage_service:
+        if not all_keys:
+            return
+            
+        url_map = await self.storage_service.generate_presigned_urls_batch(all_keys)
+        
+        # Apply the map back to the history
+        for msg in history:
+            if msg.media_urls and msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
+                msg.media_urls = [url_map.get(k, k) for k in msg.media_urls]
+            if msg.audio_url and msg.message_type == MessageType.AUDIO:
+                msg.audio_url = url_map.get(msg.audio_url, msg.audio_url)
+
+    async def _convert_media_urls_for_ai_async(self, media_urls: list[str] | None) -> list[str] | None:
+        """Convert storage keys to presigned URLs for AI processing asynchronously"""
+        if not media_urls or not self.storage_service:
             return media_urls
         
-        converted_urls = []
-        for media_key in media_urls:
-            if media_key:
-                url = self._convert_storage_key_to_url(media_key)
-                if url:
-                    converted_urls.append(url)
-                else:
-                    logger.error(f"Cannot use storage key as URL: {media_key}")
-        return converted_urls if converted_urls else None
+        url_map = await self.storage_service.generate_presigned_urls_batch(media_urls)
+        return [url_map.get(k, k) for k in media_urls]
 
     async def _update_conversation_memories(
         self,
@@ -253,7 +228,7 @@ class ChatService:
         )
         history = [msg for msg in all_recent if msg.id != user_message.id][:10]
 
-        self._convert_history_storage_keys(history)
+        await self._convert_history_storage_keys_async(history)
 
         ai_input_content = str(content or transcribed_content or "What do you think?")
 
@@ -266,7 +241,7 @@ class ChatService:
 
         media_urls_for_ai = None
         if message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and media_urls:
-            media_urls_for_ai = self._convert_media_urls_for_ai(media_urls)
+            media_urls_for_ai = await self._convert_media_urls_for_ai_async(media_urls)
 
         try:
             # Select appropriate AI client based on influencer's NSFW status
