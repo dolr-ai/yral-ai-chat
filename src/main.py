@@ -20,10 +20,8 @@ from src.api.v1 import chat, health, influencers, media, sentry
 from src.config import settings
 from src.core.dependencies import (
     get_conversation_repository,
-    get_gemini_client,
     get_influencer_repository,
     get_message_repository,
-    get_openrouter_client,
     get_storage_service,
 )
 from src.core.exceptions import BaseAPIException
