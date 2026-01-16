@@ -118,9 +118,12 @@ class ChatService:
                 for media_key in msg.media_urls:
                     if media_key and not media_key.startswith(("http://", "https://")):
                         all_keys.append(media_key)
-            if msg.audio_url and msg.message_type == MessageType.AUDIO:
-                if msg.audio_url and not msg.audio_url.startswith(("http://", "https://")):
-                    all_keys.append(msg.audio_url)
+            if (
+                msg.audio_url
+                and msg.message_type == MessageType.AUDIO
+                and not msg.audio_url.startswith(("http://", "https://"))
+            ):
+                all_keys.append(msg.audio_url)
         
         if not all_keys:
             return
