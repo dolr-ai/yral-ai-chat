@@ -58,6 +58,7 @@ if not is_running_tests and settings.sentry_dsn and sentry_env:
         logger.warning("Application will continue without Sentry error tracking")
 
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -72,17 +73,19 @@ async def lifespan(app: FastAPI):
 
     # Pre-warm frequently used dependencies to reduce first-request latency
     # This initializes lru_cache instances for repositories
-
     logger.info("Pre-warming service dependencies...")
     get_conversation_repository()
     get_influencer_repository()
     get_message_repository()
     get_storage_service()
-    # Note: AI clients are NOT pre-warmed to reduce startup time
-    # They initialize lazily on first use via lru_cache
-
-
-
+    
+    # Initialize AI clients once and store in app state
+    # This ensures they're created with the correct event loop and reused across requests
+    from src.services.gemini_client import GeminiClient
+    from src.services.openrouter_client import OpenRouterClient
+    app.state.gemini_client = GeminiClient()
+    app.state.openrouter_client = OpenRouterClient()
+    logger.info("AI clients initialized")
 
     logger.info("All services initialized and warmed up")
 
@@ -92,6 +95,7 @@ async def lifespan(app: FastAPI):
     await db.disconnect()
     # GeminiClient instances and HTTP clients are cleaned up automatically
     logger.info("Shutdown complete")
+
 
 root_path: str | None = "/staging" if settings.environment == "staging" else None
 
