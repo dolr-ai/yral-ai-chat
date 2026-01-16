@@ -74,14 +74,14 @@ async def lifespan(app: FastAPI):
     await db.connect()
 
     # Pre-warm frequently used dependencies to reduce first-request latency
-    # This initializes lru_cache instances for repositories and AI clients
+    # This initializes lru_cache instances for repositories
     logger.info("Pre-warming service dependencies...")
     get_conversation_repository()
     get_influencer_repository()
     get_message_repository()
     get_storage_service()
-    get_gemini_client()
-    get_openrouter_client()
+    # Note: AI clients are NOT pre-warmed to reduce startup time
+    # They initialize lazily on first use via lru_cache
 
 
     logger.info("All services initialized and warmed up")

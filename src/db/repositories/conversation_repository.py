@@ -184,6 +184,7 @@ class ConversationRepository:
         
         query = f"""
             SELECT
+
                 m1.conversation_id,
                 m1.content,
                 m1.role,
@@ -197,6 +198,7 @@ class ConversationRepository:
             ) m2 ON m1.conversation_id = m2.conversation_id
                 AND m1.created_at = m2.max_created
         """  # noqa: S608
+
         
         rows = await db.fetch(query, *id_strings)
         
