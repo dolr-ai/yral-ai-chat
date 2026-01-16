@@ -108,18 +108,13 @@ class Database:
 
     @staticmethod
     def _resolve_db_path(db_path: str) -> str:
-        """Resolve relative database path to absolute path based on project root"""
-        if Path(db_path).is_absolute():
+        """Resolve database path, preserving ':memory:' or absolute paths"""
+        if db_path == ":memory:" or Path(db_path).is_absolute():
             return db_path
         
         # Use /app in Docker, otherwise resolve relative to project root
-        if Path("/app").exists() and Path("/app/migrations").exists():
-            project_root = Path("/app")
-        else:
-            project_root = Path(__file__).parent.parent.parent
-        
-        resolved_path = (project_root / db_path).resolve()
-        return str(resolved_path)
+        project_root = Path("/app") if Path("/app/migrations").exists() else Path(__file__).parent.parent.parent
+        return str((project_root / db_path).resolve())
 
     async def connect(self) -> None:
         """Create database connection pool"""
