@@ -183,7 +183,7 @@ class ConversationRepository:
         placeholders = ", ".join([f"${i+1}" for i in range(len(id_strings))])
         
         query = f"""
-            SELECT 
+            SELECT
                 m1.conversation_id,
                 m1.content,
                 m1.role,
@@ -194,9 +194,9 @@ class ConversationRepository:
                 FROM messages
                 WHERE conversation_id IN ({placeholders})
                 GROUP BY conversation_id
-            ) m2 ON m1.conversation_id = m2.conversation_id 
+            ) m2 ON m1.conversation_id = m2.conversation_id
                 AND m1.created_at = m2.max_created
-        """
+        """  # noqa: S608
         
         rows = await db.fetch(query, *id_strings)
         

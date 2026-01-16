@@ -182,7 +182,6 @@ class Database:
             raise RuntimeError("Database connection pool not initialized")
         query = self._convert_query(query)
         conn = await self._pool.acquire()
-        start_time = time.time()
         max_retries = 10
         retry_delay = 0.2
         last_error: Exception | None = None
