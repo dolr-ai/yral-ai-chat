@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: yral-ai-chat-staging
     restart: unless-stopped
+    stop_grace_period: 30s
     ports:
       - "8001:8000"
     volumes:
