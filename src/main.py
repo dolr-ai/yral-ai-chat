@@ -27,6 +27,7 @@ from src.core.dependencies import (
     get_storage_service,
 )
 from src.core.exceptions import BaseAPIException
+from src.core.metrics import MetricsMiddleware, metrics_endpoint
 
 from src.db.base import db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
