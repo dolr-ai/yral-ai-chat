@@ -1,11 +1,13 @@
 """
 Unit tests for CharacterGeneratorService
 """
-from unittest.mock import AsyncMock, MagicMock
+
+from unittest.mock import AsyncMock
 
 import pytest
 
 from src.core.exceptions import AIServiceException
+from src.models.internal import AIResponse, LLMGenerateParams
 from src.services.character_generator import CharacterGeneratorService
 
 
@@ -21,17 +23,14 @@ def mock_replicate_client():
 
 @pytest.fixture
 def character_service(mock_gemini_client, mock_replicate_client):
-    return CharacterGeneratorService(
-        gemini_client=mock_gemini_client,
-        replicate_client=mock_replicate_client
-    )
+    return CharacterGeneratorService(gemini_client=mock_gemini_client, replicate_client=mock_replicate_client)
 
 
 @pytest.mark.asyncio
 async def test_generate_system_instructions_success(character_service, mock_gemini_client):
     """Test successful system instruction generation"""
     # Setup mock
-    mock_gemini_client.generate_response.return_value = ("You are a pirate...", 100)
+    mock_gemini_client.generate_response.return_value = AIResponse(text="You are a pirate...", token_count=100)
 
     # Execute
     result = await character_service.generate_system_instructions("a pirate")
@@ -39,9 +38,10 @@ async def test_generate_system_instructions_success(character_service, mock_gemi
     # Assert
     assert result.system_instructions == "You are a pirate..."
     mock_gemini_client.generate_response.assert_called_once()
-    args = mock_gemini_client.generate_response.call_args
-    assert "a pirate" in args.kwargs["user_message"]
-    assert args.kwargs["max_tokens"] == 2048
+    params = mock_gemini_client.generate_response.call_args.args[0]
+    assert isinstance(params, LLMGenerateParams)
+    assert "a pirate" in params.user_message
+    assert params.max_tokens == 2048
 
 
 @pytest.mark.asyncio
@@ -56,7 +56,7 @@ async def test_validate_metadata_success_valid(character_service, mock_gemini_cl
         "image_prompt": "A cool pirate"
     }
     """
-    mock_gemini_client.generate_response.return_value = (mock_response_json, 150)
+    mock_gemini_client.generate_response.return_value = AIResponse(text=mock_response_json, token_count=150)
     mock_replicate_client.generate_image.return_value = "https://example.com/avatar.jpg"
 
     # Execute
@@ -79,7 +79,7 @@ async def test_validate_metadata_invalid_nsfw(character_service, mock_gemini_cli
         "reason": "NSFW content detected"
     }
     """
-    mock_gemini_client.generate_response.return_value = (mock_response_json, 50)
+    mock_gemini_client.generate_response.return_value = AIResponse(text=mock_response_json, token_count=50)
 
     # Execute
     result = await character_service.validate_and_generate_metadata("Some sketchy instructions...")
@@ -99,5 +99,5 @@ async def test_validate_metadata_gemini_error(character_service, mock_gemini_cli
     # Execute & Assert
     with pytest.raises(AIServiceException) as exc:
         await character_service.validate_and_generate_metadata("test")
-    
+
     assert "Failed to process character metadata" in str(exc.value)

@@ -1,6 +1,7 @@
 """
 Integration tests for character creation flow
 """
+
 import json
 from unittest.mock import AsyncMock
 
@@ -8,18 +9,17 @@ import pytest
 
 from src.core.dependencies import get_gemini_client, get_replicate_client
 from src.main import app
+from src.models.internal import AIResponse
 
 
 @pytest.fixture
 def mock_gemini():
-    mock = AsyncMock()
-    return mock
+    return AsyncMock()
 
 
 @pytest.fixture
 def mock_replicate():
-    mock = AsyncMock()
-    return mock
+    return AsyncMock()
 
 
 @pytest.fixture(autouse=True)
@@ -39,14 +39,11 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     3. Create
     4. Retrieve
     """
-    
+
     # --- Step 1: Generate Prompt ---
-    mock_gemini.generate_response.return_value = ("You are a master hacker named Neo.", 100)
-    
-    response = client.post(
-        "/api/v1/influencers/generate-prompt",
-        json={"prompt": "cyberpunk hacker"}
-    )
+    mock_gemini.generate_response.return_value = AIResponse(text="You are a master hacker named Neo.", token_count=100)
+
+    response = client.post("/api/v1/influencers/generate-prompt", json={"prompt": "cyberpunk hacker"})
     assert response.status_code == 200
     data = response.json()
     assert "system_instructions" in data
@@ -63,14 +60,13 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
         "suggested_messages": ["Follow the white rabbit"],
         "personality_traits": {"coding": "expert"},
         "category": "Sci-Fi",
-        "image_prompt": "Neo hacker portrait"
+        "image_prompt": "Neo hacker portrait",
     }
-    mock_gemini.generate_response.return_value = (json.dumps(mock_metadata), 150)
+    mock_gemini.generate_response.return_value = AIResponse(text=json.dumps(mock_metadata), token_count=150)
     mock_replicate.generate_image.return_value = "https://example.com/neo.jpg"
 
     response = client.post(
-        "/api/v1/influencers/validate-and-generate-metadata",
-        json={"system_instructions": system_instructions}
+        "/api/v1/influencers/validate-and-generate-metadata", json={"system_instructions": system_instructions}
     )
     assert response.status_code == 200
     data = response.json()
@@ -78,25 +74,22 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     assert data["name"] == "neo_hacker"
     assert data["avatar_url"] == "https://example.com/neo.jpg"
     assert "system_instructions" not in data
-    
+
     # --- Step 3: Create ---
     create_req = {
         "name": data["name"],
         "display_name": data["display_name"],
         "description": data["bio"],
-        "system_instructions": system_instructions, # Use the instructions from Step 1
+        "system_instructions": system_instructions,  # Use the instructions from Step 1
         "initial_greeting": data["initial_greeting"],
         "suggested_messages": data["suggested_messages"],
         "personality_traits": data["personality_traits"],
         "category": data["category"],
         "avatar_url": data["avatar_url"],
-        "is_nsfw": False
+        "is_nsfw": False,
     }
-    
-    response = client.post(
-        "/api/v1/influencers/create",
-        json=create_req
-    )
+
+    response = client.post("/api/v1/influencers/create", json=create_req)
     assert response.status_code == 200
     created_data = response.json()
     assert created_data["name"] == "neo_hacker"
@@ -112,18 +105,14 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
 
 def test_character_creation_nsfw_rejection(client, mock_gemini):
     """Test that NSFW content is rejected during validation step"""
-    
-    mock_nsfw_response = {
-        "is_valid": False,
-        "reason": "NSFW content detected"
-    }
-    mock_gemini.generate_response.return_value = (json.dumps(mock_nsfw_response), 50)
+
+    mock_nsfw_response = {"is_valid": False, "reason": "NSFW content detected"}
+    mock_gemini.generate_response.return_value = AIResponse(text=json.dumps(mock_nsfw_response), token_count=50)
 
     response = client.post(
-        "/api/v1/influencers/validate-and-generate-metadata",
-        json={"system_instructions": "Some NSFW instructions..."}
+        "/api/v1/influencers/validate-and-generate-metadata", json={"system_instructions": "Some NSFW instructions..."}
     )
-    assert response.status_code == 200 # API returns 200 but is_valid is False
+    assert response.status_code == 200  # API returns 200 but is_valid is False
     data = response.json()
     assert data["is_valid"] is False
     assert "NSFW" in data["reason"]

@@ -1,6 +1,7 @@
 """
 Central dependency injection for FastAPI
 """
+
 from typing import Annotated
 
 from fastapi import Depends
@@ -73,7 +74,7 @@ def get_chat_service(
 
 
 def get_influencer_service(
-    influencer_repo: Annotated[InfluencerRepository, Depends(get_influencer_repository)]
+    influencer_repo: Annotated[InfluencerRepository, Depends(get_influencer_repository)],
 ) -> InfluencerService:
     """Get influencer service instance with injected dependencies"""
     return InfluencerService(influencer_repo=influencer_repo)
@@ -84,10 +85,7 @@ def get_character_generator_service(
     replicate_client: Annotated[ReplicateClient, Depends(get_replicate_client)],
 ) -> CharacterGeneratorService:
     """Get character generator service instance"""
-    return CharacterGeneratorService(
-        gemini_client=gemini_client,
-        replicate_client=replicate_client
-    )
+    return CharacterGeneratorService(gemini_client=gemini_client, replicate_client=replicate_client)
 
 
 def get_ai_provider_health_service(
@@ -95,10 +93,7 @@ def get_ai_provider_health_service(
     openrouter_client: Annotated[OpenRouterClient, Depends(get_openrouter_client)],
 ) -> AIProviderHealthService:
     """Get AI provider health service instance"""
-    return AIProviderHealthService(
-        gemini_client=gemini_client,
-        openrouter_client=openrouter_client
-    )
+    return AIProviderHealthService(gemini_client=gemini_client, openrouter_client=openrouter_client)
 
 
 ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
@@ -112,4 +107,3 @@ ReplicateClientDep = Annotated[ReplicateClient, Depends(get_replicate_client)]
 ConversationRepositoryDep = Annotated[ConversationRepository, Depends(get_conversation_repository)]
 InfluencerRepositoryDep = Annotated[InfluencerRepository, Depends(get_influencer_repository)]
 MessageRepositoryDep = Annotated[MessageRepository, Depends(get_message_repository)]
-

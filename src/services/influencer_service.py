@@ -1,6 +1,9 @@
 """
 Influencer service - Business logic for AI influencers
 """
+
+from pydantic import validate_call
+
 from src.core.cache import cached
 from src.core.exceptions import NotFoundException
 from src.db.repositories import InfluencerRepository
@@ -13,17 +16,15 @@ class InfluencerService:
     def __init__(self, influencer_repo: InfluencerRepository):
         self.influencer_repo = influencer_repo
 
+    @validate_call
     @cached(ttl=600, key_prefix="influencers")  # Cache for 10 minutes
-    async def list_influencers(
-        self,
-        limit: int = 50,
-        offset: int = 0
-    ) -> tuple[list[AIInfluencer], int]:
+    async def list_influencers(self, limit: int = 50, offset: int = 0) -> tuple[list[AIInfluencer], int]:
         """List all influencers (active and inactive, cached)"""
         influencers = await self.influencer_repo.list_all(limit=limit, offset=offset)
         total = await self.influencer_repo.count_all()
         return influencers, total
 
+    @validate_call
     @cached(ttl=300, key_prefix="influencer")  # Cache for 5 minutes
     async def get_influencer(self, influencer_id: str) -> AIInfluencer:
         """Get influencer by ID with conversation count (cached)"""
@@ -32,41 +33,39 @@ class InfluencerService:
             raise NotFoundException("Influencer not found")
         return influencer
 
+    @validate_call
     @cached(ttl=600, key_prefix="is_nsfw")  # Cache for 10 minutes
     async def is_nsfw(self, influencer_id: str) -> bool:
         """Check if an influencer is tagged as NSFW"""
         return await self.influencer_repo.is_nsfw(influencer_id)
 
+    @validate_call
     @cached(ttl=600, key_prefix="nsfw_influencers")  # Cache for 10 minutes
-    async def list_nsfw_influencers(
-        self,
-        limit: int = 50,
-        offset: int = 0
-    ) -> tuple[list[AIInfluencer], int]:
+    async def list_nsfw_influencers(self, limit: int = 50, offset: int = 0) -> tuple[list[AIInfluencer], int]:
         """List all NSFW influencers (cached)"""
         influencers = await self.influencer_repo.list_nsfw(limit=limit, offset=offset)
         total = await self.influencer_repo.count_nsfw()
         return influencers, total
 
+    @validate_call(config={"arbitrary_types_allowed": True})
     async def get_ai_provider_for_influencer(self, influencer: AIInfluencer) -> str:
         """
         Determine which AI provider should be used for this influencer
-        
+
         Args:
             influencer: The influencer entity
-            
+
         Returns:
             "openrouter" for NSFW influencers, "gemini" otherwise
         """
         return "openrouter" if influencer.is_nsfw else "gemini"
-        
+
+    @validate_call(config={"arbitrary_types_allowed": True})
     async def create_influencer(self, influencer: AIInfluencer) -> AIInfluencer:
         """Create a new influencer and clear cache"""
         created = await self.influencer_repo.create(influencer)
         # Clear caches
         self.list_influencers.invalidate_all()
         if created.is_nsfw:
-             self.list_nsfw_influencers.invalidate_all()
+            self.list_nsfw_influencers.invalidate_all()
         return created
-
-

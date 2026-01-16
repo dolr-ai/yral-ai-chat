@@ -1,6 +1,7 @@
 """
 Repository for AI Influencer operations
 """
+
 import json
 
 from src.db.base import db
@@ -185,16 +186,16 @@ class InfluencerRepository:
             )
             RETURNING *
         """
-        
+
         # Serialize dicts/lists to JSON strings
         personality_traits_json = json.dumps(influencer.personality_traits)
         suggested_messages_json = json.dumps(influencer.suggested_messages)
         metadata_json = json.dumps(influencer.metadata)
-        
+
         # Convert enum/bool to db format
         is_active_str = influencer.is_active.value
         is_nsfw_int = 1 if influencer.is_nsfw else 0
-        
+
         row = await db.fetchone(
             query,
             influencer.id,
@@ -211,13 +212,10 @@ class InfluencerRepository:
             is_nsfw_int,
             influencer.created_at,
             influencer.updated_at,
-            metadata_json
+            metadata_json,
         )
-        
+
         if not row:
             raise RuntimeError("Failed to create influencer")
-            
+
         return self._row_to_influencer(row)
-
-
-

@@ -10,9 +10,14 @@ Set TEST_API_URL environment variable to test against remote APIs:
 
 Note: Make sure src/config.py has media_upload_dir and media_base_url fields.
 """
+
 import base64
 import json
 import os
+import sqlite3
+import subprocess
+import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -85,26 +90,27 @@ def auth_headers():
 
 class RemoteClient:
     """HTTP client wrapper for testing remote APIs - compatible with TestClient interface"""
+
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
-    
+
     def get(self, path: str, **kwargs):
         """GET request - returns requests.Response (compatible with TestClient)"""
         return self.session.get(f"{self.base_url}{path}", **kwargs)
-    
+
     def post(self, path: str, **kwargs):
         """POST request - returns requests.Response (compatible with TestClient)"""
         return self.session.post(f"{self.base_url}{path}", **kwargs)
-    
+
     def put(self, path: str, **kwargs):
         """PUT request - returns requests.Response (compatible with TestClient)"""
         return self.session.put(f"{self.base_url}{path}", **kwargs)
-    
+
     def delete(self, path: str, **kwargs):
         """DELETE request - returns requests.Response (compatible with TestClient)"""
         return self.session.delete(f"{self.base_url}{path}", **kwargs)
-    
+
     def patch(self, path: str, **kwargs):
         """PATCH request - returns requests.Response (compatible with TestClient)"""
         return self.session.patch(f"{self.base_url}{path}", **kwargs)
@@ -116,33 +122,26 @@ def _setup_test_database():
     Setup test database - use in-memory database or separate file per worker.
     This runs once per test session.
     """
-    import subprocess
-    import sys
-    import tempfile
-    
     # Use separate file per pytest worker for parallel execution to avoid locking issues
     worker_id = os.getenv("PYTEST_XDIST_WORKER", "gw0")
     temp_dir = Path(tempfile.gettempdir())
     test_db_path = str(temp_dir / f"yral_chat_test_{worker_id}.db")
-    
+
     # Set environment variable for test database
     os.environ["TEST_DATABASE_PATH"] = test_db_path
-    
+
     # Only run migrations if using local database (not remote API)
     if not os.getenv("TEST_API_URL"):
         # Check if database has tables
-        import sqlite3
         try:
             if Path(test_db_path).exists():
                 conn = sqlite3.connect(test_db_path)
-                cursor = conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_influencers'"
-                )
+                cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_influencers'")
                 has_tables = cursor.fetchone() is not None
                 conn.close()
             else:
                 has_tables = False
-            
+
             if not has_tables:
                 # Script path is hardcoded and safe - no user input
                 migration_script = Path(__file__).parent.parent / "scripts" / "run_migrations.py"
@@ -150,15 +149,16 @@ def _setup_test_database():
                     [sys.executable, str(migration_script)],
                     env={**os.environ, "DATABASE_PATH": test_db_path},
                     capture_output=True,
-                    text=True, check=False
+                    text=True,
+                    check=False,
                 )
                 if result.returncode != 0:
                     pass
         except Exception:
             pass
-    
+
     yield
-    
+
     # Cleanup: remove test database files after tests
     if test_db_path != ":memory:" and Path(test_db_path).exists():
         try:
@@ -171,18 +171,19 @@ def _setup_test_database():
 def client():
     """
     Client fixture - supports both local (TestClient) and remote (HTTP) testing
-    
+
     Set TEST_API_URL environment variable to test against remote APIs:
       TEST_API_URL=https://staging.example.com pytest
     """
     test_api_url = os.getenv("TEST_API_URL")
-    
+
     if test_api_url:
         # Remote mode: test against staging/prod
         yield RemoteClient(test_api_url)
     else:
         # Local mode: use TestClient (no uvicorn needed)
         from src.main import app
+
         with TestClient(app) as test_client:
             yield test_client
 
@@ -206,9 +207,7 @@ def test_conversation_id(client, test_influencer_id, auth_headers):
     Create a test conversation and return its ID
     """
     response = client.post(
-        "/api/v1/chat/conversations",
-        json={"influencer_id": test_influencer_id},
-        headers=auth_headers
+        "/api/v1/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
     )
     assert response.status_code == 201
     data = response.json()
@@ -222,9 +221,7 @@ def clean_conversation_id(client, test_influencer_id, auth_headers):
     """
     # Create conversation
     response = client.post(
-        "/api/v1/chat/conversations",
-        json={"influencer_id": test_influencer_id},
-        headers=auth_headers
+        "/api/v1/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
     )
     assert response.status_code == 201
     conversation_id = response.json()["id"]

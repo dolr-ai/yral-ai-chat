@@ -2,6 +2,7 @@
 Simplified unit tests for provider selection and NSFW routing.
 We focus on making the decision logic transparent.
 """
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

@@ -5,6 +5,7 @@ Export OpenAPI specification to YAML file
 Usage:
     python scripts/export_openapi_spec.py
 """
+
 import json
 import sys
 from pathlib import Path

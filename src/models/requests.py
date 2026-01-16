@@ -1,6 +1,7 @@
 """
 Request models for API endpoints
 """
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.models.entities import MessageType
@@ -8,29 +9,25 @@ from src.models.entities import MessageType
 
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation"""
+
     model_config = ConfigDict(
         str_strip_whitespace=True,
         use_enum_values=False,
         validate_assignment=True,
         arbitrary_types_allowed=False,
-        json_schema_extra={
-            "examples": [
-                {
-                    "influencer_id": "550e8400-e29b-41d4-a716-446655440000"
-                }
-            ]
-        }
+        json_schema_extra={"examples": [{"influencer_id": "550e8400-e29b-41d4-a716-446655440000"}]},
     )
 
     influencer_id: str = Field(
         ...,
         description="ID of the AI influencer (UUID or IC Principal)",
-        examples=["550e8400-e29b-41d4-a716-446655440000"]
+        examples=["550e8400-e29b-41d4-a716-446655440000"],
     )
 
 
 class SendMessageRequest(BaseModel):
     """Request to send a message in a conversation"""
+
     model_config = ConfigDict(
         str_strip_whitespace=True,
         use_enum_values=False,
@@ -43,54 +40,48 @@ class SendMessageRequest(BaseModel):
                     "content": "Hello! How are you today?",
                     "media_urls": None,
                     "audio_url": None,
-                    "audio_duration_seconds": None
+                    "audio_duration_seconds": None,
                 },
                 {
                     "message_type": "IMAGE",
                     "content": "What's in this image?",
                     "media_urls": ["https://example.com/image.jpg"],
                     "audio_url": None,
-                    "audio_duration_seconds": None
+                    "audio_duration_seconds": None,
                 },
                 {
                     "message_type": "AUDIO",
                     "content": "",
                     "media_urls": None,
                     "audio_url": "https://example.com/audio.mp3",
-                    "audio_duration_seconds": 45
-                }
+                    "audio_duration_seconds": 45,
+                },
             ]
-        }
+        },
     )
 
     message_type: MessageType = Field(
-        ...,
-        description="Type of message: TEXT, IMAGE, MULTIMODAL, or AUDIO",
-        examples=["TEXT"]
+        ..., description="Type of message: TEXT, IMAGE, MULTIMODAL, or AUDIO", examples=["TEXT"]
     )
     content: str | None = Field(
         default="",
         max_length=4000,
         description="Message text content (optional for image/audio-only messages)",
-        examples=["Hello! How are you today?"]
+        examples=["Hello! How are you today?"],
     )
     media_urls: list[str] | None = Field(
         default=None,
         max_length=10,
         description="Array of storage keys from the upload endpoint (max 10). These are the storage_key values returned by POST /api/v1/media/upload.",
-        examples=[["user123/550e8400-e29b-41d4-a716-446655440000.jpg"]]
+        examples=[["user123/550e8400-e29b-41d4-a716-446655440000.jpg"]],
     )
     audio_url: str | None = Field(
         default=None,
         description="Storage key from the upload endpoint. This is the storage_key value returned by POST /api/v1/media/upload.",
-        examples=["user123/550e8400-e29b-41d4-a716-446655440000.mp3"]
+        examples=["user123/550e8400-e29b-41d4-a716-446655440000.mp3"],
     )
     audio_duration_seconds: int | None = Field(
-        default=None,
-        ge=0,
-        le=300,
-        description="Audio duration in seconds (max 300)",
-        examples=[45]
+        default=None, ge=0, le=300, description="Audio duration in seconds (max 300)", examples=[45]
     )
 
     @field_validator("message_type", mode="before")
@@ -182,6 +173,7 @@ class SendMessageRequest(BaseModel):
 
 class GeneratePromptRequest(BaseModel):
     """Request to generate system instructions from a prompt"""
+
     model_config = ConfigDict(str_strip_whitespace=True)
 
     prompt: str = Field(..., max_length=1000, description="Character concept prompt", examples=["a geeky teacher"])
@@ -189,6 +181,7 @@ class GeneratePromptRequest(BaseModel):
 
 class ValidateMetadataRequest(BaseModel):
     """Request to validate instructions and generate metadata"""
+
     model_config = ConfigDict(str_strip_whitespace=True)
 
     system_instructions: str = Field(..., description="System instructions to validate")
@@ -196,6 +189,7 @@ class ValidateMetadataRequest(BaseModel):
 
 class CreateInfluencerRequest(BaseModel):
     """Request to create a new influencer"""
+
     model_config = ConfigDict(str_strip_whitespace=True)
 
     name: str = Field(..., min_length=1, max_length=50, description="Internal name (slug)")
@@ -208,6 +202,3 @@ class CreateInfluencerRequest(BaseModel):
     category: str | None = Field(None, description="Character category")
     avatar_url: str | None = Field(None, description="URL of the avatar image")
     is_nsfw: bool = Field(default=False, description="Whether the character is NSFW (Ignored: Enforced to False)")
-
-
-

@@ -2,6 +2,7 @@
 Database connection management using aiosqlite (SQLite)
 Configured for use with Litestream for real-time S3 backups
 """
+
 import asyncio
 import os
 import re
@@ -40,31 +41,30 @@ class ConnectionPool:
     async def _create_connection(self) -> aiosqlite.Connection:
         """Create a new database connection"""
         busy_timeout_ms = int(self.timeout * 1000)
-        conn = await aiosqlite.connect(
-            self.db_path,
-            timeout=busy_timeout_ms / 1000.0
-        )
+        conn = await aiosqlite.connect(self.db_path, timeout=busy_timeout_ms / 1000.0)
 
         await conn.execute("PRAGMA foreign_keys = ON")
         await conn.execute("PRAGMA journal_mode = WAL")
-        
+
         # Litestream optimization: Prevent WAL from growing too large
         await conn.execute("PRAGMA wal_autocheckpoint = 1000")
-        await conn.execute("PRAGMA journal_size_limit = 4194304") # 4MB
-        
+        await conn.execute("PRAGMA journal_size_limit = 4194304")  # 4MB
+
         # Timeout handling
         # We set a high busy_timeout to allow queuing during checkpoints
         actual_timeout = max(busy_timeout_ms, 60000)
         await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
-        
+
         await conn.execute("PRAGMA synchronous = NORMAL")
-        
+
         # Verify timeout setting
         async with conn.execute("PRAGMA busy_timeout") as cursor:
             row = await cursor.fetchone()
             timeout_setting = row[0] if row else "unknown"
-            if self._created_connections == 0: # Only log for the first connection to reduce noise
-                logger.info(f"Database initialized with busy_timeout={timeout_setting}ms (requested={actual_timeout}ms)")
+            if self._created_connections == 0:  # Only log for the first connection to reduce noise
+                logger.info(
+                    f"Database initialized with busy_timeout={timeout_setting}ms (requested={actual_timeout}ms)"
+                )
 
         conn.row_factory = aiosqlite.Row
 
@@ -74,10 +74,7 @@ class ConnectionPool:
     async def acquire(self) -> aiosqlite.Connection:
         """Acquire a connection from the pool"""
         try:
-            return await asyncio.wait_for(
-                self._pool.get(),
-                timeout=self.timeout
-            )
+            return await asyncio.wait_for(self._pool.get(), timeout=self.timeout)
         except TimeoutError as e:
             logger.error("Timeout waiting for database connection from pool")
             raise DatabaseConnectionPoolTimeoutError("Database connection pool timeout") from e
@@ -111,13 +108,13 @@ class Database:
         """Resolve relative database path to absolute path based on project root"""
         if Path(db_path).is_absolute():
             return db_path
-        
+
         # Use /app in Docker, otherwise resolve relative to project root
         if Path("/app").exists() and Path("/app/migrations").exists():
             project_root = Path("/app")
         else:
             project_root = Path(__file__).parent.parent.parent
-        
+
         resolved_path = (project_root / db_path).resolve()
         return str(resolved_path)
 
@@ -126,21 +123,16 @@ class Database:
         try:
             raw_db_path = os.getenv("TEST_DATABASE_PATH", settings.database_path)
             self.db_path = self._resolve_db_path(raw_db_path)
-            
+
             if self.db_path != ":memory:":
                 Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
             self._pool = ConnectionPool(
-                db_path=self.db_path,
-                pool_size=settings.database_pool_size,
-                timeout=settings.database_pool_timeout
+                db_path=self.db_path, pool_size=settings.database_pool_size, timeout=settings.database_pool_timeout
             )
             await self._pool.initialize()
 
-            logger.info(
-                f"Connected to SQLite database: {self.db_path} "
-                f"(pool size: {settings.database_pool_size})"
-            )
+            logger.info(f"Connected to SQLite database: {self.db_path} " f"(pool size: {settings.database_pool_size})")
 
             conn = await self._pool.acquire()
             try:
@@ -172,7 +164,7 @@ class Database:
         max_retries = 10
         retry_delay = 0.2
         last_error: Exception | None = None
-        
+
         try:
             for attempt in range(max_retries):
                 try:
@@ -185,7 +177,7 @@ class Database:
                 except Exception as e:
                     last_error = e
                     error_str = str(e).lower()
-                    
+
                     # Always rollback on any execution error to prevent transaction leaks
                     try:
                         await conn.rollback()
@@ -195,11 +187,13 @@ class Database:
                     if ("database is locked" in error_str or "locked" in error_str) and attempt < max_retries - 1:
                         # Random jitter to prevent thundering herd
                         # Increased backoff: 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8...
-                        actual_delay = retry_delay * (2 ** attempt) + (secrets.SystemRandom().random() * 0.5)
-                        logger.warning(f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})")
+                        actual_delay = retry_delay * (2**attempt) + (secrets.SystemRandom().random() * 0.5)
+                        logger.warning(
+                            f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})"
+                        )
                         await asyncio.sleep(actual_delay)
                         continue
-                    
+
                     # Enhanced logging for FK constraint failures
                     if "foreign key" in error_str:
                         logger.error(
@@ -227,11 +221,11 @@ class Database:
                 rows = await cursor.fetchall()
                 duration_ms = int((time.time() - start_time) * 1000)
                 row_list = [dict(row) for row in rows]
-                
+
                 # Commit if it's a mutation (e.g. INSERT ... RETURNING)
                 if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
                     await conn.commit()
-                    
+
                 if duration_ms > 100:
                     logger.warning(f"Slow query ({duration_ms}ms, {len(row_list)} rows): {query[:200]}")
                 return row_list
@@ -251,11 +245,11 @@ class Database:
         try:
             async with conn.execute(query, args) as cursor:
                 row = await cursor.fetchone()
-                
+
                 # Commit if it's a mutation (e.g. INSERT ... RETURNING)
                 if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
                     await conn.commit()
-                    
+
                 duration_ms = int((time.time() - start_time) * 1000)
                 if duration_ms > 50:
                     logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")
@@ -289,7 +283,6 @@ class Database:
         query = re.sub(r"\s+=\s+true\b", " = 1", query, flags=re.IGNORECASE)
         return re.sub(r"\s+=\s+false\b", " = 0", query, flags=re.IGNORECASE)
 
-
     def generate_uuid(self) -> str:
         """Generate a UUID for use as primary key"""
         return str(uuid.uuid4())
@@ -305,7 +298,7 @@ class Database:
                     database="sqlite",
                     path=self.db_path,
                     size_mb=0.0,
-                    pool_size=settings.database_pool_size
+                    pool_size=settings.database_pool_size,
                 )
 
             start = time.time()
@@ -326,7 +319,7 @@ class Database:
                 database="sqlite",
                 path=self.db_path,
                 size_mb=0.0,
-                pool_size=settings.database_pool_size
+                pool_size=settings.database_pool_size,
             )
         else:
             return DatabaseHealth(
@@ -336,8 +329,9 @@ class Database:
                 path=self.db_path,
                 size_mb=db_size_mb,
                 pool_size=settings.database_pool_size,
-                error=None
+                error=None,
             )
+
 
 db = Database()
 

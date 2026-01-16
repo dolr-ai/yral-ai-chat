@@ -1,9 +1,12 @@
 """AI Influencer endpoints"""
-from datetime import UTC
+
+import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Query
 
 from src.core.dependencies import CharacterGeneratorServiceDep, InfluencerServiceDep
+from src.models.entities import AIInfluencer, InfluencerStatus
 from src.models.requests import (
     CreateInfluencerRequest,
     GeneratePromptRequest,
@@ -150,11 +153,6 @@ async def create_influencer(
     influencer_service: InfluencerServiceDep,
 ):
     """Create a new AI influencer"""
-    import uuid
-    from datetime import datetime
-
-    from src.models.entities import AIInfluencer, InfluencerStatus
-
     influencer = AIInfluencer(
         id=str(uuid.uuid4()),
         name=request.name,
@@ -170,7 +168,7 @@ async def create_influencer(
         is_nsfw=False,  # Enforce non-NSFW for all new characters
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
-        metadata={}
+        metadata={},
     )
 
     created = await influencer_service.create_influencer(influencer)
@@ -185,6 +183,3 @@ async def create_influencer(
         is_active=created.is_active,
         created_at=created.created_at,
     )
-
-
-

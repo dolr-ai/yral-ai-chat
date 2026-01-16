@@ -3,6 +3,7 @@
 Database migration runner for SQLite
 Runs migration SQL files in order
 """
+
 import os
 import sqlite3
 import sys
@@ -27,7 +28,7 @@ MIGRATIONS_DIR = PROJECT_ROOT / "migrations" / "sqlite"
 def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
     """Execute a migration file. Tries executescript first, falls back if needed."""
     sql_text = migration_file.read_text(encoding="utf-8")
-    
+
     try:
         # Try running as a single script first (most reliable for complex triggers)
         conn.executescript(sql_text)
@@ -35,9 +36,9 @@ def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
     except sqlite3.OperationalError as e:
         error_msg = str(e).lower()
         if "duplicate column name" in error_msg or "already exists" in error_msg:
-            print(f"  [INFO] Script failed with '{e}', trying statement-by-statement...") # noqa: T201
+            print(f"  [INFO] Script failed with '{e}', trying statement-by-statement...")  # noqa: T201
             conn.rollback()
-            
+
             # Simple line-based splitting for fallback (only for simple ALTER TABLEs)
             # This is NOT perfect for triggers, but the 'is_nsfw' migration is simple.
             statements = [s.strip() for s in sql_text.split(";") if s.strip()]
@@ -47,7 +48,7 @@ def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
                 except sqlite3.OperationalError as inner_e:
                     inner_msg = str(inner_e).lower()
                     if "duplicate column name" in inner_msg or "already exists" in inner_msg:
-                        print(f"  [INFO] Skipping: {cmd[:50]}...") # noqa: T201
+                        print(f"  [INFO] Skipping: {cmd[:50]}...")  # noqa: T201
                     else:
                         raise
             conn.commit()
@@ -63,7 +64,7 @@ def run_migrations():
 
     try:
         conn.execute("PRAGMA foreign_keys = ON")
-        
+
         # internal tracking table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS _migrations (
@@ -71,7 +72,6 @@ def run_migrations():
                 applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
 
         # Get set of applied migrations
         applied_migrations = {row[0] for row in conn.execute("SELECT filename FROM _migrations")}
@@ -88,7 +88,7 @@ def run_migrations():
 
             print(f"Applying {migration_file.name}...")  # noqa: T201
             _execute_migration(conn, migration_file)
-            
+
             # Record it
             conn.execute("INSERT INTO _migrations (filename) VALUES (?)", (migration_file.name,))
             conn.commit()
@@ -106,4 +106,3 @@ def run_migrations():
 
 if __name__ == "__main__":
     run_migrations()
-
