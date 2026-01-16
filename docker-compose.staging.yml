@@ -13,6 +13,11 @@ services:
       # Persist logs (staging)
       - ./logs:/app/logs
       # Note: Media files are stored in S3, not locally
+    shm_size: '2gb'
+    deploy:
+      resources:
+        reservations:
+          memory: 1G
     environment:
       # Application Settings
       - APP_NAME=${APP_NAME:-Yral AI Chat API}
@@ -75,6 +80,7 @@ services:
       - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-0.1}
       - SENTRY_PROFILES_SAMPLE_RATE=${SENTRY_PROFILES_SAMPLE_RATE:-0.0}
       - SENTRY_WEBHOOK_SECRET=${SENTRY_WEBHOOK_SECRET}
+      - GOOGLE_CHAT=${GOOGLE_CHAT}
 
       # Litestream Configuration
       - ENABLE_LITESTREAM=${ENABLE_LITESTREAM:-true}
