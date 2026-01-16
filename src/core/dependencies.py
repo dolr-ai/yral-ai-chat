@@ -24,51 +24,36 @@ def get_conversation_repository() -> ConversationRepository:
     return ConversationRepository()
 
 
-<<<<<<< HEAD
-@lru_cache
-=======
 @lru_cache()
->>>>>>> 842f37d (fix: optimize database performance and resolve Gemini client log abnormalities)
+
 def get_influencer_repository() -> InfluencerRepository:
     """Get influencer repository instance"""
     return InfluencerRepository()
 
 
-<<<<<<< HEAD
-@lru_cache
-=======
 @lru_cache()
->>>>>>> 842f37d (fix: optimize database performance and resolve Gemini client log abnormalities)
+
 def get_message_repository() -> MessageRepository:
     """Get message repository instance"""
     return MessageRepository()
 
 
-<<<<<<< HEAD
-@lru_cache
-=======
 @lru_cache()
->>>>>>> 842f37d (fix: optimize database performance and resolve Gemini client log abnormalities)
+
 def get_gemini_client() -> GeminiClient:
     """Get Gemini client instance"""
     return GeminiClient()
 
 
-<<<<<<< HEAD
-@lru_cache
-=======
 @lru_cache()
->>>>>>> 842f37d (fix: optimize database performance and resolve Gemini client log abnormalities)
+
 def get_openrouter_client() -> OpenRouterClient:
     """Get OpenRouter client instance (for NSFW content)"""
     return OpenRouterClient()
 
 
-<<<<<<< HEAD
-@lru_cache
-=======
 @lru_cache()
->>>>>>> 842f37d (fix: optimize database performance and resolve Gemini client log abnormalities)
+
 def get_storage_service() -> StorageService:
     """Get storage service instance"""
     return StorageService()
