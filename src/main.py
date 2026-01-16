@@ -27,6 +27,7 @@ from src.core.dependencies import (
 from src.core.exceptions import BaseAPIException
 from src.core.metrics import MetricsMiddleware, metrics_endpoint
 
+
 from src.db.base import db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
 from src.middleware.versioning import APIVersionMiddleware
@@ -73,6 +74,7 @@ async def lifespan(app: FastAPI):
 
     # Pre-warm frequently used dependencies to reduce first-request latency
     # This initializes lru_cache instances for repositories
+
     logger.info("Pre-warming service dependencies...")
     get_conversation_repository()
     get_influencer_repository()
@@ -80,6 +82,7 @@ async def lifespan(app: FastAPI):
     get_storage_service()
     # Note: AI clients are NOT pre-warmed to reduce startup time
     # They initialize lazily on first use via lru_cache
+
 
 
     logger.info("All services initialized and warmed up")
