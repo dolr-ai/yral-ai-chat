@@ -46,8 +46,8 @@ if not is_running_tests and settings.sentry_dsn and sentry_env:
         sentry_sdk.init(
             dsn=settings.sentry_dsn,
             environment=sentry_env,
-            traces_sample_rate=1.0,
-            profiles_sample_rate=1.0,
+            traces_sample_rate=settings.sentry_traces_sample_rate,
+            profiles_sample_rate=settings.sentry_profiles_sample_rate,
             release=settings.sentry_release,
             send_default_pii=True,
             integrations=[FastApiIntegration(transaction_style="endpoint")],
