@@ -52,22 +52,12 @@ def check_restore_status() -> dict[str, str | bool | int | None]:
         if not db_file.exists():
             return restore_info
         
-        # Check database file modification time
-        db_mtime = db_file.stat().st_mtime
-        app_start_time_float = app_start_time
-        time_since_start = time.time() - app_start_time_float
-        time_since_db_modified = time.time() - db_mtime
-        
-        # If database was modified within 5 minutes of app start, likely a restore
-        if time_since_start < 300 and time_since_db_modified < 300:
-            restore_info["restored_recently"] = True
-            restore_info["restore_indicator"] = "database_modified_after_startup"
-            restore_info["database_age_seconds"] = int(time_since_db_modified)
-        
         # Check for corrupted backup files (indicates restore happened)
         db_dir = db_file.parent
         corrupted_backups = list(db_dir.glob(f"{db_file.name}.corrupted.*"))
         if corrupted_backups:
+            db_mtime = db_file.stat().st_mtime
+            time_since_db_modified = time.time() - db_mtime
             restore_info["restored_recently"] = True
             restore_info["restore_indicator"] = "corrupted_backup_found"
             restore_info["database_age_seconds"] = int(time_since_db_modified)
