@@ -17,37 +17,37 @@ from src.services.openrouter_client import OpenRouterClient
 from src.services.storage_service import StorageService
 
 
-@lru_cache()
+@lru_cache
 def get_conversation_repository() -> ConversationRepository:
     """Get conversation repository instance"""
     return ConversationRepository()
 
 
-@lru_cache()
+@lru_cache
 def get_influencer_repository() -> InfluencerRepository:
     """Get influencer repository instance"""
     return InfluencerRepository()
 
 
-@lru_cache()
+@lru_cache
 def get_message_repository() -> MessageRepository:
     """Get message repository instance"""
     return MessageRepository()
 
 
-@lru_cache()
+@lru_cache
 def get_gemini_client() -> GeminiClient:
     """Get Gemini client instance"""
     return GeminiClient()
 
 
-@lru_cache()
+@lru_cache
 def get_openrouter_client() -> OpenRouterClient:
     """Get OpenRouter client instance (for NSFW content)"""
     return OpenRouterClient()
 
 
-@lru_cache()
+@lru_cache
 def get_storage_service() -> StorageService:
     """Get storage service instance"""
     return StorageService()
