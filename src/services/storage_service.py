@@ -81,16 +81,21 @@ class StorageService:
     def generate_presigned_url(self, key: str, expires_in: int | None = None) -> str:
         """
         Generate a presigned URL for accessing an object.
+        If the key is already an external URL (http/https), it's returned as-is.
 
         Args:
-            key: Storage object key
+            key: Storage object key or external URL
             expires_in: Expiration time in seconds (defaults to settings.s3_url_expires_seconds)
 
         Returns:
-            A time-limited presigned URL for the object
+            A time-limited presigned URL for the object, or the original URL if external
         """
         if not key:
             raise ValueError("Storage key is required to generate a presigned URL")
+
+        # Skip external URLs (http/https) - they don't need presigning
+        if key.startswith(("http://", "https://")):
+            return key
 
         expiration = expires_in or settings.s3_url_expires_seconds
 
@@ -107,8 +112,16 @@ class StorageService:
         if not keys:
             return {}
             
-        unique_keys = list({k for k in keys if k})
+        # Filter for unique keys and skip external URLs (http/https)
+        # External URLs don't need presigning
+        unique_keys = [
+            k for k in {k for k in keys if k}
+            if not k.startswith(("http://", "https://"))
+        ]
         
+        if not unique_keys:
+            return {}
+            
         # Generate URLs in parallel
         tasks = [asyncio.to_thread(self.generate_presigned_url, key) for key in unique_keys]
         urls = await asyncio.gather(*tasks)
