@@ -3,7 +3,6 @@ Chat endpoints
 """
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from fastapi.security import HTTPBearer
-from loguru import logger
 
 from src.auth.jwt_auth import CurrentUser, get_current_user
 from src.core.background_tasks import (
@@ -30,27 +29,40 @@ security = HTTPBearer()
 router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 
 
-def _convert_message_to_response(msg: Message, storage_service: StorageService) -> MessageResponse:
+def _convert_message_to_response(
+    msg: Message,
+    storage_service: StorageService,
+    presigned_urls: dict[str, str] | None = None
+) -> MessageResponse:
     """Convert Message to MessageResponse with presigned URLs"""
     presigned_media_urls = []
-    for media_key in msg.media_urls:
-        if media_key:
+    
+    # Process media URLs
+    if msg.media_urls:
+        for media_key in msg.media_urls:
+            if not media_key:
+                continue
+            
             s3_key = storage_service.extract_key_from_url(media_key)
-            try:
-                presigned_url = storage_service.generate_presigned_url(s3_key)
-                presigned_media_urls.append(presigned_url)
-            except Exception as e:
-                logger.warning(f"Failed to generate presigned URL for {s3_key}: {e}")
-                presigned_media_urls.append(media_key)
+            # Use batch-generated URL if available, otherwise generate on-demand
+            if presigned_urls and s3_key in presigned_urls:
+                presigned_media_urls.append(presigned_urls[s3_key])
+            else:
+                try:
+                    presigned_media_urls.append(storage_service.generate_presigned_url(s3_key))
+                except Exception:
+                    presigned_media_urls.append(media_key)
 
     presigned_audio_url = None
     if msg.audio_url:
         s3_key = storage_service.extract_key_from_url(msg.audio_url)
-        try:
-            presigned_audio_url = storage_service.generate_presigned_url(s3_key)
-        except Exception as e:
-            logger.warning(f"Failed to generate presigned URL for audio {s3_key}: {e}")
-            presigned_audio_url = msg.audio_url
+        if presigned_urls and s3_key in presigned_urls:
+            presigned_audio_url = presigned_urls[s3_key]
+        else:
+            try:
+                presigned_audio_url = storage_service.generate_presigned_url(s3_key)
+            except Exception:
+                presigned_audio_url = msg.audio_url
 
     return MessageResponse(
         id=msg.id,
@@ -274,8 +286,26 @@ async def list_messages(
         order=order,
     )
 
+    # Batch generate presigned URLs to prevent N+1 S3 calls
+    all_keys = []
+    if storage_service:
+        for msg in messages:
+            # Collect media keys
+            if msg.media_urls:
+                for url in msg.media_urls:
+                    if url:
+                        all_keys.append(storage_service.extract_key_from_url(url))
+            # Collect audio keys
+            if msg.audio_url:
+                all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
+            
+    # Generate all URLs in one parallel batch operation
+    presigned_map = {}
+    if all_keys and storage_service:
+        presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
+
     message_responses = [
-        _convert_message_to_response(msg, storage_service)
+        _convert_message_to_response(msg, storage_service, presigned_map)
         for msg in messages
     ]
 

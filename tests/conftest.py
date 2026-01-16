@@ -24,6 +24,11 @@ from fastapi.testclient import TestClient
 # Load environment variables from .env for tests
 load_dotenv()
 
+# Force single connection pool for tests to avoid SQLite disk I/O errors
+# caused by file locking contention when running multiple workers
+os.environ["DATABASE_POOL_SIZE"] = "1"
+os.environ["DATABASE_POOL_TIMEOUT"] = "10.0"  # Fail fast in tests
+
 
 @pytest.fixture(autouse=True)
 def disable_sentry_during_tests(monkeypatch):
