@@ -25,7 +25,6 @@ from src.core.dependencies import (
     get_storage_service,
 )
 from src.core.exceptions import BaseAPIException
-from src.core.metrics import MetricsMiddleware, metrics_endpoint
 
 
 
@@ -77,7 +76,6 @@ async def lifespan(app: FastAPI):
 
     # Pre-warm frequently used dependencies to reduce first-request latency
     # This initializes lru_cache instances for repositories
-
 
     logger.info("Pre-warming service dependencies...")
     get_conversation_repository()
