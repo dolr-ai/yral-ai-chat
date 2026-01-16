@@ -69,7 +69,7 @@ class TestInfluencerService:
         """
         # Step 1: Setup mock data
         influencers_list = [sample_influencer]
-        mock_repo.list_all = AsyncMock(return_value=influencers_list)
+        mock_repo.list_active_summary = AsyncMock(return_value=influencers_list)
         mock_repo.count_all = AsyncMock(return_value=1)
         
         # Step 2: Call the service
@@ -79,6 +79,7 @@ class TestInfluencerService:
         assert len(items) == 1
         assert items[0].id == sample_influencer.id
         assert total_count == 1
+
 
 # ============================================================================
 # StorageService Tests

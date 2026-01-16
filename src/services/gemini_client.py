@@ -206,6 +206,8 @@ class GeminiClient(BaseAIClient):
         if response.candidates and response.candidates[0].finish_reason != types.FinishReason.STOP:
             logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (expected STOP)")
 
+
+
         # Use tiktoken for accurate token counting
         if self.tokenizer:
             token_count = len(self.tokenizer.encode(response_text))
