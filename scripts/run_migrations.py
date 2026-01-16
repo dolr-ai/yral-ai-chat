@@ -11,7 +11,6 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Optional
 
 # --- Configuration ---
 PROJECT_ROOT = Path("/app") if Path("/app/migrations").exists() else Path(__file__).parent.parent
