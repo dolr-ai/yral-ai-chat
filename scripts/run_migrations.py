@@ -11,7 +11,6 @@ import sys
 import time
 import traceback
 from pathlib import Path
-from typing import Optional
 
 # --- Configuration ---
 PROJECT_ROOT = Path("/app") if Path("/app/migrations").exists() else Path(__file__).parent.parent
@@ -20,7 +19,7 @@ DB_PATH_RAW = os.getenv("DATABASE_PATH", DB_DEFAULT)
 DB_PATH = Path(DB_PATH_RAW).resolve() if Path(DB_PATH_RAW).is_absolute() else (PROJECT_ROOT / DB_PATH_RAW).resolve()
 MIGRATIONS_DIR = PROJECT_ROOT / "migrations" / "sqlite"
 
-def _backup_database() -> Optional[Path]:
+def _backup_database() -> Path | None:
     """Step 1: Create a safety backup before any changes."""
     if not DB_PATH.exists():
         return None
@@ -44,13 +43,15 @@ def _split_sql(sql: str) -> list[str]:
     for m in matches:
         if m == ";":
             stmt = "".join(current).strip()
-            if stmt: statements.append(stmt)
+            if stmt:
+                statements.append(stmt)
             current = []
         else:
             current.append(m)
             
     final = "".join(current).strip()
-    if final: statements.append(final)
+    if final:
+        statements.append(final)
     return statements
 
 def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
@@ -65,9 +66,11 @@ def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
         error_msg = str(e).lower()
         if "duplicate column name" in error_msg or "already exists" in error_msg:
             # Strategy B: Recovery - Run statement-by-statement and skip applied ones
-            print(f"  [RECOVERY] Already applied detected, syncing statement-by-statement...") # noqa: T201
-            try: conn.rollback()
-            except sqlite3.OperationalError: pass
+            print("  [RECOVERY] Already applied detected, syncing statement-by-statement...") # noqa: T201
+            try:
+                conn.rollback()
+            except sqlite3.OperationalError:
+                pass
             
             for cmd in _split_sql(sql_text):
                 try:
@@ -78,8 +81,10 @@ def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
                     raise
             conn.commit()
         else:
-            try: conn.rollback()
-            except sqlite3.OperationalError: pass
+            try:
+                conn.rollback()
+            except sqlite3.OperationalError:
+                pass
             raise
 
 def run_migrations():
