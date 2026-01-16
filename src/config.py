@@ -113,6 +113,18 @@ class Settings(BaseSettings):
         description="Profiling sample rate (0.0 to 1.0). Default: 0.0 (disabled)"
     )
 
+    sentry_webhook_secret: str | None = Field(
+        default=None,
+        alias="SENTRY_WEBHOOK_SECRET",
+        description="Sentry integration Client Secret for webhook signature verification"
+    )
+
+    google_chat_webhook_url: str | None = Field(
+        default=None,
+        alias="GOOGLE_CHAT",
+        description="Google Chat webhook URL for notifications"
+    )
+
     @property
     def sentry_environment(self) -> str:
         """Map application environment to Sentry environment"""
