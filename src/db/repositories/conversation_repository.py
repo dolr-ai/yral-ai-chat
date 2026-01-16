@@ -114,10 +114,15 @@ class ConversationRepository:
             else:
                 conv.message_count = 0
 
-            last_msg = await self._get_last_message(UUID(conv.id))
-            conv.last_message = last_msg
-
             conversations.append(conv)
+
+        # Batch fetch last messages for all conversations in a single query
+        if conversations:
+            conversation_ids = [UUID(conv.id) for conv in conversations]
+            last_messages = await self._get_last_messages_batch(conversation_ids)
+            
+            for conv in conversations:
+                conv.last_message = last_messages.get(str(conv.id))
 
         return conversations
 
@@ -167,6 +172,51 @@ class ConversationRepository:
                 created_at=created_at,
             )
         return None
+
+    async def _get_last_messages_batch(self, conversation_ids: list[UUID]) -> dict[str, LastMessageInfo]:
+        """Get last message for multiple conversations in a single query"""
+        if not conversation_ids:
+            return {}
+        
+        # Convert UUIDs to strings for query
+        id_strings = [str(cid) for cid in conversation_ids]
+        placeholders = ", ".join([f"${i+1}" for i in range(len(id_strings))])
+        
+        query = f"""
+            SELECT 
+                m1.conversation_id,
+                m1.content,
+                m1.role,
+                m1.created_at
+            FROM messages m1
+            INNER JOIN (
+                SELECT conversation_id, MAX(created_at) as max_created
+                FROM messages
+                WHERE conversation_id IN ({placeholders})
+                GROUP BY conversation_id
+            ) m2 ON m1.conversation_id = m2.conversation_id 
+                AND m1.created_at = m2.max_created
+        """
+        
+        rows = await db.fetch(query, *id_strings)
+        
+        result: dict[str, LastMessageInfo] = {}
+        for row in rows:
+            conv_id = row.get("conversation_id")
+            content = row.get("content")
+            role_str = row.get("role")
+            created_at_val = row.get("created_at")
+            
+            role = MessageRole(role_str) if isinstance(role_str, str) else MessageRole.USER
+            created_at = created_at_val if isinstance(created_at_val, datetime) else datetime.now(UTC)
+            
+            result[str(conv_id)] = LastMessageInfo(
+                content=str(content) if content is not None else None,
+                role=role,
+                created_at=created_at,
+            )
+        
+        return result
 
     def _row_to_conversation(self, row) -> Conversation:
         """Convert database row to Conversation model"""
