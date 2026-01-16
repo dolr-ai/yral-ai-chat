@@ -1,9 +1,10 @@
 """
 Central dependency injection for FastAPI
 """
+from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
 from src.db.repositories.conversation_repository import ConversationRepository
 from src.db.repositories.influencer_repository import InfluencerRepository
@@ -16,34 +17,39 @@ from src.services.openrouter_client import OpenRouterClient
 from src.services.storage_service import StorageService
 
 
+@lru_cache
 def get_conversation_repository() -> ConversationRepository:
     """Get conversation repository instance"""
     return ConversationRepository()
 
 
+@lru_cache
 def get_influencer_repository() -> InfluencerRepository:
     """Get influencer repository instance"""
     return InfluencerRepository()
 
 
+@lru_cache
 def get_message_repository() -> MessageRepository:
     """Get message repository instance"""
     return MessageRepository()
 
 
-def get_gemini_client() -> GeminiClient:
-    """Get Gemini client instance"""
-    return GeminiClient()
+def get_gemini_client(request: Request) -> GeminiClient:
+    """Get shared Gemini client instance from app state"""
+    return request.app.state.gemini_client
 
 
-def get_openrouter_client() -> OpenRouterClient:
-    """Get OpenRouter client instance (for NSFW content)"""
-    return OpenRouterClient()
+def get_openrouter_client(request: Request) -> OpenRouterClient:
+    """Get shared OpenRouter client instance from app state"""
+    return request.app.state.openrouter_client
 
 
+@lru_cache
 def get_storage_service() -> StorageService:
     """Get storage service instance"""
     return StorageService()
+
 
 
 def get_chat_service(

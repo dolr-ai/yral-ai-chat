@@ -15,7 +15,7 @@ dbs:
         # Sync settings - tuned to reduce lock contention
         sync-interval: 30s
         # Retention settings
-        retention: 24h
+        retention: 30d
         retention-check-interval: 1h
         # Snapshot settings
         snapshot-interval: 1h
