@@ -28,6 +28,7 @@ from src.core.exceptions import BaseAPIException
 from src.core.metrics import MetricsMiddleware, metrics_endpoint
 from src.db.base import db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
+from src.middleware.timing import TimingMiddleware
 from src.middleware.versioning import APIVersionMiddleware
 
 # Improved detection for various test environments
@@ -39,14 +40,14 @@ is_running_tests = (
 # Use ENVIRONMENT variable directly for Sentry environment tagging
 sentry_env = settings.environment if settings.environment in ("production", "staging") else None
 
-# Sentry is disabled during pytest runs (is_running_tests=True) and development environments
+# Sentry is disabled during pytest runs and dev
 if not is_running_tests and settings.sentry_dsn and sentry_env:
     try:
         sentry_sdk.init(
             dsn=settings.sentry_dsn,
             environment=sentry_env,
-            traces_sample_rate=settings.sentry_traces_sample_rate,
-            profiles_sample_rate=settings.sentry_profiles_sample_rate,
+            traces_sample_rate=1.0,
+            profiles_sample_rate=1.0,
             release=settings.sentry_release,
             send_default_pii=True,
             integrations=[FastApiIntegration(transaction_style="endpoint")],
@@ -55,7 +56,6 @@ if not is_running_tests and settings.sentry_dsn and sentry_env:
         logger.info(f"Sentry initialized for {sentry_env}")
     except Exception as e:
         logger.error(f"Failed to initialize Sentry: {e}")
-        logger.warning("Application will continue without Sentry error tracking")
 
 
 
@@ -71,16 +71,14 @@ async def lifespan(app: FastAPI):
 
     await db.connect()
 
-    # Pre-warm frequently used dependencies to reduce first-request latency
-    # This initializes lru_cache instances for repositories
+    # Pre-warm dependencies
     logger.info("Pre-warming service dependencies...")
     get_conversation_repository()
     get_influencer_repository()
     get_message_repository()
     get_storage_service()
     
-    # Initialize AI clients once and store in app state
-    # This ensures they're created with the correct event loop and reused across requests
+    # Initialize AI clients
     from src.services.gemini_client import GeminiClient
     from src.services.openrouter_client import OpenRouterClient
     app.state.gemini_client = GeminiClient()
@@ -150,6 +148,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Middleware stack (order matters - last added = first executed)
+# Timing should be outermost to capture total request time
+app.add_middleware(TimingMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(APIVersionMiddleware)
