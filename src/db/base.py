@@ -108,8 +108,8 @@ class Database:
 
     @staticmethod
     def _resolve_db_path(db_path: str) -> str:
-        """Resolve database path, preserving ':memory:' or absolute paths"""
-        if db_path == ":memory:" or Path(db_path).is_absolute():
+        """Resolve relative database path to absolute path based on project root"""
+        if Path(db_path).is_absolute():
             return db_path
         
         # Use /app in Docker, otherwise resolve relative to project root
@@ -122,8 +122,8 @@ class Database:
             raw_db_path = os.getenv("TEST_DATABASE_PATH", settings.database_path)
             self.db_path = self._resolve_db_path(raw_db_path)
             
-            if self.db_path != ":memory:":
-                Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            # Ensure the database directory exists
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
             self._pool = ConnectionPool(
                 db_path=self.db_path,
