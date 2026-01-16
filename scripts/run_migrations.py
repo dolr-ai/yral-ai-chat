@@ -11,6 +11,7 @@ import sys
 import time
 import traceback
 from pathlib import Path
+from typing import Optional
 
 # --- Configuration ---
 PROJECT_ROOT = Path("/app") if Path("/app/migrations").exists() else Path(__file__).parent.parent
@@ -20,6 +21,7 @@ DB_PATH = Path(DB_PATH_RAW).resolve() if Path(DB_PATH_RAW).is_absolute() else (P
 MIGRATIONS_DIR = PROJECT_ROOT / "migrations" / "sqlite"
 
 def _backup_database() -> Path | None:
+
     """Step 1: Create a safety backup before any changes."""
     if not DB_PATH.exists():
         return None
@@ -45,6 +47,7 @@ def _split_sql(sql: str) -> list[str]:
             stmt = "".join(current).strip()
             if stmt:
                 statements.append(stmt)
+
             current = []
         else:
             current.append(m)
@@ -52,6 +55,7 @@ def _split_sql(sql: str) -> list[str]:
     final = "".join(current).strip()
     if final:
         statements.append(final)
+
     return statements
 
 def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
@@ -71,6 +75,7 @@ def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
                 conn.rollback()
             except sqlite3.OperationalError:
                 pass
+
             
             for cmd in _split_sql(sql_text):
                 try:
@@ -85,8 +90,8 @@ def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
                 conn.rollback()
             except sqlite3.OperationalError:
                 pass
-            raise
 
+            raise
 
 def run_migrations():
     """Main Orchestrator"""
