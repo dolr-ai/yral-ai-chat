@@ -12,7 +12,8 @@ class BaseAPIException(HTTPException):
         status_code: int,
         message: str,
         error_code: str,
-        details: dict[str, object] | None = None
+        details: dict[str, object] | None = None,
+        headers: dict[str, str] | None = None
     ):
         self.error_code = error_code
         self.details = details or {}
@@ -22,7 +23,8 @@ class BaseAPIException(HTTPException):
                 "error": error_code,
                 "message": message,
                 "details": self.details
-            }
+            },
+            headers=headers
         )
 
 
@@ -125,3 +127,25 @@ class DatabaseException(BaseAPIException):
         )
 
 
+
+class ConflictException(BaseAPIException):
+    """Resource conflict exception"""
+    def __init__(self, message: str = "Resource conflict", details: dict[str, object] | None = None):
+        super().__init__(
+            status_code=409,
+            message=message,
+            error_code="conflict",
+            details=details
+        )
+
+
+class ServiceUnavailableException(BaseAPIException):
+    """Service unavailable exception"""
+    def __init__(self, message: str = "Service unavailable", details: dict[str, object] | None = None, headers: dict[str, str] | None = None):
+        super().__init__(
+            status_code=503,
+            message=message,
+            error_code="service_unavailable",
+            details=details,
+            headers=headers
+        )

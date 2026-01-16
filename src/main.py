@@ -24,9 +24,9 @@ from src.core.dependencies import (
     get_message_repository,
     get_storage_service,
 )
-from src.core.exceptions import BaseAPIException
+from src.core.exceptions import BaseAPIException, ServiceUnavailableException
 from src.core.metrics import MetricsMiddleware, metrics_endpoint
-from src.db.base import db
+from src.db.base import DatabaseConnectionPoolTimeoutError, db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
 from src.middleware.timing import TimingMiddleware
 from src.middleware.versioning import APIVersionMiddleware
@@ -201,6 +201,16 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+@app.exception_handler(DatabaseConnectionPoolTimeoutError)
+async def database_timeout_exception_handler(request: Request, exc: DatabaseConnectionPoolTimeoutError):
+    """Handle database connection pool timeouts with 503 Service Unavailable"""
+    logger.error(f"Database timeout on {request.url.path}: {exc}")
+    raise ServiceUnavailableException(
+        message="The server is currently busy and could not connect to the database. Please try again in a few seconds.",
+        headers={"Retry-After": "5"}
+    )
+
+
 @app.exception_handler(BaseAPIException)
 async def api_exception_handler(request: Request, exc: BaseAPIException):
     """Handle custom API exceptions"""
@@ -210,7 +220,8 @@ async def api_exception_handler(request: Request, exc: BaseAPIException):
     )
     return JSONResponse(
         status_code=exc.status_code,
-        content=exc.detail
+        content=exc.detail,
+        headers=exc.headers
     )
 
 
