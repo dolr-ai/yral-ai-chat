@@ -185,6 +185,7 @@ class Database:
         retry_delay = 0.2
         last_error: Exception | None = None
         
+        total_start_time = time.time()
         try:
             for attempt in range(max_retries):
                 start_exec = time.time()
