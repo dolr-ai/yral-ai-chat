@@ -10,6 +10,7 @@ import sentry_sdk
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -19,6 +20,14 @@ from src.api.v1 import chat, health, influencers, media, sentry
 from src.config import settings
 from src.core.exceptions import BaseAPIException
 from src.core.metrics import MetricsMiddleware, metrics_endpoint
+from src.core.dependencies import (
+    get_conversation_repository,
+    get_gemini_client,
+    get_influencer_repository,
+    get_message_repository,
+    get_openrouter_client,
+    get_storage_service,
+)
 from src.db.base import db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
 from src.middleware.versioning import APIVersionMiddleware
@@ -63,7 +72,17 @@ async def lifespan(app: FastAPI):
 
     await db.connect()
 
-    logger.info("All services initialized")
+    # Pre-warm frequently used dependencies to reduce first-request latency
+    # This initializes lru_cache instances for repositories and AI clients
+    logger.info("Pre-warming service dependencies...")
+    get_conversation_repository()
+    get_influencer_repository()
+    get_message_repository()
+    get_storage_service()
+    get_gemini_client()
+    get_openrouter_client()
+
+    logger.info("All services initialized and warmed up")
 
     yield
 
@@ -128,6 +147,7 @@ app.add_middleware(
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(APIVersionMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # Compress responses larger than 1KB
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):

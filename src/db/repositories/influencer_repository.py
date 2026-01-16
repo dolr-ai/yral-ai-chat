@@ -30,6 +30,24 @@ class InfluencerRepository:
         rows = await db.fetch(query, limit, offset)
         return [self._row_to_influencer(row) for row in rows]
 
+    async def list_active_summary(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
+        """
+        Optimized list for active influencers (summary only).
+        Skips heavy fields like system_instructions, personality_traits, metadata.
+        """
+        query = """
+            SELECT
+                id, name, display_name, avatar_url, description,
+                category, is_active, created_at, updated_at
+            FROM ai_influencers
+            WHERE is_active = 'active'
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+        """
+
+        rows = await db.fetch(query, limit, offset)
+        return [self._row_to_influencer_summary(row) for row in rows]
+
     async def get_by_id(self, influencer_id: str) -> AIInfluencer | None:
         """Get influencer by ID"""
         query = """
@@ -168,6 +186,27 @@ class InfluencerRepository:
         query = "SELECT COUNT(*) FROM ai_influencers WHERE is_nsfw = 1 AND is_active = 'active'"
         result = await db.fetchval(query)
         return int(result) if result else 0
+
+    def _row_to_influencer_summary(self, row) -> AIInfluencer:
+        """Convert distinct summary row to AIInfluencer (lightweight)"""
+        return AIInfluencer(
+            id=row["id"],
+            name=row["name"],
+            display_name=row["display_name"],
+            avatar_url=row["avatar_url"],
+            description=row["description"],
+            category=row["category"],
+            is_active=InfluencerStatus.ACTIVE,
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            # Default empty values for missing fields
+            system_instructions="",
+            personality_traits={},
+            metadata={},
+            suggested_messages=[],
+            initial_greeting=None,
+            is_nsfw=False
+        )
 
 
 

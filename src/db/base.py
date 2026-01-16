@@ -30,12 +30,21 @@ class ConnectionPool:
         self.timeout = timeout
         self._pool: asyncio.Queue[aiosqlite.Connection] = asyncio.Queue(maxsize=pool_size)
         self._created_connections = 0
-
     async def initialize(self):
         """Initialize the connection pool"""
-        for _ in range(self.pool_size):
-            conn = await self._create_connection()
-            await self._pool.put(conn)
+        # Create first connection sequentially to ensure DB is in WAL mode and safe
+        # This prevents race conditions when multiple connections try to set journal_mode=WAL
+        if self.pool_size > 0:
+            first_conn = await self._create_connection()
+            await self._pool.put(first_conn)
+
+        # Create remaining connections in parallel
+        if self.pool_size > 1:
+            tasks = [self._create_connection() for _ in range(self.pool_size - 1)]
+            connections = await asyncio.gather(*tasks)
+            
+            for conn in connections:
+                await self._pool.put(conn)
 
     async def _create_connection(self) -> aiosqlite.Connection:
         """Create a new database connection"""
