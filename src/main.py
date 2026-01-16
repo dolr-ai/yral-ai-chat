@@ -18,16 +18,8 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from src.api.v1 import chat, health, influencers, media, sentry
 from src.config import settings
-from src.core.dependencies import (
-    get_conversation_repository,
-    get_gemini_client,
-    get_influencer_repository,
-    get_message_repository,
-    get_openrouter_client,
-    get_storage_service,
-)
-from src.core.exceptions import BaseAPIException
 from src.core.metrics import MetricsMiddleware, metrics_endpoint
+
 from src.db.base import db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
 from src.middleware.versioning import APIVersionMiddleware
@@ -73,14 +65,15 @@ async def lifespan(app: FastAPI):
     await db.connect()
 
     # Pre-warm frequently used dependencies to reduce first-request latency
-    # This initializes lru_cache instances for repositories
+    # This initializes lru_cache instances for repositories and AI clients
     logger.info("Pre-warming service dependencies...")
     get_conversation_repository()
     get_influencer_repository()
     get_message_repository()
     get_storage_service()
-    # Note: AI clients are NOT pre-warmed to reduce startup time
-    # They initialize lazily on first use via lru_cache
+    get_gemini_client()
+    get_openrouter_client()
+
 
     logger.info("All services initialized and warmed up")
 
