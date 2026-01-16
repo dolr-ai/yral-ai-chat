@@ -22,11 +22,12 @@ from src.core.dependencies import (
     get_conversation_repository,
     get_influencer_repository,
     get_message_repository,
-
     get_storage_service,
 )
 from src.core.exceptions import BaseAPIException
+
 from src.core.metrics import MetricsMiddleware, metrics_endpoint
+
 
 
 from src.db.base import db
@@ -75,10 +76,8 @@ async def lifespan(app: FastAPI):
 
     # Pre-warm frequently used dependencies to reduce first-request latency
     # This initializes lru_cache instances for repositories
-<<<<<<< HEAD
 
-=======
->>>>>>> f85d488 (N+1 Query Fix, Database Indexes, Lazy-Load AI Clients, HTTP Caching)
+
     logger.info("Pre-warming service dependencies...")
     get_conversation_repository()
     get_influencer_repository()
@@ -86,6 +85,7 @@ async def lifespan(app: FastAPI):
     get_storage_service()
     # Note: AI clients are NOT pre-warmed to reduce startup time
     # They initialize lazily on first use via lru_cache
+
 
 
 
