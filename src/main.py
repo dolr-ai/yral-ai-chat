@@ -18,8 +18,6 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from src.api.v1 import chat, health, influencers, media, sentry
 from src.config import settings
-from src.core.exceptions import BaseAPIException
-from src.core.metrics import MetricsMiddleware, metrics_endpoint
 from src.core.dependencies import (
     get_conversation_repository,
     get_gemini_client,
@@ -28,6 +26,8 @@ from src.core.dependencies import (
     get_openrouter_client,
     get_storage_service,
 )
+from src.core.exceptions import BaseAPIException
+from src.core.metrics import MetricsMiddleware, metrics_endpoint
 from src.db.base import db
 from src.middleware.logging import RequestLoggingMiddleware, configure_logging
 from src.middleware.versioning import APIVersionMiddleware
