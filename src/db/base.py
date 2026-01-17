@@ -199,8 +199,10 @@ class Database:
                         
                         if total_duration_ms > 100:
                             logger.warning(
-                                f"Slow execute ({total_duration_ms}ms total, {exec_duration_ms}ms query, "
-                                f"{wait_duration_ms}ms wait, attempt {attempt + 1}): {query[:200]}"
+                                f"Slow execute ({total_duration_ms}ms total): "
+                                f"wait_conn={wait_duration_ms}ms, "
+                                f"exec_query={exec_duration_ms}ms, "
+                                f"attempt={attempt + 1}. Query: {query[:200]}"
                             )
                         return f"Rows affected: {cursor.rowcount}"
 
