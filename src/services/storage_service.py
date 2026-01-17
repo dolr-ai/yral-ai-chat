@@ -5,7 +5,8 @@ import asyncio
 from pathlib import Path
 from uuid import uuid4
 
-import boto3
+import aioboto3
+import aiohttp
 from botocore.config import Config
 from loguru import logger
 
@@ -14,31 +15,22 @@ from src.core.exceptions import BadRequestException
 
 
 class StorageService:
-    """Service for handling file uploads to S3-compatible storage (Storj)"""
+    """Async S3-compatible storage service for media uploads (Storj)"""
 
     def __init__(self):
-        """Initialize S3-compatible storage service (lazy initialization)"""
-        self._s3_client = None
+        self._session = aioboto3.Session()
         self.bucket = settings.aws_s3_bucket
 
-    @property
-    def s3_client(self):
-        """Lazy initialization of S3-compatible client to avoid startup failures"""
-        if self._s3_client is None:
-            try:
-                self._s3_client = boto3.client(
-                    "s3",
-                    aws_access_key_id=settings.aws_access_key_id,
-                    aws_secret_access_key=settings.aws_secret_access_key,
-                    endpoint_url=settings.s3_endpoint_url,
-                    region_name=settings.aws_region,
-                    config=Config(signature_version="s3v4")
-                )
-                logger.info(f"Storage service initialized: bucket={self.bucket}, endpoint={settings.s3_endpoint_url}")
-            except Exception as e:
-                logger.error(f"Failed to initialize S3 client: {e}")
-                raise
-        return self._s3_client
+    async def get_s3_client(self):
+        """Get an async S3 client context manager"""
+        return self._session.client(
+            "s3",
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+            endpoint_url=settings.s3_endpoint_url,
+            region_name=settings.aws_region,
+            config=Config(signature_version="s3v4")
+        )
 
     async def save_file(
         self,
@@ -46,74 +38,85 @@ class StorageService:
         filename: str,
         user_id: str
     ) -> tuple[str, str, int]:
-        """
-        Save uploaded file to S3-compatible storage
-        
-        Args:
-            file_content: File binary content
-            filename: Original filename
-            user_id: User ID for organizing files
-            
-        Returns:
-            Tuple of (storage_key, mime_type, file_size)
-        """
+        """Save file to S3 and return (storage_key, mime_type, file_size)"""
         file_ext = Path(filename).suffix.lower()
         unique_filename = f"{uuid4()}{file_ext}"
         s3_key = f"{user_id}/{unique_filename}"
 
         file_size = len(file_content)
         mime_type = self._get_mime_type(file_ext)
-
-        def _upload():
-            self.s3_client.put_object(
-                Bucket=self.bucket,
-                Key=s3_key,
-                Body=file_content,
-                ContentType=mime_type,
+        async with await self.get_s3_client() as s3:
+            upload_url = await s3.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": self.bucket,
+                    "Key": s3_key,
+                    "ContentType": mime_type,
+                    "ContentLength": file_size,
+                },
+                ExpiresIn=300
             )
 
-        await asyncio.to_thread(_upload)
+        async with (
+            aiohttp.ClientSession() as session,
+            session.put(
+                upload_url,
+                data=file_content,
+                headers={
+                    "Content-Type": mime_type,
+                    "Content-Length": str(file_size)
+                }
+            ) as response
+        ):
+            if response.status not in [200, 201]:
+                text = await response.text()
+                logger.error(f"S3 Upload failed status={response.status}: {text}")
+                raise RuntimeError(f"S3 Upload failed: {response.status} {text}")
 
         logger.info(f"File uploaded to storage: {s3_key} ({file_size} bytes)")
-
         return s3_key, mime_type, file_size
 
-    def generate_presigned_url(self, key: str, expires_in: int | None = None) -> str:
+    async def generate_presigned_url(
+        self,
+        key: str,
+        expires_in: int | None = None,
+        s3_client: any = None
+    ) -> str:
         """
-        Generate a presigned URL for accessing an object.
-        If the key is already an external URL (http/https), it's returned as-is.
-
-        Args:
-            key: Storage object key or external URL
-            expires_in: Expiration time in seconds (defaults to settings.s3_url_expires_seconds)
-
-        Returns:
-            A time-limited presigned URL for the object, or the original URL if external
+        Generate presigned URL for S3 object access.
+        Returns external URLs (http/https) as-is without modification.
         """
         if not key:
             raise ValueError("Storage key is required to generate a presigned URL")
 
-        # Skip external URLs (http/https) - they don't need presigning
+        # External URLs don't need presigning
         if key.startswith(("http://", "https://")):
             return key
 
         expiration = expires_in or settings.s3_url_expires_seconds
 
-        return self.s3_client.generate_presigned_url(
-            "get_object",
-            Params={
-                "Bucket": self.bucket,
-                "Key": key,
-            },
-            ExpiresIn=expiration,
-        )
+        # Reuse existing client if provided (for batch operations)
+        if s3_client:
+            return await s3_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.bucket, "Key": key},
+                ExpiresIn=expiration,
+            )
+
+        # Otherwise create a new client
+        async with await self.get_s3_client() as s3:
+            return await s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self.bucket, "Key": key},
+                ExpiresIn=expiration,
+            )
 
     async def generate_presigned_urls_batch(self, keys: list[str]) -> dict[str, str]:
+        """Generate presigned URLs for multiple keys in parallel"""
         if not keys:
             return {}
             
-        # Filter for unique keys and skip external URLs (http/https)
-        # External URLs don't need presigning
+        # Filter for S3 keys only (skip external URLs)
         unique_keys = [
             k for k in {k for k in keys if k}
             if not k.startswith(("http://", "https://"))
@@ -122,38 +125,30 @@ class StorageService:
         if not unique_keys:
             return {}
             
-        # Generate URLs in parallel
-        tasks = [asyncio.to_thread(self.generate_presigned_url, key) for key in unique_keys]
-        urls = await asyncio.gather(*tasks)
+        # Generate all URLs in parallel using a single client session
+        async with await self.get_s3_client() as s3:
+            tasks = [self.generate_presigned_url(key, s3_client=s3) for key in unique_keys]
+            urls = await asyncio.gather(*tasks)
         
         return {k: u for k, u in zip(unique_keys, urls, strict=False) if u}
 
     def extract_key_from_url(self, url_or_key: str) -> str:
         """
-        Extract storage key from either a storage key or an old public URL.
-        For backward compatibility with existing data that may contain full public URLs.
-
-        Args:
-            url_or_key: Either a storage key (e.g., "user123/uuid.jpg") or a full public URL
-
-        Returns:
-            The storage key
+        Extract S3 key from URL or return key as-is.
+        Handles backward compatibility with old public URLs.
         """
-        if not url_or_key:
-            return url_or_key
-
-        if not url_or_key.startswith(("http://", "https://")):
+        if not url_or_key or not url_or_key.startswith(("http://", "https://")):
             return url_or_key
 
         public_base = settings.s3_public_url_base.rstrip("/")
         if url_or_key.startswith(public_base):
             return url_or_key[len(public_base):].lstrip("/")
 
-        logger.debug(f"External URL or non-S3 link detected: {url_or_key}")
+        logger.debug(f"External URL detected: {url_or_key}")
         return url_or_key
 
     def _get_mime_type(self, file_ext: str) -> str:
-        """Get MIME type from file extension"""
+        """Map file extension to MIME type"""
         mime_types = {
             ".jpg": "image/jpeg",
             ".jpeg": "image/jpeg",
@@ -169,7 +164,7 @@ class StorageService:
 
     @staticmethod
     def validate_image(filename: str, file_size: int):
-        """Validate image file"""
+        """Validate image file extension and size"""
         allowed_extensions = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
         file_ext = Path(filename).suffix.lower()
 
@@ -185,7 +180,7 @@ class StorageService:
 
     @staticmethod
     def validate_audio(filename: str, file_size: int):
-        """Validate audio file"""
+        """Validate audio file extension and size"""
         allowed_extensions = {".mp3", ".m4a", ".wav", ".ogg"}
         file_ext = Path(filename).suffix.lower()
 
@@ -205,4 +200,3 @@ class StorageService:
         TODO: Implement using mutagen or ffprobe (requires downloading file from storage)
         """
         return 0
-
