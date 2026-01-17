@@ -215,7 +215,7 @@ EOF
     echo "  Database: $DATABASE_PATH"
     echo "  S3 path: s3://${LITESTREAM_BUCKET}/$S3_PATH"
     echo "  Sync interval: 1s"
-    echo "  Retention: 24h"
+    echo "  Retention: 720h"
     litestream replicate -config "$LITESTREAM_CONFIG" &
     LITESTREAM_PID=$!
     echo "✓ Litestream started with PID: $LITESTREAM_PID"
