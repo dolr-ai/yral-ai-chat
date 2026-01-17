@@ -88,8 +88,8 @@ class TestInfluencerService:
 class TestStorageService:
     @pytest.fixture
     def service(self):
-        """Storage service with a mocked boto3 client to avoid real AWS calls"""
-        with patch("src.services.storage_service.boto3.client"):
+        """Storage service with a mocked aioboto3 session"""
+        with patch("src.services.storage_service.aioboto3.Session"):
             return StorageService()
 
     @pytest.mark.asyncio
@@ -98,8 +98,9 @@ class TestStorageService:
         WHEN we save a file
         THEN it should generate an S3 key using the UserID and a UUID
         """
-        # Step 1: Mock setup
-        service._s3_client = MagicMock()
+        # Step 1: Mock setup for async context manager
+        mock_s3 = AsyncMock()
+        service.get_s3_client = AsyncMock(return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_s3), __aexit__=AsyncMock()))
         service.bucket = "test-bucket"
         
         # Fix the UUID so we know what to expect in the assertion
@@ -117,7 +118,7 @@ class TestStorageService:
             assert size == len(file_data)
             
             # Step 4: Verify it actually tried to upload to S3
-            service.s3_client.put_object.assert_called_once()
+            mock_s3.put_object.assert_called_once()
 
     def test_validate_image_rejects_non_image_files(self, service):
         """
