@@ -119,26 +119,26 @@ def test_upload_endpoint_requires_auth(client, auth_headers):
     assert response.status_code in [200, 201, 400, 422]
 
 
-def test_upload_image_success(client, auth_headers):
+async def test_upload_image_success(client, auth_headers):
     """Test uploading an image to Storj storage"""
     # Ensure the bucket exists before testing
     storage_service = StorageService()
-    s3_client = storage_service.s3_client
     bucket_name = storage_service.bucket
     
-    # Check if bucket exists, create if it doesn't
-    try:
-        s3_client.head_bucket(Bucket=bucket_name)
-    except s3_client.exceptions.ClientError as e:
-        error_code = e.response.get("Error", {}).get("Code", "")
-        if error_code in ("404", "NoSuchBucket"):
-            # Bucket doesn't exist, try to create it
-            try:
-                s3_client.create_bucket(Bucket=bucket_name)
-            except Exception:
-                # If creation fails (e.g., no permission or bucket naming conflict),
-                # the upload will fail with a clear error message
-                pass
+    # Check if bucket exists, create if it doesn't (using async client)
+    async with await storage_service.get_s3_client() as s3:
+        try:
+            await s3.head_bucket(Bucket=bucket_name)
+        except Exception as e:
+            error_msg = str(e)
+            if "404" in error_msg or "NoSuchBucket" in error_msg:
+                # Bucket doesn't exist, try to create it
+                try:
+                    await s3.create_bucket(Bucket=bucket_name)
+                except Exception:
+                    # If creation fails (e.g., no permission or bucket naming conflict),
+                    # the upload will fail with a clear error message
+                    pass
     
     # Create a simple test image in memory using Pillow
     img = Image.new("RGB", (100, 100), color="red")
@@ -161,17 +161,18 @@ def test_upload_image_success(client, auth_headers):
     
     # Verify the file actually exists in Storj by checking S3
     storage_key = data["storage_key"]
-    try:
-        # Check if object exists in bucket
-        s3_client.head_object(Bucket=bucket_name, Key=storage_key)
-        
-        # Download and verify the file content matches
-        response_obj = s3_client.get_object(Bucket=bucket_name, Key=storage_key)
-        downloaded_data = response_obj["Body"].read()
-        assert downloaded_data == image_data, "Uploaded file content doesn't match original"
-        assert response_obj["ContentType"] == "image/jpeg", "Content type mismatch"
-    except s3_client.exceptions.ClientError as e:
-        error_code = e.response.get("Error", {}).get("Code", "")
-        if error_code == "404":
-            raise AssertionError(f"File was not uploaded to Storj - object {storage_key} not found in bucket {bucket_name}")
-        raise
+    async with await storage_service.get_s3_client() as s3:
+        try:
+            # Check if object exists in bucket
+            await s3.head_object(Bucket=bucket_name, Key=storage_key)
+            
+            # Download and verify the file content matches
+            response_obj = await s3.get_object(Bucket=bucket_name, Key=storage_key)
+            downloaded_data = await response_obj["Body"].read()
+            assert downloaded_data == image_data, "Uploaded file content doesn't match original"
+            assert response_obj["ContentType"] == "image/jpeg", "Content type mismatch"
+        except Exception as e:
+            error_msg = str(e)
+            if "404" in error_msg:
+                raise AssertionError(f"File was not uploaded to Storj - object {storage_key} not found in bucket {bucket_name}")
+            raise

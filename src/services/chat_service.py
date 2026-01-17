@@ -97,7 +97,7 @@ class ChatService:
             audio_url_for_transcription = audio_url
             if self.storage_service:
                 s3_key = self.storage_service.extract_key_from_url(audio_url)
-                audio_url_for_transcription = self.storage_service.generate_presigned_url(s3_key)
+                audio_url_for_transcription = await self.storage_service.generate_presigned_url(s3_key)
             
             transcription = await self.gemini_client.transcribe_audio(audio_url_for_transcription)
             transcribed_content = f"[Transcribed: {transcription}]"

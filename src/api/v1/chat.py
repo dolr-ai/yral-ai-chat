@@ -29,7 +29,7 @@ security = HTTPBearer()
 router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 
 
-def _convert_message_to_response(
+async def _convert_message_to_response(
     msg: Message,
     storage_service: StorageService,
     presigned_urls: dict[str, str] | None = None
@@ -49,7 +49,7 @@ def _convert_message_to_response(
                 presigned_media_urls.append(presigned_urls[s3_key])
             else:
                 try:
-                    presigned_media_urls.append(storage_service.generate_presigned_url(s3_key))
+                    presigned_media_urls.append(await storage_service.generate_presigned_url(s3_key))
                 except Exception:
                     presigned_media_urls.append(media_key)
 
@@ -60,7 +60,7 @@ def _convert_message_to_response(
             presigned_audio_url = presigned_urls[s3_key]
         else:
             try:
-                presigned_audio_url = storage_service.generate_presigned_url(s3_key)
+                presigned_audio_url = await storage_service.generate_presigned_url(s3_key)
             except Exception:
                 presigned_audio_url = msg.audio_url
 
@@ -150,7 +150,7 @@ async def create_conversation(
         )
         if recent_messages_list:
             recent_messages = [
-                _convert_message_to_response(msg, storage_service)
+                await _convert_message_to_response(msg, storage_service)
                 for msg in recent_messages_list
             ]
 
@@ -220,7 +220,7 @@ async def list_conversations(
         recent_messages: list[MessageResponse] | None = None
         if recent_messages_list:
             recent_messages = [
-                _convert_message_to_response(msg, storage_service)
+                await _convert_message_to_response(msg, storage_service)
                 for msg in recent_messages_list
             ]
 
@@ -305,7 +305,7 @@ async def list_messages(
         presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
 
     message_responses = [
-        _convert_message_to_response(msg, storage_service, presigned_map)
+        await _convert_message_to_response(msg, storage_service, presigned_map)
         for msg in messages
     ]
 
@@ -401,8 +401,8 @@ async def send_message(
     )
 
     return SendMessageResponse(
-        user_message=_convert_message_to_response(user_msg, storage_service),
-        assistant_message=_convert_message_to_response(assistant_msg, storage_service),
+        user_message=await _convert_message_to_response(user_msg, storage_service),
+        assistant_message=await _convert_message_to_response(assistant_msg, storage_service),
     )
 
 
