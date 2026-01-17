@@ -51,7 +51,8 @@ class ConnectionPool:
         busy_timeout_ms = int(self.timeout * 1000)
         conn = await aiosqlite.connect(
             self.db_path,
-            timeout=busy_timeout_ms / 1000.0
+            timeout=busy_timeout_ms / 1000.0,
+            isolation_level=None
         )
 
         await conn.execute("PRAGMA foreign_keys = ON")
