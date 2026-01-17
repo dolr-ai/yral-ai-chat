@@ -49,16 +49,19 @@ if [ "$USE_LITESTREAM" = "true" ]; then
            LITESTREAM_REGION LITESTREAM_ENDPOINT S3_PATH DATABASE_PATH
 
     # Generate config from template
-    # Explicitly list variables to substitute for stricter security
     VARS='$LITESTREAM_BUCKET:$LITESTREAM_ACCESS_KEY_ID:$LITESTREAM_SECRET_ACCESS_KEY:$LITESTREAM_REGION:$LITESTREAM_ENDPOINT:$S3_PATH:$DATABASE_PATH'
     
     if [ -f "/etc/litestream.yml" ]; then
         envsubst "$VARS" < /etc/litestream.yml > "$LITESTREAM_CONFIG"
-        echo "✓ Generated Litestream config from template"
+        echo "✓ Generated Litestream config"
     else
         echo "✗ ERROR: Config template /etc/litestream.yml not found"
         exit 1
     fi
+    
+    # Audit: Print active Litestream config (masking secrets)
+    echo "   Active Litestream Configuration:"
+    grep -vE "access-key-id|secret-access-key" "$LITESTREAM_CONFIG" | sed 's/^/      / '
     
     # Verify S3 connectivity
     if litestream databases -config "$LITESTREAM_CONFIG" &>/dev/null; then
@@ -77,7 +80,7 @@ if [ "$USE_LITESTREAM" = "true" ]; then
     NEEDS_RESTORE=false
     
     if [ ! -f "$DATABASE_PATH" ]; then
-        echo "⚠ Database missing. Marking for restore."
+        echo "⚠ Database missing at $DATABASE_PATH. Marking for restore."
         NEEDS_RESTORE=true
     elif ! verify_db "$DATABASE_PATH"; then
         echo "⚠ Database corrupted. Backing up and marking for restore."

@@ -68,6 +68,12 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Environment: {settings.environment}")
+    
+    # Audit: Important non-sensitive settings
+    logger.info("Active Application Configuration:")
+    logger.info(f"  - Database: {settings.database_path}")
+    logger.info(f"  - DB Pool Size: {settings.db_pool_size}")
+    logger.info(f"  - Sentry Status: {'Enabled' if settings.sentry_dsn else 'Disabled'}")
 
     await db.connect()
 
