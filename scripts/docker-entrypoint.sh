@@ -57,7 +57,7 @@ dbs:
         access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
         secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
         sync-interval: 1s
-        retention: 30d
+        retention: 720h
         retention-check-interval: 1h
         snapshot-interval: 1h
 EOF
