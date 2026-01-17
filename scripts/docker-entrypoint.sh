@@ -56,8 +56,8 @@ dbs:
         region: ${LITESTREAM_REGION}
         access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
         secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
-        sync-interval: 30s
-        retention: 24h
+        sync-interval: 1s
+        retention: 30d
         retention-check-interval: 1h
         snapshot-interval: 1h
 EOF
@@ -161,6 +161,7 @@ EOF
             echo "    - S3 backup exists: litestream snapshots -config $LITESTREAM_CONFIG $DATABASE_PATH"
             echo "    - S3 connectivity: litestream databases -config $LITESTREAM_CONFIG"
             echo ""
+
             RESTORE_STATUS="failed_no_backup"
         fi
         echo ""
@@ -213,7 +214,7 @@ EOF
     echo "  Config: $LITESTREAM_CONFIG"
     echo "  Database: $DATABASE_PATH"
     echo "  S3 path: s3://${LITESTREAM_BUCKET}/$S3_PATH"
-    echo "  Sync interval: 10s"
+    echo "  Sync interval: 1s"
     echo "  Retention: 24h"
     litestream replicate -config "$LITESTREAM_CONFIG" &
     LITESTREAM_PID=$!
