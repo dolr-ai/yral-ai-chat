@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import aioboto3
+import aiohttp
 from botocore.config import Config
 from loguru import logger
 
@@ -44,14 +45,33 @@ class StorageService:
 
         file_size = len(file_content)
         mime_type = self._get_mime_type(file_ext)
-
         async with await self.get_s3_client() as s3:
-            await s3.put_object(
-                Bucket=self.bucket,
-                Key=s3_key,
-                Body=file_content,
-                ContentType=mime_type,
+            upload_url = await s3.generate_presigned_url(
+                "put_object",
+                Params={
+                    "Bucket": self.bucket,
+                    "Key": s3_key,
+                    "ContentType": mime_type,
+                    "ContentLength": file_size,
+                },
+                ExpiresIn=300
             )
+
+        async with (
+            aiohttp.ClientSession() as session,
+            session.put(
+                upload_url,
+                data=file_content,
+                headers={
+                    "Content-Type": mime_type,
+                    "Content-Length": str(file_size)
+                }
+            ) as response
+        ):
+            if response.status not in [200, 201]:
+                text = await response.text()
+                logger.error(f"S3 Upload failed status={response.status}: {text}")
+                raise RuntimeError(f"S3 Upload failed: {response.status} {text}")
 
         logger.info(f"File uploaded to storage: {s3_key} ({file_size} bytes)")
         return s3_key, mime_type, file_size
