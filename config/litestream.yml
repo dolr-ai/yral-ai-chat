@@ -1,5 +1,5 @@
 # Litestream Configuration for SQLite Replication
-# This file is used inside the Docker container
+# This file is used as a template inside the Docker container
 
 dbs:
   - path: ${DATABASE_PATH}

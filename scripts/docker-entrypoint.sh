@@ -48,12 +48,9 @@ if [ "$USE_LITESTREAM" = "true" ]; then
     export LITESTREAM_BUCKET LITESTREAM_ACCESS_KEY_ID LITESTREAM_SECRET_ACCESS_KEY \
            LITESTREAM_REGION LITESTREAM_ENDPOINT S3_PATH DATABASE_PATH
 
-    # Generate config from template
-    # Explicitly list variables to substitute for stricter security
-    VARS='$LITESTREAM_BUCKET:$LITESTREAM_ACCESS_KEY_ID:$LITESTREAM_SECRET_ACCESS_KEY:$LITESTREAM_REGION:$LITESTREAM_ENDPOINT:$S3_PATH:$DATABASE_PATH'
-    
+    # Generate config from template 
     if [ -f "/etc/litestream.yml" ]; then
-        envsubst "$VARS" < /etc/litestream.yml > "$LITESTREAM_CONFIG"
+        envsubst < /etc/litestream.yml > "$LITESTREAM_CONFIG"
         echo "✓ Generated Litestream config"
     else
         echo "✗ ERROR: Config template /etc/litestream.yml not found"
