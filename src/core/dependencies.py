@@ -4,7 +4,6 @@ Central dependency injection for FastAPI
 from functools import lru_cache
 from typing import Annotated
 
-
 from fastapi import Depends, Request
 
 from src.db.repositories.conversation_repository import ConversationRepository

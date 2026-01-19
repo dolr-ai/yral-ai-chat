@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 from src.db.base import db
+from src.models.internal import AIResponse
 
 
 def test_create_conversation(client, test_influencer_id, auth_headers):

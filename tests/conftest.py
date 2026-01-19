@@ -14,7 +14,6 @@ Note: Make sure src/config.py has media_upload_dir and media_base_url fields.
 import base64
 import json
 import os
-import sqlite3
 import subprocess
 import sys
 import tempfile

@@ -47,7 +47,7 @@ class ChatService:
         return self.gemini_client
 
     @validate_call(config={"arbitrary_types_allowed": True})
-    async def create_conversation(self, user_id: str, influencer_id: UUID) -> tuple[Conversation, bool]:
+    async def create_conversation(self, user_id: str, influencer_id: str) -> tuple[Conversation, bool]:
         """Create a new conversation or return existing one"""
         influencer = await self.influencer_repo.get_by_id(influencer_id)
         if not influencer:
@@ -143,7 +143,7 @@ class ChatService:
 
     async def _update_conversation_memories(
         self,
-        conversation_id: UUID,
+        conversation_id: str,
         conversation: Conversation,
         user_message: str,
         assistant_response: str,

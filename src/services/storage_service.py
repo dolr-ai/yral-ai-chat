@@ -10,7 +10,6 @@ import aioboto3
 import aiohttp
 from botocore.config import Config
 from loguru import logger
-from pydantic import validate_call
 
 from src.config import settings
 from src.core.exceptions import BadRequestException
