@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 from loguru import logger
 
 from src.core.exceptions import ForbiddenException, NotFoundException
+from src.db.base import db
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
 from src.models.entities import Conversation, Message, MessageRole, MessageType
 from src.services.gemini_client import GeminiClient
@@ -274,35 +275,36 @@ class ChatService:
             response_text = self.FALLBACK_ERROR_MESSAGE
             token_count = 0
 
-        assistant_message = await self._save_message(
-            conversation_id=conversation_id,
-            role=MessageRole.ASSISTANT,
-            content=response_text,
-            message_type=MessageType.TEXT,
-            token_count=token_count
-        )
-
-        logger.info(f"Assistant message saved: {assistant_message.id}")
-
-        if background_tasks:
-            background_tasks.add_task(
-                self._update_conversation_memories,
-                conversation_id,
-                conversation,
-                ai_input_content,
-                response_text,
-                memories,
-                is_nsfw=influencer.is_nsfw
+        async with db.transaction():
+            assistant_message = await self._save_message(
+                conversation_id=conversation_id,
+                role=MessageRole.ASSISTANT,
+                content=response_text,
+                message_type=MessageType.TEXT,
+                token_count=token_count
             )
-        else:
-            await self._update_conversation_memories(
-                conversation_id,
-                conversation,
-                ai_input_content,
-                response_text,
-                memories,
-                is_nsfw=influencer.is_nsfw
-            )
+
+            logger.info(f"Assistant message saved: {assistant_message.id}")
+
+            if background_tasks:
+                background_tasks.add_task(
+                    self._update_conversation_memories,
+                    conversation_id,
+                    conversation,
+                    ai_input_content,
+                    response_text,
+                    memories,
+                    is_nsfw=influencer.is_nsfw
+                )
+            else:
+                await self._update_conversation_memories(
+                    conversation_id,
+                    conversation,
+                    ai_input_content,
+                    response_text,
+                    memories,
+                    is_nsfw=influencer.is_nsfw
+                )
 
         return user_message, assistant_message
 

@@ -3,6 +3,8 @@ Database connection management using aiosqlite (SQLite)
 Configured for use with Litestream for real-time S3 backups
 """
 import asyncio
+import contextlib
+import contextvars
 import os
 import re
 import secrets
@@ -15,6 +17,9 @@ from loguru import logger
 
 from src.config import settings
 from src.models.internal import DatabaseHealth
+
+# Context variable to track active transaction connection
+_transaction_conn: contextvars.ContextVar[aiosqlite.Connection | None] = contextvars.ContextVar("transaction_conn", default=None)
 
 
 class DatabaseConnectionPoolTimeoutError(Exception):
@@ -172,15 +177,56 @@ class Database:
             self._pool = None
             logger.info("Database connection pool closed")
 
-    async def execute(self, query: str, *args) -> str:
-        """Execute a query without returning results"""
+    @contextlib.asynccontextmanager
+    async def transaction(self):
+        """
+        Async context manager for database transactions.
+        Groups multiple writes into a single atomic operation.
+        """
         if not self._pool:
             raise RuntimeError("Database connection pool not initialized")
+
+        # Check if we are already in a transaction
+        existing_conn = _transaction_conn.get()
+        if existing_conn:
+            # Nested transaction: simply yield and let the outer transaction commit
+            yield
+            return
+
+        conn = await self._pool.acquire()
+        token = _transaction_conn.set(conn)
+        try:
+            # BEGIN IMMEDIATE to acquire writer lock early
+            await conn.execute("BEGIN IMMEDIATE")
+            yield
+            await conn.commit()
+        except Exception:
+            await conn.rollback()
+            raise
+        finally:
+            _transaction_conn.reset(token)
+            await self._pool.release(conn)
+
+    async def _get_conn(self) -> tuple[aiosqlite.Connection, bool]:
+        """Get current connection (from transaction or pool)"""
+        if not self._pool:
+            raise RuntimeError("Database connection pool not initialized")
+            
+        transaction_conn = _transaction_conn.get()
+        if transaction_conn:
+            return transaction_conn, False # Don't release
+            
+        return await self._pool.acquire(), True # Needs release
+
+    async def execute(self, query: str, *args) -> str:
+        """Execute a query without returning results"""
         query = self._convert_query(query)
         
+        conn, needs_release = await self._get_conn()
+        in_transaction = not needs_release
+        
         start_wait = time.time()
-        conn = await self._pool.acquire()
-        wait_duration_ms = int((time.time() - start_wait) * 1000)
+        wait_duration_ms = 0
         
         max_retries = 10
         retry_delay = 0.2
@@ -190,26 +236,33 @@ class Database:
             for attempt in range(max_retries):
                 start_exec = time.time()
                 try:
-                    # BEGIN IMMEDIATE to acquire write lock early and prevent deadlock
-                    await conn.execute("BEGIN IMMEDIATE")
-                    async with conn.execute(query, args) as cursor:
-                        await conn.commit()
-                        
-                        exec_duration_ms = int((time.time() - start_exec) * 1000)
-                        total_duration_ms = wait_duration_ms + exec_duration_ms
-                        
-                        if total_duration_ms > 100:
-                            logger.warning(
-                                f"Slow execute ({total_duration_ms}ms total): "
-                                f"wait_conn={wait_duration_ms}ms, "
-                                f"exec_query={exec_duration_ms}ms, "
-                                f"attempt={attempt + 1}. Query: {query[:200]}"
-                            )
-                        return f"Rows affected: {cursor.rowcount}"
+                    if in_transaction:
+                        # Shared connection in transaction - just execute
+                        async with conn.execute(query, args) as cursor:
+                            exec_duration_ms = int((time.time() - start_exec) * 1000)
+                            if exec_duration_ms > 100:
+                                logger.warning(f"Slow exec in transaction ({exec_duration_ms}ms): {query[:200]}")
+                            return f"Rows affected: {cursor.rowcount}"
+                    else:
+                        # Standard execution with its own immediate transaction
+                        await conn.execute("BEGIN IMMEDIATE")
+                        async with conn.execute(query, args) as cursor:
+                            await conn.commit()
+                            
+                            exec_duration_ms = int((time.time() - start_exec) * 1000)
+                            if exec_duration_ms > 100:
+                                logger.warning(
+                                    f"Slow execute ({exec_duration_ms}ms): "
+                                    f"attempt={attempt + 1}. Query: {query[:200]}"
+                                )
+                            return f"Rows affected: {cursor.rowcount}"
 
                 except Exception as e:
+                    if in_transaction:
+                        # Don't retry inside a shared transaction; let the context manager handle rollback
+                        raise
+                        
                     last_error = e
-                    # Rollback on error
                     try:
                         await conn.rollback()
                     except Exception as rollback_err:
@@ -221,27 +274,18 @@ class Database:
                         logger.warning(f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})")
                         await asyncio.sleep(actual_delay)
                         continue
-                    
-                    if "foreign key" in error_str:
-                        logger.error(
-                            f"FOREIGN KEY constraint failed. Query: {query[:200]}, "
-                            f"Args count: {len(args)}, Error: {e}"
-                        )
-                    else:
-                        logger.error(f"Execute error: {e}, Query: {query[:100]}")
                     raise
             if last_error:
                 raise last_error
             raise RuntimeError("Failed to execute query after retries")
         finally:
-            await self._pool.release(conn)
+            if needs_release:
+                await self._pool.release(conn)
 
     async def fetch(self, query: str, *args) -> list[dict[str, str | int | float | bool | None]]:
         """Fetch multiple rows"""
-        if not self._pool:
-            raise RuntimeError("Database connection pool not initialized")
         query = self._convert_query(query)
-        conn = await self._pool.acquire()
+        conn, needs_release = await self._get_conn()
         start_time = time.time()
         try:
             async with conn.execute(query, args) as cursor:
@@ -255,14 +299,13 @@ class Database:
             logger.error(f"Fetch error: {e}, Query: {query[:100]}")
             raise
         finally:
-            await self._pool.release(conn)
+            if needs_release:
+                await self._pool.release(conn)
 
     async def fetchone(self, query: str, *args) -> dict[str, str | int | float | bool | None] | None:
         """Fetch a single row"""
-        if not self._pool:
-            raise RuntimeError("Database connection pool not initialized")
         query = self._convert_query(query)
-        conn = await self._pool.acquire()
+        conn, needs_release = await self._get_conn()
         start_time = time.time()
         try:
             async with conn.execute(query, args) as cursor:
@@ -275,14 +318,13 @@ class Database:
             logger.error(f"Fetchone error: {e}, Query: {query[:100]}")
             raise
         finally:
-            await self._pool.release(conn)
+            if needs_release:
+                await self._pool.release(conn)
 
     async def fetchval(self, query: str, *args) -> str | int | float | bool | None:
         """Fetch a single value"""
-        if not self._pool:
-            raise RuntimeError("Database connection pool not initialized")
         query = self._convert_query(query)
-        conn = await self._pool.acquire()
+        conn, needs_release = await self._get_conn()
         try:
             async with conn.execute(query, args) as cursor:
                 row = await cursor.fetchone()
@@ -291,7 +333,8 @@ class Database:
             logger.error(f"Fetchval error: {e}, Query: {query[:100]}")
             raise
         finally:
-            await self._pool.release(conn)
+            if needs_release:
+                await self._pool.release(conn)
 
     def _convert_query(self, query: str) -> str:
         """Convert PostgreSQL query syntax to SQLite"""
