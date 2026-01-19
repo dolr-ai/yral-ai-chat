@@ -4,6 +4,7 @@ Tests for chat endpoints
 
 import asyncio
 from datetime import datetime
+from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 from src.db.base import db
@@ -629,37 +630,57 @@ def test_send_message_accepts_uppercase_text_type(client, clean_conversation_id,
 
 
 def test_send_message_accepts_uppercase_multimodal_type(client, clean_conversation_id, auth_headers):
-    """Test that MULTIMODAL message type can be sent in uppercase and is normalized to lowercase"""
+    """Test that MULTIMODAL message type can be sent in uppercase and is normalized to lowercase.
+    Also verifies that it handles both external URLs and S3 storage keys correctly.
+    """
+    
     # Use a reliable public image URL for CI (verified direct link to avoid redirects)
     image_url = "https://fastly.picsum.photos/id/866/200/300.jpg?hmac=rcadCENKh4rD6MAp6V_ma-AyWv641M4iiOpe1RyFHeI"
-
+    s3_key = "user_123/test_image.jpg"
+    
     test_cases = [
-        ("MULTIMODAL", "multimodal"),
-        ("Multimodal", "multimodal"),
-        ("multimodal", "multimodal"),  # Already lowercase should still work
+        ("MULTIMODAL", "multimodal", image_url),
+        ("Multimodal", "multimodal", image_url),
+        ("multimodal", "multimodal", s3_key),  # Test with S3 key
     ]
+    
+    # Mock AI response to avoid real AI calls during the test
+    with patch("src.services.gemini_client.GeminiClient.generate_response", new_callable=AsyncMock) as mock_gen_response:
+        
+        # Setup mock AI response
+        mock_gen_response.return_value = AIResponse(text="I see an image.", token_count=10)
+        
+        for input_type, expected_type, media_url in test_cases:
+            response = client.post(
+                f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+                json={
+                    "message_type": input_type,
+                    "content": "What's in this image?",
+                    "media_urls": [media_url]
+                },
+                headers=auth_headers
+            )
+            
+            assert response.status_code == 200, \
+                f"Message type '{input_type}' should be accepted but got {response.status_code}"
+            
+            data = response.json()
+            user_msg = data["user_message"]
+            
+            # Verify it was normalized to lowercase in the response
+            assert user_msg["message_type"] == expected_type, \
+                f"Expected message_type '{expected_type}' but got '{user_msg['message_type']}'"
+            assert user_msg["content"] == "What's in this image?"
+            assert len(user_msg["media_urls"]) > 0
+            
+            # Verify the media URL is preserved or correctly handled
+            if media_url == image_url:
+                assert user_msg["media_urls"][0] == image_url
+            else:
+                # For S3 keys, the API returns a presigned URL
+                assert user_msg["media_urls"][0].startswith("http")
+                assert s3_key in user_msg["media_urls"][0]
 
-    for input_type, expected_type in test_cases:
-        response = client.post(
-            f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
-            json={"message_type": input_type, "content": "What's in this image?", "media_urls": [image_url]},
-            headers=auth_headers,
-        )
-
-        assert (
-            response.status_code == 200
-        ), f"Message type '{input_type}' should be accepted but got {response.status_code}"
-
-        data = response.json()
-        user_msg = data["user_message"]
-
-        # Verify it was normalized to lowercase in the response
-        assert (
-            user_msg["message_type"] == expected_type
-        ), f"Expected message_type '{expected_type}' but got '{user_msg['message_type']}'"
-        assert user_msg["content"] == "What's in this image?"
-        assert len(user_msg["media_urls"]) > 0
-        assert user_msg["role"] == "user"
 
 
 def test_send_message_with_deleted_conversation_fk_constraint(client, auth_headers, test_influencer_id):

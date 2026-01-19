@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: yral-ai-chat
     restart: unless-stopped
+    stop_grace_period: 30s
     ports:
       - "8000:8000"
     volumes:
@@ -13,6 +14,11 @@ services:
       # Persist logs
       - ./logs:/app/logs
       # Note: Media files are stored in S3, not locally
+    shm_size: '2gb'
+    deploy:
+      resources:
+        reservations:
+          memory: 2G
     environment:
       # Application Settings
       - APP_NAME=${APP_NAME:-Yral AI Chat API}
@@ -71,6 +77,8 @@ services:
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-1.0}
       - SENTRY_PROFILES_SAMPLE_RATE=${SENTRY_PROFILES_SAMPLE_RATE:-0.0}
+      - SENTRY_WEBHOOK_SECRET=${SENTRY_WEBHOOK_SECRET}
+      - GOOGLE_CHAT=${GOOGLE_CHAT}
 
       # Litestream Configuration
       - ENABLE_LITESTREAM=${ENABLE_LITESTREAM:-true}

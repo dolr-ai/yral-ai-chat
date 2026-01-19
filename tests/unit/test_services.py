@@ -72,7 +72,7 @@ class TestInfluencerService:
         """
         # Step 1: Setup mock data
         influencers_list = [sample_influencer]
-        mock_repo.list_all = AsyncMock(return_value=influencers_list)
+        mock_repo.list_active_summary = AsyncMock(return_value=influencers_list)
         mock_repo.count_all = AsyncMock(return_value=1)
 
         # Step 2: Call the service
@@ -94,16 +94,8 @@ class TestInfluencerService:
         """
         # Step 1: Mock setup
         mock_repo.create = AsyncMock(return_value=sample_influencer)
-        # Mock the cached methods to verify invalidation
-        # Note: We must mock on __func__ for bound methods or just check call on the service
-        # But since we want to verify it's called, we can just mock the invocation in the code?
-        # Actually, let's just mock the method itself to be a MagicMock that has invalidate_all
-
-        # Changing strategy: The service code calls self.list_influencers.invalidate_all()
-        # In a unit test, 'service' is a real instance.
-        # We can't easily replace the bound method's attribute.
-        # But we can replace the whole method on the instance with a Mock object
-
+        
+        # Replace the whole method on the instance with a Mock object to verify invalidation
         service.list_influencers = MagicMock()
         service.list_influencers.invalidate_all = MagicMock()
 
@@ -131,22 +123,49 @@ class TestInfluencerService:
 class TestStorageService:
     @pytest.fixture
     def service(self):
-        """Storage service with a mocked boto3 client to avoid real AWS calls"""
-        with patch("src.services.storage_service.boto3.client"):
+        """Storage service with a mocked aioboto3 session"""
+        with patch("src.services.storage_service.aioboto3.Session"):
             return StorageService()
 
     @pytest.mark.asyncio
     async def test_save_file_generates_correct_key(self, service):
         """
         WHEN we save a file
-        THEN it should generate an S3 key using the UserID and a UUID
+        THEN it should generate an S3 key, presigned URL, and upload via http
         """
-        # Step 1: Mock setup
-        service._s3_client = MagicMock()
+        # Step 1: Mock setup for async context manager (S3)
+        mock_s3 = AsyncMock()
+        mock_s3.generate_presigned_url.return_value = "https://fake-s3.com/upload"
+        
+        service.get_s3_client = AsyncMock(return_value=MagicMock(
+            __aenter__=AsyncMock(return_value=mock_s3),
+            __aexit__=AsyncMock()
+        ))
         service.bucket = "test-bucket"
+        
+        # Mock aiohttp (Context Managers galore!)
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.text.return_value = "OK"
+        
+        # Mock the response context manager
+        mock_put_ctx = MagicMock()
+        mock_put_ctx.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_put_ctx.__aexit__ = AsyncMock(return_value=None)
+        
+        # Mock the session object
+        mock_session = MagicMock()
+        mock_session.put.return_value = mock_put_ctx
+        
+        # Mock the session context manager constructor
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=None)
 
         # Fix the UUID so we know what to expect in the assertion
-        with patch("src.services.storage_service.uuid4", return_value="fixed-uuid"):
+        with patch("src.services.storage_service.uuid4", return_value="fixed-uuid"), \
+             patch("src.services.storage_service.aiohttp.ClientSession", return_value=mock_session_ctx):
+            
             file_data = b"some-content"
             filename = "photo.jpg"
             user_id = "user-123"
@@ -158,9 +177,17 @@ class TestStorageService:
             assert key == "user-123/fixed-uuid.jpg"
             assert mime == "image/jpeg"
             assert size == len(file_data)
+            
+            # Step 4: Verify S3 presign generation
+            mock_s3.generate_presigned_url.assert_called_once()
+            
+            # Step 5: Verify HTTP upload
+            mock_session.put.assert_called_once_with(
+                "https://fake-s3.com/upload",
+                data=file_data,
+                headers={"Content-Type": "image/jpeg", "Content-Length": str(len(file_data))}
+            )
 
-            # Step 4: Verify it actually tried to upload to S3
-            service.s3_client.put_object.assert_called_once()
 
     def test_validate_image_rejects_non_image_files(self, service):
         """
@@ -218,6 +245,7 @@ class TestChatService:
         mock_repos["influencer"].get_by_id = AsyncMock(return_value=sample_influencer)
         mock_repos["conversation"].get_existing = AsyncMock(return_value=None)  # No existing
         mock_repos["conversation"].create = AsyncMock(return_value=sample_conversation)
+        mock_repos["message"].create = AsyncMock() # Required for initial greeting
 
         # Step 2: Run the service logic
         conv, is_new = await service.create_conversation("user-456", sample_influencer.id)

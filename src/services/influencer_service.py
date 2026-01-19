@@ -18,9 +18,14 @@ class InfluencerService:
 
     @validate_call
     @cached(ttl=600, key_prefix="influencers")  # Cache for 10 minutes
-    async def list_influencers(self, limit: int = 50, offset: int = 0) -> tuple[list[AIInfluencer], int]:
+    async def list_influencers(
+        self,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple[list[AIInfluencer], int]:
         """List all influencers (active and inactive, cached)"""
         influencers = await self.influencer_repo.list_all(limit=limit, offset=offset)
+
         total = await self.influencer_repo.count_all()
         return influencers, total
 

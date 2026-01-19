@@ -75,7 +75,7 @@ async def upload_media(
         raise HTTPException(status_code=500, detail=f"File upload failed: {e!s}") from e
 
     try:
-        presigned_url = storage_service.generate_presigned_url(s3_key)
+        presigned_url = await storage_service.generate_presigned_url(s3_key)
     except Exception as e:
         logger.error(f"Failed to generate presigned URL for {s3_key}: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate access URL for uploaded file") from e

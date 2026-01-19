@@ -182,9 +182,8 @@ def configure_logging():
                     }
                 else:
                     log_data["exception"] = str(exception)
-
-            # Write JSON log line to stdout
-            print(json.dumps(log_data), flush=True)  # noqa: T201
+            # Write JSON log line to stdout efficiently
+            sys.stdout.write(json.dumps(log_data) + "\n")
 
         logger.add(json_sink, level=settings.log_level)
     else:

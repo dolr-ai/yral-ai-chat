@@ -92,8 +92,8 @@ class OpenRouterClient(BaseAIClient):
             }
         )
         self.http_client.timeout = settings.openrouter_timeout
+        logger.debug(f"OpenRouter client initialized with model: {self.model_name}")
 
-        logger.info(f"OpenRouter client initialized with model: {self.model_name}")
 
     @validate_call
     async def generate_response(self, params: LLMGenerateParams) -> AIResponse:

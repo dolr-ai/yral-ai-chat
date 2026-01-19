@@ -31,32 +31,48 @@ class ConnectionPool:
         self.timeout = timeout
         self._pool: asyncio.Queue[aiosqlite.Connection] = asyncio.Queue(maxsize=pool_size)
         self._created_connections = 0
-
     async def initialize(self):
         """Initialize the connection pool"""
-        for _ in range(self.pool_size):
-            conn = await self._create_connection()
-            await self._pool.put(conn)
+        # Create first connection sequentially to ensure DB is in WAL mode and safe
+        # This prevents race conditions when multiple connections try to set journal_mode=WAL
+        if self.pool_size > 0:
+            first_conn = await self._create_connection()
+            await self._pool.put(first_conn)
+
+        # Create remaining connections in parallel
+        if self.pool_size > 1:
+            tasks = [self._create_connection() for _ in range(self.pool_size - 1)]
+            connections = await asyncio.gather(*tasks)
+            
+            for conn in connections:
+                await self._pool.put(conn)
 
     async def _create_connection(self) -> aiosqlite.Connection:
         """Create a new database connection"""
         busy_timeout_ms = int(self.timeout * 1000)
-        conn = await aiosqlite.connect(self.db_path, timeout=busy_timeout_ms / 1000.0)
+        conn = await aiosqlite.connect(
+            self.db_path,
+            timeout=busy_timeout_ms / 1000.0,
+            isolation_level=None
+        )
 
         await conn.execute("PRAGMA foreign_keys = ON")
         await conn.execute("PRAGMA journal_mode = WAL")
 
         # Litestream optimization: Prevent WAL from growing too large
-        await conn.execute("PRAGMA wal_autocheckpoint = 1000")
-        await conn.execute("PRAGMA journal_size_limit = 4194304")  # 4MB
-
+        await conn.execute("PRAGMA wal_autocheckpoint = 4000")
+        await conn.execute("PRAGMA journal_size_limit = 16777216") # 16MB
+        
         # Timeout handling
         # We set a high busy_timeout to allow queuing during checkpoints
         actual_timeout = max(busy_timeout_ms, 60000)
         await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
-
+        # Performance tuning
         await conn.execute("PRAGMA synchronous = NORMAL")
-
+        await conn.execute("PRAGMA mmap_size = 268435456")  # 256MB
+        await conn.execute("PRAGMA cache_size = -20000")    # 20MB
+        await conn.execute("PRAGMA temp_store = MEMORY")
+        
         # Verify timeout setting
         async with conn.execute("PRAGMA busy_timeout") as cursor:
             row = await cursor.fetchone()
@@ -110,22 +126,16 @@ class Database:
             return db_path
 
         # Use /app in Docker, otherwise resolve relative to project root
-        if Path("/app").exists() and Path("/app/migrations").exists():
-            project_root = Path("/app")
-        else:
-            project_root = Path(__file__).parent.parent.parent
-
-        resolved_path = (project_root / db_path).resolve()
-        return str(resolved_path)
+        project_root = Path("/app") if Path("/app/migrations").exists() else Path(__file__).parent.parent.parent
+        return str((project_root / db_path).resolve())
 
     async def connect(self) -> None:
         """Create database connection pool"""
         try:
             raw_db_path = os.getenv("TEST_DATABASE_PATH", settings.database_path)
             self.db_path = self._resolve_db_path(raw_db_path)
-
-            if self.db_path != ":memory:":
-                Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            # Ensure the database directory exists
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
             self._pool = ConnectionPool(
                 db_path=self.db_path, pool_size=settings.database_pool_size, timeout=settings.database_pool_timeout
@@ -159,42 +169,51 @@ class Database:
         if not self._pool:
             raise RuntimeError("Database connection pool not initialized")
         query = self._convert_query(query)
+        
+        start_wait = time.time()
         conn = await self._pool.acquire()
-        start_time = time.time()
+        wait_duration_ms = int((time.time() - start_wait) * 1000)
+        
         max_retries = 10
         retry_delay = 0.2
         last_error: Exception | None = None
 
         try:
             for attempt in range(max_retries):
+                start_exec = time.time()
                 try:
+                    # BEGIN IMMEDIATE to acquire write lock early and prevent deadlock
+                    await conn.execute("BEGIN IMMEDIATE")
                     async with conn.execute(query, args) as cursor:
                         await conn.commit()
-                        duration_ms = int((time.time() - start_time) * 1000)
-                        if duration_ms > 100:
-                            logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")
+                        
+                        exec_duration_ms = int((time.time() - start_exec) * 1000)
+                        total_duration_ms = wait_duration_ms + exec_duration_ms
+                        
+                        if total_duration_ms > 100:
+                            logger.warning(
+                                f"Slow execute ({total_duration_ms}ms total): "
+                                f"wait_conn={wait_duration_ms}ms, "
+                                f"exec_query={exec_duration_ms}ms, "
+                                f"attempt={attempt + 1}. Query: {query[:200]}"
+                            )
                         return f"Rows affected: {cursor.rowcount}"
+
                 except Exception as e:
                     last_error = e
-                    error_str = str(e).lower()
-
-                    # Always rollback on any execution error to prevent transaction leaks
+                    # Rollback on error
                     try:
                         await conn.rollback()
                     except Exception as rollback_err:
                         logger.error(f"Failed to rollback after execution error: {rollback_err}")
-
+                        
+                    error_str = str(e).lower()
                     if ("database is locked" in error_str or "locked" in error_str) and attempt < max_retries - 1:
-                        # Random jitter to prevent thundering herd
-                        # Increased backoff: 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8...
-                        actual_delay = retry_delay * (2**attempt) + (secrets.SystemRandom().random() * 0.5)
-                        logger.warning(
-                            f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})"
-                        )
+                        actual_delay = retry_delay * (2 ** attempt) + (secrets.SystemRandom().random() * 0.5)
+                        logger.warning(f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})")
                         await asyncio.sleep(actual_delay)
                         continue
-
-                    # Enhanced logging for FK constraint failures
+                    
                     if "foreign key" in error_str:
                         logger.error(
                             f"FOREIGN KEY constraint failed. Query: {query[:200]}, "

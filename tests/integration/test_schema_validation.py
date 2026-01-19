@@ -117,9 +117,9 @@ EXPECTED_TRIGGERS = [
 
 
 def get_db_connection():
-    """Get database connection - supports DATABASE_PATH env var override"""
-    # Allow override via environment variable for testing prod/staging
-    db_path_str = os.getenv("DATABASE_PATH") or settings.database_path
+    """Get database connection - supports TEST_DATABASE_PATH env var override"""
+    # Prioritize TEST_DATABASE_PATH (set by conftest.py) then DATABASE_PATH (manual override)
+    db_path_str = os.getenv("TEST_DATABASE_PATH") or os.getenv("DATABASE_PATH") or settings.database_path
     db_path = Path(db_path_str)
 
     if not db_path.exists():
