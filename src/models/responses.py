@@ -112,6 +112,8 @@ class InfluencerResponse(BaseModel):
     is_active: InfluencerStatus = Field(
         ..., description="Influencer status: 'active', 'coming_soon', or 'discontinued'"
     )
+    parent_principal_id: str | None = Field(None, description="ID of the parent principal")
+    source: str | None = Field(None, description="Creation source: 'admin-created-influencer' or 'user-created-influencer'")
     created_at: datetime = Field(..., description="Creation timestamp")
 
 

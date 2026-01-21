@@ -28,8 +28,14 @@ class CharacterGeneratorService:
         system_prompt = (
             "You are an expert AI character designer. "
             "Your task is to create detailed, immersive system instructions for an AI persona based on a short description. "
-            "The output should be the raw system instructions that would be passed to an LLM to roleplay this character. "
-            "Do not include any preamble or explanation, just the system instructions."
+            "The output MUST follow this exact structure:\n\n"
+            "1. Role Definition: Start with 'You are [Name], [Role]...'\n"
+            "2. Responsibilities: A section 'Your role is to:' followed by a numbered list of tasks.\n"
+            "3. Safety & Quality Rules: A section titled '**IMPORTANT RULES (SAFETY & QUALITY):**' with bullet points.\n"
+            "4. Response Style: A section titled '**RESPONSE STYLE:**' detailing tone, conciseness, and formatting (e.g., maximum lines, no self-corrections).\n"
+            "5. Language & Context: A section titled '**LANGUAGE & CONTEXT:**' specifying that the AI should use the user's language/mix (Hinglish, etc.) and Indian cultural context.\n"
+            "6. Goal: A closing paragraph summarizing the character's purpose.\n\n"
+            "Do not include any preamble or explanation, just the raw system instructions."
         )
 
         user_prompt = f"Create system instructions for a character described as: '{prompt}'"

@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Query, Response
+from loguru import logger
 
 from src.core.dependencies import CharacterGeneratorServiceDep, InfluencerServiceDep
 from src.models.entities import AIInfluencer, InfluencerStatus
@@ -64,6 +65,8 @@ async def list_influencers(
             description=inf.description,
             category=inf.category,
             is_active=inf.is_active,
+            parent_principal_id=inf.parent_principal_id,
+            source=inf.source,
             created_at=inf.created_at,
         )
         for inf in influencers
@@ -114,6 +117,8 @@ async def get_influencer(
         description=influencer.description,
         category=influencer.category,
         is_active=influencer.is_active,
+        parent_principal_id=influencer.parent_principal_id,
+        source=influencer.source,
         created_at=influencer.created_at,
     )
 
@@ -161,7 +166,7 @@ async def create_influencer(
 ):
     """Create a new AI influencer"""
     influencer = AIInfluencer(
-        id=str(uuid.uuid4()),
+        id=request.bot_principal_id,
         name=request.name,
         display_name=request.display_name,
         avatar_url=request.avatar_url,
@@ -173,6 +178,8 @@ async def create_influencer(
         suggested_messages=request.suggested_messages,
         is_active=InfluencerStatus.ACTIVE,
         is_nsfw=False,  # Enforce non-NSFW for all new characters
+        parent_principal_id=request.parent_principal_id,
+        source="user-created-influencer" if request.parent_principal_id else "admin-created-influencer",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
         metadata={},
@@ -188,5 +195,7 @@ async def create_influencer(
         description=created.description,
         category=created.category,
         is_active=created.is_active,
+        parent_principal_id=created.parent_principal_id,
+        source=created.source,
         created_at=created.created_at,
     )

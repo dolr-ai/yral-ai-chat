@@ -18,7 +18,8 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, is_nsfw, created_at, updated_at, metadata
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
             FROM ai_influencers
             ORDER BY CASE is_active
                 WHEN 'active' THEN 1
@@ -39,7 +40,8 @@ class InfluencerRepository:
         query = """
             SELECT
                 id, name, display_name, avatar_url, description,
-                category, is_active, created_at, updated_at
+                category, is_active, parent_principal_id, source,
+                created_at, updated_at
             FROM ai_influencers
             WHERE is_active = 'active'
             ORDER BY created_at DESC
@@ -56,7 +58,8 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, is_nsfw, created_at, updated_at, metadata
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
             FROM ai_influencers
             WHERE id = $1 AND is_active = 'active'
         """
@@ -71,7 +74,8 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, is_nsfw, created_at, updated_at, metadata
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
             FROM ai_influencers
             WHERE name = $1 AND is_active = 'active'
         """
@@ -92,7 +96,8 @@ class InfluencerRepository:
                 i.id, i.name, i.display_name, i.avatar_url, i.description,
                 i.category, i.system_instructions, i.personality_traits,
                 i.initial_greeting, i.suggested_messages,
-                i.is_active, i.is_nsfw, i.created_at, i.updated_at, i.metadata,
+                i.is_active, i.is_nsfw, i.parent_principal_id,
+                i.source, i.created_at, i.updated_at, i.metadata,
                 COUNT(c.id) as conversation_count
             FROM ai_influencers i
             LEFT JOIN conversations c ON i.id = c.influencer_id
@@ -154,6 +159,8 @@ class InfluencerRepository:
             suggested_messages=suggested_messages,
             is_active=is_active_enum,
             is_nsfw=is_nsfw_bool,
+            parent_principal_id=row.get("parent_principal_id"),
+            source=row.get("source") or "admin-created-influencer",
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             metadata=metadata,
@@ -172,7 +179,8 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, is_nsfw, created_at, updated_at, metadata
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
             FROM ai_influencers
             WHERE is_nsfw = 1 AND is_active = 'active'
             ORDER BY created_at DESC
@@ -195,12 +203,13 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, is_nsfw, created_at, updated_at, metadata
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
             ) VALUES (
                 $1, $2, $3, $4, $5,
                 $6, $7, $8,
                 $9, $10,
-                $11, $12, $13, $14, $15
+                $11, $12, $13, $14, $15, $16, $17
             )
             RETURNING *
         """
@@ -228,6 +237,8 @@ class InfluencerRepository:
             suggested_messages_json,
             is_active_str,
             is_nsfw_int,
+            influencer.parent_principal_id,
+            influencer.source,
             influencer.created_at,
             influencer.updated_at,
             metadata_json,
@@ -246,8 +257,9 @@ class InfluencerRepository:
             display_name=row["display_name"],
             avatar_url=row["avatar_url"],
             description=row["description"],
-            category=row["category"],
             is_active=InfluencerStatus.ACTIVE,
+            parent_principal_id=row.get("parent_principal_id"),
+            source=row.get("source") or "admin-created-influencer",
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             # Default empty values for missing fields

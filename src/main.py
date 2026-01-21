@@ -43,8 +43,8 @@ is_test = (
     Path(sys.argv[0]).name.startswith("pytest")
 )
 
-# Sentry initialization
-sentry_env = settings.environment if settings.environment in ("production", "staging") else None
+# Sentry initialization (Production only)
+sentry_env = settings.environment if settings.environment == "production" else None
 if not is_test and settings.sentry_dsn and sentry_env:
     try:
         sentry_sdk.init(
