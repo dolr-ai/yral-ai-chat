@@ -2,8 +2,9 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Query, Response
+from loguru import logger
 
-from src.core.dependencies import CharacterGeneratorServiceDep, InfluencerServiceDep
+from src.core.dependencies import CharacterGeneratorServiceDep, InfluencerServiceDep, StorageServiceDep
 from src.core.moderation import MODERATION_PROMPT
 from src.models.entities import AIInfluencer, InfluencerStatus
 from src.models.requests import (
@@ -163,13 +164,37 @@ async def create_influencer(
     request: CreateInfluencerRequest,
     influencer_service: InfluencerServiceDep,
     character_generator_service: CharacterGeneratorServiceDep,
+    storage_service: StorageServiceDep,
 ):
     """Create a new AI influencer"""
+    
+    # Process avatar: download from Replicate and upload to Storj
+    final_avatar_url = None
+    if request.avatar_url:
+        try:
+            logger.info(f"Downloading avatar from Replicate: {request.avatar_url}")
+            
+            # Download image from Replicate
+            image_data = await storage_service.download_image_from_url(request.avatar_url)
+            
+            # Upload to Storj avatar bucket
+            final_avatar_url = await storage_service.upload_avatar(
+                image_data=image_data,
+                influencer_id=request.bot_principal_id,
+            )
+            
+            logger.info(f"Avatar uploaded to Storj: {final_avatar_url}")
+            
+        except Exception as e:
+            logger.error(f"Failed to process avatar: {e}")
+            # Fallback to original Replicate URL if S3 upload fails
+            final_avatar_url = request.avatar_url
+    
     influencer = AIInfluencer(
         id=request.bot_principal_id,
         name=request.name,
         display_name=request.display_name,
-        avatar_url=request.avatar_url,
+        avatar_url=final_avatar_url,
         description=request.description,
         category=request.category,
         system_instructions=f"{request.system_instructions}\n{MODERATION_PROMPT}",

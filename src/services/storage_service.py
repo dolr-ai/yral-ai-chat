@@ -30,7 +30,11 @@ class StorageService:
             aws_secret_access_key=settings.aws_secret_access_key,
             endpoint_url=settings.s3_endpoint_url,
             region_name=settings.aws_region,
-            config=Config(signature_version="s3v4")
+            config=Config(
+                signature_version="s3v4",
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
+            )
         )
 
     async def save_file(
@@ -193,3 +197,85 @@ class StorageService:
         TODO: Implement using mutagen or ffprobe (requires downloading file from storage)
         """
         return 0
+
+    async def download_image_from_url(self, url: str) -> bytes:
+        """
+        Download image from external URL (e.g., Replicate delivery URL).
+        
+        Args:
+            url: Image URL to download from
+            
+        Returns:
+            Image bytes
+            
+        Raises:
+            RuntimeError: If download fails
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    if response.status != 200:
+                        raise RuntimeError(f"Failed to download image: HTTP {response.status}")
+                    image_data = await response.read()
+                    logger.info(f"Downloaded image from {url} ({len(image_data)} bytes)")
+                    return image_data
+        except Exception as e:
+            logger.error(f"Failed to download image from {url}: {e}")
+            raise RuntimeError(f"Image download failed: {e!s}") from e
+
+    async def get_avatar_s3_client(self):
+        """Get an async S3 client for avatar operations"""
+        # Use specific avatar creds if present, otherwise fall back to main creds
+        access_key = settings.avatar_s3_access_key_id or settings.aws_access_key_id
+        secret_key = settings.avatar_s3_secret_access_key or settings.aws_secret_access_key
+        endpoint = settings.avatar_s3_endpoint_url or settings.s3_endpoint_url
+        
+        return self._session.client(
+            "s3",
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            endpoint_url=endpoint,
+            region_name=settings.aws_region,
+            config=Config(
+                signature_version="s3v4",
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
+            )
+        )
+
+    async def upload_avatar(self, image_data: bytes, influencer_id: str) -> str:
+        """
+        Upload avatar image to Storj avatar bucket and return public URL.
+        
+        Args:
+            image_data: Raw image bytes
+            influencer_id: Unique influencer ID (used as filename)
+            
+        Returns:
+            Public S3 URL
+            
+        Raises:
+            RuntimeError: If upload fails
+        """
+        s3_key = f"{influencer_id}.jpg"
+        file_size = len(image_data)
+        
+        try:
+            # Use dedicated avatar client (handles separate credentials if configured)
+            async with await self.get_avatar_s3_client() as s3:
+                await s3.put_object(
+                    Bucket=settings.avatar_s3_bucket,
+                    Key=s3_key,
+                    Body=image_data,
+                    ContentType="image/jpeg",
+                    ContentLength=file_size,
+                    ACL="public-read",
+                )
+            
+            public_url = f"{settings.avatar_s3_public_url_base}/{s3_key}"
+            logger.info(f"Avatar uploaded to S3: {public_url} ({file_size} bytes)")
+            return public_url
+            
+        except Exception as e:
+            logger.error(f"Failed to upload avatar to S3: {e}")
+            raise RuntimeError(f"Avatar upload failed: {e!s}") from e

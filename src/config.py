@@ -64,7 +64,16 @@ class Settings(BaseSettings):
         description="Expiration time in seconds for generated S3 presigned URLs",
     )
 
-    @field_validator("s3_endpoint_url", "s3_public_url_base")
+    # Avatar Storage (Storj - separate bucket)
+    avatar_s3_bucket: str = Field(..., min_length=1, alias="AVATAR_S3_BUCKET")
+    avatar_s3_public_url_base: str = Field(..., alias="AVATAR_S3_PUBLIC_URL_BASE")
+    
+    # Optional separate credentials for avatar bucket
+    avatar_s3_access_key_id: str | None = Field(default=None, alias="AVATAR_ACCESS_KEY_ID")
+    avatar_s3_secret_access_key: str | None = Field(default=None, alias="AVATAR_SECRET_ACCESS_KEY")
+    avatar_s3_endpoint_url: str | None = Field(default=None, alias="AVATAR_S3_ENDPOINT_URL")
+
+    @field_validator("s3_endpoint_url", "s3_public_url_base", "avatar_s3_public_url_base")
     @classmethod
     def validate_urls(cls, v: str) -> str:
         """Validate URL format"""
