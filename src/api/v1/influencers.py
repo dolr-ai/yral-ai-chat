@@ -162,6 +162,7 @@ async def validate_and_generate_metadata(
 async def create_influencer(
     request: CreateInfluencerRequest,
     influencer_service: InfluencerServiceDep,
+    character_generator_service: CharacterGeneratorServiceDep,
 ):
     """Create a new AI influencer"""
     influencer = AIInfluencer(
@@ -186,6 +187,12 @@ async def create_influencer(
 
     created = await influencer_service.create_influencer(influencer)
 
+    # Generate starter video prompt (not stored in DB)
+    starter_video_prompt = await character_generator_service.generate_starter_video_prompt(
+        display_name=created.display_name,
+        system_instructions=request.system_instructions,
+    )
+
     return InfluencerResponse(
         id=created.id,
         name=created.name,
@@ -196,5 +203,6 @@ async def create_influencer(
         is_active=created.is_active,
         parent_principal_id=created.parent_principal_id,
         source=created.source,
+        starter_video_prompt=starter_video_prompt,
         created_at=created.created_at,
     )

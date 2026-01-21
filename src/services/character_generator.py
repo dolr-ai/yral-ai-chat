@@ -124,3 +124,41 @@ class CharacterGeneratorService:
                 raise
             logger.error(f"Failed to process character metadata: {e}")
             raise AIServiceException(f"Failed to process character metadata: {e!s}") from e
+
+    @validate_call
+    async def generate_starter_video_prompt(
+        self,
+        display_name: str,
+        system_instructions: str,
+    ) -> str:
+        """
+        Generate a starter video prompt for the character.
+
+        Args:
+            display_name: Character's display name
+            system_instructions: Character's full system instructions
+
+        Returns:
+            A concise video prompt describing an intro scene
+        """
+        prompt = (
+            f"Based on the following character description, create a concise starter video prompt "
+            f"(1-2 sentences) for an intro video. The prompt should describe a short scene where "
+            f"the character introduces themselves or demonstrates their expertise. "
+            f"Include specific actions, dialogue snippets, or gestures.\n\n"
+            f"Character: {display_name}\n\n"
+            f"Description:\n{system_instructions}\n\n"
+            f"Output only the video prompt, nothing else."
+        )
+
+        try:
+            params = LLMGenerateParams(
+                user_message=prompt,
+                system_instructions="You are a creative video prompt generator. Create concise, vivid prompts.",
+            )
+            response = await self.gemini_client.generate_response(params)
+            return response.text.strip()
+        except Exception as e:
+            logger.error(f"Failed to generate starter video prompt: {e}")
+            # Return a fallback prompt
+            return f"{display_name} introduces themselves with a warm greeting and shares what they do."
