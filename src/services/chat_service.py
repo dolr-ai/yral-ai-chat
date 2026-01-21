@@ -2,6 +2,7 @@
 Chat service - Business logic for conversations and messages
 """
 import sqlite3
+import time
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -183,7 +184,7 @@ class ChatService:
     ) -> tuple[Message, Message]:
         """
         Send a message and get AI response
-        
+
         Args:
             conversation_id: Conversation ID
             user_id: User ID
@@ -192,18 +193,25 @@ class ChatService:
             media_urls: Optional image URLs
             audio_url: Optional audio URL
             audio_duration_seconds: Optional audio duration
-            
+
         Returns:
             Tuple of (user_message, assistant_message)
         """
+        timings: dict[str, float] = {}
+        total_start = time.time()
+
+        t0 = time.time()
         conversation = await self.conversation_repo.get_by_id(conversation_id)
+        timings["get_conversation"] = time.time() - t0
         if not conversation:
             raise NotFoundException("Conversation not found")
 
         if conversation.user_id != user_id:
             raise ForbiddenException("Not your conversation")
 
+        t0 = time.time()
         influencer = await self.influencer_repo.get_by_id(conversation.influencer_id)
+        timings["get_influencer"] = time.time() - t0
         if not influencer:
             raise NotFoundException("Influencer not found")
 
@@ -211,8 +219,11 @@ class ChatService:
 
         transcribed_content = content
         if message_type == MessageType.AUDIO and audio_url:
+            t0 = time.time()
             transcribed_content = await self._transcribe_audio(audio_url)
+            timings["transcribe_audio"] = time.time() - t0
 
+        t0 = time.time()
         user_message = await self._save_message(
             conversation_id=conversation_id,
             role=MessageRole.USER,
@@ -222,16 +233,21 @@ class ChatService:
             audio_url=audio_url,
             audio_duration_seconds=audio_duration_seconds
         )
+        timings["save_user_message"] = time.time() - t0
 
         logger.info(f"User message saved: {user_message.id}")
 
+        t0 = time.time()
         all_recent = await self.message_repo.get_recent_for_context(
             conversation_id=conversation_id,
             limit=11
         )
         history = [msg for msg in all_recent if msg.id != user_message.id][:10]
+        timings["get_history"] = time.time() - t0
 
+        t0 = time.time()
         await self._convert_history_storage_keys_async(history)
+        timings["convert_history_urls"] = time.time() - t0
 
         ai_input_content = str(content or transcribed_content or "What do you think?")
 
@@ -244,7 +260,9 @@ class ChatService:
 
         media_urls_for_ai = None
         if message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and media_urls:
+            t0 = time.time()
             media_urls_for_ai = await self._convert_media_urls_for_ai_async(media_urls)
+            timings["convert_media_urls"] = time.time() - t0
 
         try:
             # Select appropriate AI client based on influencer's NSFW status
@@ -254,17 +272,20 @@ class ChatService:
                 f"Generating response for influencer {influencer.id} ({influencer.display_name}) "
                 f"using {provider_name} provider"
             )
+            t0 = time.time()
             response_text, token_count = await ai_client.generate_response(
                 user_message=ai_input_content,
                 system_instructions=enhanced_system_instructions,
                 conversation_history=history,
                 media_urls=media_urls_for_ai
             )
+            timings["ai_generate_response"] = time.time() - t0
             logger.info(
                 f"Response generated successfully from {provider_name}: "
                 f"{len(response_text)} chars, {token_count} tokens"
             )
         except Exception as e:
+            timings["ai_generate_response"] = time.time() - t0
             logger.error(
                 "AI response generation failed for influencer {}: {}",
                 influencer.id,
@@ -274,6 +295,7 @@ class ChatService:
             response_text = self.FALLBACK_ERROR_MESSAGE
             token_count = 0
 
+        t0 = time.time()
         assistant_message = await self._save_message(
             conversation_id=conversation_id,
             role=MessageRole.ASSISTANT,
@@ -281,8 +303,17 @@ class ChatService:
             message_type=MessageType.TEXT,
             token_count=token_count
         )
+        timings["save_assistant_message"] = time.time() - t0
 
         logger.info(f"Assistant message saved: {assistant_message.id}")
+
+        timings["total"] = time.time() - total_start
+
+        timing_str = ", ".join(f"{k}={v*1000:.0f}ms" for k, v in timings.items())
+        if timings["total"] > 5:  # Log warning if total > 5 seconds
+            logger.warning(f"SLOW send_message [{conversation_id}]: {timing_str}")
+        else:
+            logger.info(f"send_message timings [{conversation_id}]: {timing_str}")
 
         if background_tasks:
             background_tasks.add_task(

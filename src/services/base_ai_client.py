@@ -2,7 +2,9 @@
 Base AI Client
 Shared logic for AI provider clients
 """
+import asyncio
 import json
+import time
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
 
@@ -15,6 +17,9 @@ from src.models.entities import Message
 from src.models.internal import AIProviderHealth
 
 T = TypeVar("T")
+
+# Timeout for individual image/audio downloads (seconds)
+MEDIA_DOWNLOAD_TIMEOUT = 15.0
 
 
 class BaseAIClient(ABC):
@@ -73,37 +78,90 @@ class BaseAIClient(ABC):
                             continue
             return {}
 
-    async def _download_image(self, url: str) -> dict[str, Any]:
-        """Download and encode image"""
+    async def _download_image(self, url: str, timeout: float = MEDIA_DOWNLOAD_TIMEOUT) -> dict[str, Any]:
+        """Download and encode image with timeout"""
+        t0 = time.time()
         try:
-            logger.info(f"Downloading image from URL: {url}")
-            response = await self.http_client.get(url)
+            logger.debug(f"Downloading image from URL: {url[:100]}...")
+            response = await asyncio.wait_for(
+                self.http_client.get(url),
+                timeout=timeout
+            )
             response.raise_for_status()
 
             image_data = response.content
             mime_type = response.headers.get("content-type", "image/jpeg")
+            elapsed = time.time() - t0
+            if elapsed > 2:
+                logger.warning(f"Slow image download ({elapsed:.1f}s): {url[:100]}")
             return {
                 "mime_type": mime_type,
                 "data": image_data
             }
+        except asyncio.TimeoutError:
+            elapsed = time.time() - t0
+            logger.error(f"Image download timeout ({elapsed:.1f}s): {url[:100]}")
+            raise AIServiceException(f"Image download timed out after {timeout}s") from None
         except Exception as e:
-            logger.error(f"Failed to download image from {url}: {e}")
+            elapsed = time.time() - t0
+            logger.error(f"Failed to download image ({elapsed:.1f}s) from {url[:100]}: {e}")
             raise AIServiceException(f"Failed to process image: {e}") from e
 
-    async def _download_audio(self, url: str) -> dict[str, Any]:
-        """Download and encode audio"""
+    async def _download_images_batch(
+        self,
+        urls: list[str],
+        warn_on_error: bool = False
+    ) -> list[dict[str, Any] | None]:
+        """
+        Download multiple images in parallel.
+        Returns list of image data dicts (or None for failed downloads if warn_on_error=True).
+        """
+        if not urls:
+            return []
+
+        async def download_one(url: str) -> dict[str, Any] | None:
+            try:
+                return await self._download_image(url)
+            except Exception as e:
+                if warn_on_error:
+                    logger.warning(f"Failed to load image from history: {e}")
+                    return None
+                raise
+
+        t0 = time.time()
+        results = await asyncio.gather(*[download_one(u) for u in urls], return_exceptions=False)
+        elapsed = time.time() - t0
+        success_count = sum(1 for r in results if r is not None)
+        logger.info(f"Downloaded {success_count}/{len(urls)} images in {elapsed:.1f}s (parallel)")
+
+        return results
+
+    async def _download_audio(self, url: str, timeout: float = MEDIA_DOWNLOAD_TIMEOUT) -> dict[str, Any]:
+        """Download and encode audio with timeout"""
+        t0 = time.time()
         try:
-            response = await self.http_client.get(url)
+            response = await asyncio.wait_for(
+                self.http_client.get(url),
+                timeout=timeout
+            )
             response.raise_for_status()
 
             audio_data = response.content
             mime_type = response.headers.get("content-type", "audio/mpeg")
+            elapsed = time.time() - t0
+            if elapsed > 2:
+                logger.warning(f"Slow audio download ({elapsed:.1f}s): {url[:100]}")
             return {
                 "mime_type": mime_type,
                 "data": audio_data
             }
+        except asyncio.TimeoutError:
+            elapsed = time.time() - t0
+            logger.error(f"Audio download timeout ({elapsed:.1f}s): {url[:100]}")
+            raise AIServiceException(f"Audio download timed out after {timeout}s") from None
         except Exception as e:
-            logger.error(f"Failed to download audio {url}: {e}")
+            elapsed = time.time() - t0
+            logger.error(f"Failed to download audio ({elapsed:.1f}s) {url[:100]}: {e}")
             raise AIServiceException(f"Failed to process audio: {e}") from e
 
     async def extract_memories(
