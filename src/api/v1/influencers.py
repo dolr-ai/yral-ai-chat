@@ -1,11 +1,10 @@
 """AI Influencer endpoints"""
-import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Query, Response
-from loguru import logger
 
 from src.core.dependencies import CharacterGeneratorServiceDep, InfluencerServiceDep
+from src.core.moderation import MODERATION_PROMPT
 from src.models.entities import AIInfluencer, InfluencerStatus
 from src.models.requests import (
     CreateInfluencerRequest,
@@ -172,7 +171,7 @@ async def create_influencer(
         avatar_url=request.avatar_url,
         description=request.description,
         category=request.category,
-        system_instructions=request.system_instructions,
+        system_instructions=f"{request.system_instructions}\n{MODERATION_PROMPT}",
         personality_traits=request.personality_traits,
         initial_greeting=request.initial_greeting,
         suggested_messages=request.suggested_messages,
