@@ -83,4 +83,4 @@ def test_validate_metadata_with_real_replicate(client, mock_gemini):
     assert isinstance(avatar_url, str)
     assert avatar_url.startswith("http")
     
-    print(f"\nGenerated Avatar URL: {avatar_url}")
+
