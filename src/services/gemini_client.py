@@ -189,7 +189,7 @@ class GeminiClient(BaseAIClient):
         if response_mime_type:
             config_args["response_mime_type"] = response_mime_type
         if response_schema:
-            config_args["response_json_schema"] = response_schema
+            config_args["response_schema"] = self._prepare_schema(response_schema, root_schema=response_schema)
 
         if system_instructions:
             # Append language instruction to system prompt as it was in the manual prompt
@@ -215,6 +215,68 @@ class GeminiClient(BaseAIClient):
         logger.info(f"Generated response: {len(response_text)} chars, {token_count} tokens")
 
         return response_text, token_count
+
+    def _prepare_schema(self, schema: dict[str, object], root_schema: dict[str, object] | None = None) -> dict[str, object]:
+        """
+        Recursively fix Pydantic JSON schema to be compatible with Google GenAI SDK.
+        - Resolves and inlines '$ref'
+        - Handles 'anyOf' with 'null' type by setting 'nullable=True'
+        - Removes 'additionalProperties' to satisfy strict API requirements
+        - Removes 'title' and other metadata fields
+        """
+        if not isinstance(schema, dict):
+            return schema
+
+        # 1. Resolve $ref
+        if "$ref" in schema:
+            return self._resolve_ref(schema, root_schema)
+
+        # 2. Handle anyOf for nullable fields
+        if "anyOf" in schema:
+            return self._handle_any_of(schema, root_schema)
+
+        # 3. Process fields
+        new_schema = {}
+        for k, v in schema.items():
+            if k in ["title", "definitions", "$defs", "additionalProperties", "additional_properties"]:
+                continue
+
+            if isinstance(v, dict):
+                new_schema[k] = self._prepare_schema(v, root_schema)
+            elif isinstance(v, list):
+                new_schema[k] = [
+                    self._prepare_schema(item, root_schema) if isinstance(item, dict) else item
+                    for item in v
+                ]
+            else:
+                new_schema[k] = v
+
+        return new_schema
+
+    def _resolve_ref(self, schema: dict[str, object], root_schema: dict[str, object] | None) -> dict[str, object]:
+        """Resolve $ref by inlining from root_schema"""
+        ref_path = str(schema["$ref"])
+        if ref_path.startswith("#/$defs/") and root_schema and "$defs" in root_schema:
+            def_name = ref_path.split("/")[-1]
+            defs = root_schema.get("$defs", {})
+            if isinstance(defs, dict) and def_name in defs:
+                resolved = defs[def_name]
+                if isinstance(resolved, dict):
+                    return self._prepare_schema(resolved, root_schema)
+        return schema
+
+    def _handle_any_of(self, schema: dict[str, object], root_schema: dict[str, object] | None) -> dict[str, object]:
+        """Handle anyOf for nullable fields or return first option"""
+        any_of = schema["anyOf"]
+        if isinstance(any_of, list):
+            # Filter out null type and set nullable
+            non_null_types = [t for t in any_of if isinstance(t, dict) and t.get("type") != "null"]
+            if len(non_null_types) < len(any_of):
+                target_schema = non_null_types[0].copy() if non_null_types else {"type": "string"}
+                target_schema["nullable"] = True
+                return self._prepare_schema(target_schema, root_schema)
+            return self._prepare_schema(any_of[0].copy(), root_schema)
+        return schema
 
     async def transcribe_audio(self, audio_url: str) -> str:
         """

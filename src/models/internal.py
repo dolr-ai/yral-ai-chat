@@ -69,6 +69,12 @@ class JWTPayload(BaseModel):
     jti: str | None = Field(None, description="JWT ID")
 
 
+class PersonalityTrait(BaseModel):
+    """Trait key-value pair for character personality"""
+    trait: str = Field(..., description="Name of the trait (e.g., energy_level)")
+    value: str = Field(..., description="Value of the trait (e.g., high)")
+
+
 class CharacterValidation(BaseModel):
     """Internal model for AI character validation response from LLM"""
 
@@ -76,10 +82,12 @@ class CharacterValidation(BaseModel):
     reason: str | None = Field(None, description="Reason for invalidation (if is_valid is false)")
     name: str | None = Field(None, description="URL-friendly username (slug)")
     display_name: str | None = Field(None, description="Human-readable display name")
-    bio: str | None = Field(None, description="Character biography")
+    description: str | None = Field(None, description="Character biography/description")
     initial_greeting: str | None = Field(None, description="Initial greeting message")
     suggested_messages: list[str] | None = Field(None, description="List of suggested starter messages")
-    personality_traits: dict[str, str] | None = Field(None, description="Map of personality traits")
+    personality_traits: list[PersonalityTrait] | None = Field(
+        None, description="List of personality traits"
+    )
     category: str | None = Field(None, description="Expertise or character category")
     image_prompt: str | None = Field(None, description="Detailed prompt for avatar generation")
 

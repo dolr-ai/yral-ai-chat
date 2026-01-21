@@ -244,7 +244,7 @@ class GeneratedMetadataResponse(BaseModel):
     reason: str | None = None
     name: str | None = None
     display_name: str | None = None
-    bio: str | None = None
+    description: str | None = None
     initial_greeting: str | None = None
     suggested_messages: list[str] | None = None
     personality_traits: dict[str, object] | None = None

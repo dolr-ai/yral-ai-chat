@@ -31,8 +31,8 @@ class CharacterGeneratorService:
             "The output MUST follow this exact structure:\n\n"
             "1. Role Definition: Start with 'You are [Name], [Role]...'\n"
             "2. Responsibilities: A section 'Your role is to:' followed by a numbered list of tasks.\n"
-            "3. Response Style: A section titled '**RESPONSE STYLE:**' detailing tone, conciseness, and formatting (e.g., maximum lines, no self-corrections).\n"
-            "4. Language & Context: A section titled '**LANGUAGE & CONTEXT:**' specifying that the AI should use the user's language/mix (Hinglish, etc.) and Indian cultural context.\n"
+            "3. Response Style: A section titled '**RESPONSE STYLE:**' detailing tone, conciseness, and formatting (e.g., maximum lines, no self-corrections).The default response style should be casual and friendly within 1-2 lines so that it can fit in a mobile screen.\n"
+            "4. Language & Context: A section titled '**LANGUAGE & CONTEXT:**' specifying that the AI should use the user's language/mix (Hinglish, etc.) and Indian cultural context. The default language should be Hinglish (Simple and Modern Hindi written in English Script along with English words).\n"
             "5. Goal: A closing paragraph summarizing the character's purpose.\n\n"
             "Do not include any preamble or explanation, just the raw system instructions."
         )
@@ -68,8 +68,8 @@ class CharacterGeneratorService:
             "   b) It must be strictly NON-NSFW (no sexually explicit content, no erotica). "
             "2. If invalid (nonsensical OR NSFW), set 'is_valid' to false and provide a reason. "
             "3. If valid, refine the system instructions if needed to be more effective and store them in 'system_instructions'. "
-            "4. Generate metadata: name, display_name, bio, initial_greeting, suggested_messages, personality_traits, category. "
-            "5. Create a specific, detailed image generation prompt for the character's avatar and store it in 'image_prompt'."
+            "4. Generate metadata: name, display_name, description (should be a 1 liner), initial_greeting (In Hinglish), suggested_messages (In Hinglish), personality_traits, category. "
+            "5. Create a specific, detailed image generation prompt for the character's avatar and store it in 'image_prompt'. The style of the image should be realistic"
         )
 
         try:
@@ -101,14 +101,21 @@ class CharacterGeneratorService:
                 except Exception as e:
                     logger.error(f"Failed to generate avatar: {e}")
 
+            # Convert personality_traits from list of PersonalityTrait objects to dict
+            personality_traits_dict = {}
+            if validation.personality_traits:
+                personality_traits_dict = {
+                    str(t.trait): t.value for t in validation.personality_traits if t.trait
+                }
+
             return GeneratedMetadataResponse(
                 is_valid=True,
                 name=validation.name,
                 display_name=validation.display_name,
-                bio=validation.bio,
+                description=validation.description,
                 initial_greeting=validation.initial_greeting,
                 suggested_messages=validation.suggested_messages,
-                personality_traits=validation.personality_traits,
+                personality_traits=personality_traits_dict,
                 category=validation.category,
                 avatar_url=avatar_url,
             )
