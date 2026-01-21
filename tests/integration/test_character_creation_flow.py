@@ -55,10 +55,10 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
         "is_valid": True,
         "name": "neo_hacker",
         "display_name": "Neo",
-        "bio": "The One",
+        "description": "The One",
         "initial_greeting": "Wake up, Neo.",
         "suggested_messages": ["Follow the white rabbit"],
-        "personality_traits": {"coding": "expert"},
+        "personality_traits": [{"trait": "coding", "value": "expert"}],
         "category": "Sci-Fi",
         "image_prompt": "Neo hacker portrait",
     }
@@ -79,7 +79,7 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     create_req = {
         "name": data["name"],
         "display_name": data["display_name"],
-        "description": data["bio"],
+        "description": data["description"],
         "system_instructions": system_instructions,  # Use the instructions from Step 1
         "initial_greeting": data["initial_greeting"],
         "suggested_messages": data["suggested_messages"],
@@ -87,6 +87,8 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
         "category": data["category"],
         "avatar_url": data["avatar_url"],
         "is_nsfw": False,
+        "bot_principal_id": "neo-principal-id",
+        "parent_principal_id": "creator-principal-id",
     }
 
     response = client.post("/api/v1/influencers/create", json=create_req)
