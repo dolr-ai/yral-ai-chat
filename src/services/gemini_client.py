@@ -1,6 +1,7 @@
 """
 Google Gemini AI Client
 """
+import asyncio
 import time
 from collections.abc import Callable
 from typing import TypeVar
@@ -131,7 +132,6 @@ class GeminiClient(BaseAIClient):
 
     async def _build_history_contents(self, conversation_history: list[Message]) -> list[dict]:
         """Build conversation history contents with parallel image downloading"""
-        import asyncio
 
         # 1. Collect all URLs to download
         messages_to_process = conversation_history[-10:]
@@ -201,7 +201,6 @@ class GeminiClient(BaseAIClient):
         warn_on_error: bool = False
     ) -> None:
         """Add images to message parts (downloading in parallel)"""
-        import asyncio
 
         async def _process_url(url: str) -> dict | None:
             try:
