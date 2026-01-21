@@ -1,8 +1,22 @@
 """AI Influencer endpoints"""
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Query, Response
 
-from src.core.dependencies import InfluencerServiceDep
-from src.models.responses import InfluencerResponse, ListInfluencersResponse
+from src.core.dependencies import CharacterGeneratorServiceDep, InfluencerServiceDep
+from src.core.moderation import MODERATION_PROMPT
+from src.models.entities import AIInfluencer, InfluencerStatus
+from src.models.requests import (
+    CreateInfluencerRequest,
+    GeneratePromptRequest,
+    ValidateMetadataRequest,
+)
+from src.models.responses import (
+    GeneratedMetadataResponse,
+    InfluencerResponse,
+    ListInfluencersResponse,
+    SystemPromptResponse,
+)
 
 router = APIRouter(prefix="/api/v1/influencers", tags=["Influencers"])
 
@@ -50,6 +64,8 @@ async def list_influencers(
             description=inf.description,
             category=inf.category,
             is_active=inf.is_active,
+            parent_principal_id=inf.parent_principal_id,
+            source=inf.source,
             created_at=inf.created_at,
         )
         for inf in influencers
@@ -100,7 +116,93 @@ async def get_influencer(
         description=influencer.description,
         category=influencer.category,
         is_active=influencer.is_active,
+        parent_principal_id=influencer.parent_principal_id,
+        source=influencer.source,
         created_at=influencer.created_at,
     )
 
 
+@router.post(
+    "/generate-prompt",
+    response_model=SystemPromptResponse,
+    operation_id="generatePrompt",
+    summary="Generate system instructions",
+    description="Generate system instructions from a character concept prompt",
+)
+async def generate_prompt(
+    request: GeneratePromptRequest,
+    character_generator: CharacterGeneratorServiceDep,
+):
+    """Generate system instructions"""
+    return await character_generator.generate_system_instructions(request.prompt)
+
+
+@router.post(
+    "/validate-and-generate-metadata",
+    response_model=GeneratedMetadataResponse,
+    operation_id="validateAndGenerateMetadata",
+    summary="Validate instructions and generate metadata",
+    description="Validate system instructions and generate metadata + avatar",
+)
+async def validate_and_generate_metadata(
+    request: ValidateMetadataRequest,
+    character_generator: CharacterGeneratorServiceDep,
+):
+    """Validate system instructions and generate metadata using AI"""
+    return await character_generator.validate_and_generate_metadata(request.system_instructions)
+
+
+@router.post(
+    "/create",
+    response_model=InfluencerResponse,
+    operation_id="createInfluencer",
+    summary="Create a new influencer",
+    description="Create a new AI influencer character",
+)
+async def create_influencer(
+    request: CreateInfluencerRequest,
+    influencer_service: InfluencerServiceDep,
+    character_generator_service: CharacterGeneratorServiceDep,
+):
+    """Create a new AI influencer"""
+    influencer = AIInfluencer(
+        id=request.bot_principal_id,
+        name=request.name,
+        display_name=request.display_name,
+        avatar_url=request.avatar_url,
+        description=request.description,
+        category=request.category,
+        system_instructions=f"{request.system_instructions}\n{MODERATION_PROMPT}",
+        personality_traits=request.personality_traits,
+        initial_greeting=request.initial_greeting,
+        suggested_messages=request.suggested_messages,
+        is_active=InfluencerStatus.ACTIVE,
+        is_nsfw=False,  # Enforce non-NSFW for all new characters
+        parent_principal_id=request.parent_principal_id,
+        source="user-created-influencer" if request.parent_principal_id else "admin-created-influencer",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        metadata={},
+    )
+
+    created = await influencer_service.create_influencer(influencer)
+
+    # Generate starter video prompt (not stored in DB)
+    starter_video_prompt = await character_generator_service.generate_starter_video_prompt(
+        display_name=created.display_name,
+        system_instructions=request.system_instructions,
+    )
+
+    return InfluencerResponse(
+        id=created.id,
+        name=created.name,
+        display_name=created.display_name,
+        avatar_url=created.avatar_url,
+        description=created.description,
+        category=created.category,
+        is_active=created.is_active,
+        parent_principal_id=created.parent_principal_id,
+        source=created.source,
+        starter_video_prompt=starter_video_prompt,
+        created_at=created.created_at,
+    )

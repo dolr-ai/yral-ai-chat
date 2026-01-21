@@ -1,6 +1,7 @@
 """
 Yral AI Chat API - Main Application
 """
+
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -42,8 +43,8 @@ is_test = (
     Path(sys.argv[0]).name.startswith("pytest")
 )
 
-# Sentry initialization
-sentry_env = settings.environment if settings.environment in ("production", "staging") else None
+# Sentry initialization (Production only)
+sentry_env = settings.environment if settings.environment == "production" else None
 if not is_test and settings.sentry_dsn and sentry_env:
     try:
         sentry_sdk.init(
@@ -105,7 +106,7 @@ app = FastAPI(
     redoc_url="/redoc",
     swagger_ui_parameters={"persistAuthorization": True},
     redoc_js_url="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js",
-    redoc_favicon_url="https://fastapi.tiangolo.com/img/favicon.png"
+    redoc_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
 )
 
 # Customize OpenAPI Schema
@@ -119,7 +120,7 @@ def custom_openapi():
         description=app.description,
         routes=app.routes,
     )
-    
+
     if settings.environment == "staging":
         schema["servers"] = [{"url": "/staging", "description": "Staging environment"}]
     
@@ -128,7 +129,7 @@ def custom_openapi():
             "type": "http",
             "scheme": "bearer",
             "bearerFormat": "JWT",
-            "description": "Enter JWT token"
+            "description": "Enter your JWT token (without 'Bearer' prefix)",
         }
     }
     app.openapi_schema = schema
@@ -157,11 +158,11 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # --- Exception Handlers ---
 
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle Pydantic validation errors"""
     logger.warning(f"Validation error on {request.url.path}: {exc.errors()}")
-    
     # Pydantic v2 errors contain non-serializable objects (like ValueError) in 'ctx'
     # We must sanitize them before sending to JSONResponse
     def sanitize(obj):
@@ -218,10 +219,12 @@ app.include_router(chat.router)
 app.include_router(media.router)
 app.include_router(sentry.router, prefix="/v1")
 
+
 @app.get("/metrics", tags=["Monitoring"])
 async def get_metrics():
     """Prometheus metrics endpoint"""
     return await metrics_endpoint()
+
 
 @app.get("/", tags=["Root"])
 async def root():
@@ -232,7 +235,7 @@ async def root():
         "status": "running",
         "docs": "/docs",
         "health": "/health",
-        "metrics": "/metrics"
+        "metrics": "/metrics",
     }
 
 

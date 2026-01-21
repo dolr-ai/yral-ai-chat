@@ -48,13 +48,10 @@ class TestOpenRouterClientInitialization:
 
         # Get the mock headers object from the client's http_client
         mock_headers = client.http_client.headers
-        
+
         # Check that update was called with the expected headers
         mock_headers.update.assert_called_once()
         args, _ = mock_headers.update.call_args
         headers_arg = args[0]
         assert headers_arg["Authorization"] == "Bearer test-key-12345"
         assert headers_arg["HTTP-Referer"] == "https://yral.com"
-
-
-

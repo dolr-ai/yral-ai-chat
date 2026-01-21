@@ -2,6 +2,7 @@
 Base AI Client
 Shared logic for AI provider clients
 """
+
 import json
 from abc import ABC, abstractmethod
 from typing import Any, TypeVar
@@ -11,8 +12,7 @@ import tiktoken
 from loguru import logger
 
 from src.core.exceptions import AIServiceException
-from src.models.entities import Message
-from src.models.internal import AIProviderHealth
+from src.models.internal import AIProviderHealth, AIResponse, LLMGenerateParams
 
 T = TypeVar("T")
 
@@ -28,23 +28,19 @@ class BaseAIClient(ABC):
             follow_redirects=True,
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
-            }
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            },
         )
         try:
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
         except Exception as e:
-            logger.warning(f"Failed to initialize tiktoken for {self.provider_name}, falling back to approximate counting: {e}")
+            logger.warning(
+                f"Failed to initialize tiktoken for {self.provider_name}, falling back to approximate counting: {e}"
+            )
             self.tokenizer = None
 
     @abstractmethod
-    async def generate_response(
-        self,
-        user_message: str,
-        system_instructions: str,
-        conversation_history: list[Message] | None = None,
-        media_urls: list[str] | None = None
-    ) -> tuple[str, int]:
+    async def generate_response(self, params: LLMGenerateParams) -> AIResponse:
         """Generate AI response"""
 
     @abstractmethod
@@ -66,7 +62,7 @@ class BaseAIClient(ABC):
                 elif char == "}":
                     brace_count -= 1
                     if brace_count == 0 and start_idx != -1:
-                        json_str = response_text[start_idx:i+1]
+                        json_str = response_text[start_idx : i + 1]
                         try:
                             return json.loads(json_str)
                         except json.JSONDecodeError:
@@ -82,10 +78,7 @@ class BaseAIClient(ABC):
 
             image_data = response.content
             mime_type = response.headers.get("content-type", "image/jpeg")
-            return {
-                "mime_type": mime_type,
-                "data": image_data
-            }
+            return {"mime_type": mime_type, "data": image_data}
         except Exception as e:
             logger.error(f"Failed to download image from {url}: {e}")
             raise AIServiceException(f"Failed to process image: {e}") from e
@@ -98,30 +91,24 @@ class BaseAIClient(ABC):
 
             audio_data = response.content
             mime_type = response.headers.get("content-type", "audio/mpeg")
-            return {
-                "mime_type": mime_type,
-                "data": audio_data
-            }
+            return {"mime_type": mime_type, "data": audio_data}
         except Exception as e:
             logger.error(f"Failed to download audio {url}: {e}")
             raise AIServiceException(f"Failed to process audio: {e}") from e
 
     async def extract_memories(
-        self,
-        user_message: str,
-        assistant_response: str,
-        existing_memories: dict[str, str] | None = None
+        self, user_message: str, assistant_response: str, existing_memories: dict[str, str] | None = None
     ) -> dict[str, str]:
         """Extract memories from conversation using the provider's generate_response"""
         try:
             existing_memories = existing_memories or {}
-            
+
             existing_memories_text = ""
             if existing_memories:
                 existing_memories_text = "\n\nCurrent memories:\n" + "\n".join(
                     f"- {key}: {value}" for key, value in existing_memories.items()
                 )
-            
+
             prompt = f"""Extract any factual information about the user from this conversation that should be remembered for future interactions.
 
 Examples of things to remember:
@@ -141,19 +128,21 @@ If information updates an existing memory, use the new value.
 Format: {{"key1": "value1", "key2": "value2"}}"""
 
             # We use the provider's generate_response to extract memories
-            response_text, _ = await self.generate_response(
-                user_message=prompt,
-                system_instructions="You are a factual information extractor. Output ONLY raw JSON."
+            response = await self.generate_response(
+                LLMGenerateParams(
+                    user_message=prompt,
+                    system_instructions="You are a factual information extractor. Output ONLY raw JSON.",
+                )
             )
-            
-            extracted = self._extract_json_from_response(response_text)
-            
+
+            extracted = self._extract_json_from_response(response.text)
+
             if extracted and isinstance(extracted, dict):
                 existing_memories.update(extracted)
                 logger.info(f"[{self.provider_name}] Extracted {len(extracted)} new/updated memories")
-            
+
             return existing_memories
-            
+
         except Exception as e:
             logger.error(f"[{self.provider_name}] Memory extraction failed: {e}")
             return existing_memories or {}
