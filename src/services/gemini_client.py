@@ -130,10 +130,40 @@ class GeminiClient(BaseAIClient):
             raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
 
     async def _build_history_contents(self, conversation_history: list[Message]) -> list[dict]:
-        """Build conversation history contents"""
+        """Build conversation history contents with parallel image downloading"""
+        import asyncio
+
+        # 1. Collect all URLs to download
+        messages_to_process = conversation_history[-10:]
+        all_urls = []
+        for msg in messages_to_process:
+            if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and msg.media_urls:
+                all_urls.extend(msg.media_urls[:3])  # Limit 3 images per history message
+
+        # 2. Download all in parallel
+        url_blob_map = {}
+        if all_urls:
+            # unique urls only to save bandwidth
+            unique_urls = list(set(all_urls))
+            
+            async def _download_and_map(url: str):
+                try:
+                    data = await self._download_image(url)
+                    return url, data
+                except Exception as e:
+                    logger.warning(f"Failed to load image from history {url}: {e}")
+                    return url, None
+
+            tasks = [_download_and_map(url) for url in unique_urls]
+            results = await asyncio.gather(*tasks)
+            
+            for url, data in results:
+                if data:
+                    url_blob_map[url] = data
+
+        # 3. Build contents using downloaded blobs
         contents = []
-        
-        for msg in conversation_history[-10:]:  # Last 10 messages for context
+        for msg in messages_to_process:
             role = "user" if msg.role == MessageRole.USER else "model"
             parts = []
 
@@ -141,8 +171,10 @@ class GeminiClient(BaseAIClient):
                 text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
                 parts.append({"text": text_content})
 
-            if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
-                await self._add_images_to_parts(msg.media_urls[:3], parts, warn_on_error=True)
+            if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and msg.media_urls:
+                for url in msg.media_urls[:3]:
+                    if url in url_blob_map:
+                        parts.append({"inline_data": url_blob_map[url]})
 
             if parts:
                 contents.append({"role": role, "parts": parts})
@@ -168,17 +200,28 @@ class GeminiClient(BaseAIClient):
         parts: list[dict],
         warn_on_error: bool = False
     ) -> None:
-        """Add images to message parts"""
-        for url in image_urls:
+        """Add images to message parts (downloading in parallel)"""
+        import asyncio
+
+        async def _process_url(url: str) -> dict | None:
             try:
                 image_data = await self._download_image(url)
-                parts.append({"inline_data": image_data})
+                return {"inline_data": image_data}
             except Exception as e:
                 if warn_on_error:
                     logger.warning(f"Failed to load image from history: {e}")
-                else:
-                    logger.error(f"Failed to download image {url}: {e}")
-                    raise AIServiceException(f"Failed to process image: {e}") from e
+                    return None
+                logger.error(f"Failed to download image {url}: {e}")
+                raise AIServiceException(f"Failed to process image: {e}") from e
+
+        # Download all images in parallel
+        tasks = [_process_url(url) for url in image_urls]
+        results = await asyncio.gather(*tasks)
+        
+        # Add successful results to parts
+        for result in results:
+            if result:
+                parts.append(result)
 
     @_gemini_retry_decorator
     async def _generate_content(self, contents: list[dict], system_instructions: str | None = None) -> tuple[str, int]:
