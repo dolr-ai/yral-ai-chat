@@ -383,7 +383,7 @@ class ChatService:
         limit: int = 20,
         offset: int = 0
     ) -> tuple[list[Conversation], int]:
-        """List user's conversations"""
+        """List user's conversations with recent messages populated"""
         conversations = await self.conversation_repo.list_by_user(
             user_id=user_id,
             influencer_id=influencer_id,
@@ -395,6 +395,18 @@ class ChatService:
             user_id=user_id,
             influencer_id=influencer_id
         )
+        
+        # Batch fetch recent messages for all conversations to avoid N+1 queries
+        if conversations:
+            conversation_ids = [UUID(conv.id) for conv in conversations]
+            recent_messages_map = await self.message_repo.get_recent_for_conversations_batch(
+                conversation_ids=conversation_ids,
+                limit_per_conv=10
+            )
+            
+            # Map back to conversations
+            for conv in conversations:
+                conv.recent_messages = recent_messages_map.get(conv.id, [])
 
         return conversations, total
 
