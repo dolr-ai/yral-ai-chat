@@ -1,6 +1,7 @@
 """
 Google Gemini AI Client
 """
+import asyncio
 import mimetypes
 import time
 from collections.abc import Callable

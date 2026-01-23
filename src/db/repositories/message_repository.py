@@ -106,7 +106,6 @@ class MessageRepository:
         """
 
         rows = await db.fetch(query, str(conversation_id), limit)
-        rows = await db.fetch(query, str(conversation_id), limit)
         return [self._row_to_message(row) for row in reversed(rows)]
 
     async def get_recent_for_conversations_batch(
