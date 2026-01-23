@@ -52,11 +52,13 @@ class ReplicateClient:
                 image_url = str(output[0])
                 logger.info(f"Image generated successfully: {image_url}")
                 return image_url
-            if isinstance(output, str):
-                logger.info(f"Image generated successfully (string format): {output}")
-                return output
+            
+            if output:
+                image_url = str(output)
+                logger.info(f"Image generated successfully (direct format): {image_url}")
+                return image_url
 
-            logger.error(f"Unexpected output format from Replicate: {type(output)}")
+            logger.error(f"Unexpected or empty output from Replicate: {type(output)}")
             return None
 
         except Exception as e:
@@ -98,11 +100,13 @@ class ReplicateClient:
                 image_url = str(output[0])
                 logger.info(f"Image generated via context successfully: {image_url}")
                 return image_url
-            if isinstance(output, str):
-                logger.info(f"Image generated via context successfully (string format): {output}")
-                return output
+            
+            if output:
+                image_url = str(output)
+                logger.info(f"Image generated via context successfully (direct format): {image_url}")
+                return image_url
 
-            logger.error(f"Unexpected output format from Replicate: {type(output)}")
+            logger.error(f"Unexpected or empty output from Replicate: {type(output)}")
             return None
 
         except Exception as e:
