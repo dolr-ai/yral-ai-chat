@@ -2,6 +2,7 @@
 Chat service - Business logic for conversations and messages
 """
 import sqlite3
+import time
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -170,32 +171,12 @@ class ChatService:
         except Exception as e:
             logger.error(f"Failed to update memories: {e}", exc_info=True)
 
-    async def send_message(
+    async def _validate_and_get_context(
         self,
         conversation_id: str,
-        user_id: str,
-        content: str,
-        message_type: str = "text",
-        media_urls: list[str] | None = None,
-        audio_url: str | None = None,
-        audio_duration_seconds: int | None = None,
-        background_tasks: "BackgroundTasks | None" = None
-    ) -> tuple[Message, Message]:
-        """
-        Send a message and get AI response
-        
-        Args:
-            conversation_id: Conversation ID
-            user_id: User ID
-            content: Message text content
-            message_type: Type of message
-            media_urls: Optional image URLs
-            audio_url: Optional audio URL
-            audio_duration_seconds: Optional audio duration
-            
-        Returns:
-            Tuple of (user_message, assistant_message)
-        """
+        user_id: str
+    ) -> tuple[Conversation, object]:
+        """Validate conversation/user and return conversation and influencer"""
         conversation = await self.conversation_repo.get_by_id(conversation_id)
         if not conversation:
             raise NotFoundException("Conversation not found")
@@ -207,12 +188,26 @@ class ChatService:
         if not influencer:
             raise NotFoundException("Influencer not found")
 
-        memories = conversation.metadata.get("memories", {})
+        return conversation, influencer
 
+    async def _prepare_user_message(
+        self,
+        conversation_id: str,
+        content: str,
+        message_type: str,
+        audio_url: str | None,
+        audio_duration_seconds: int | None,
+        media_urls: list[str] | None,
+        timings: dict[str, float]
+    ) -> tuple[Message, str]:
+        """Transcribe (if needed) and save user message"""
         transcribed_content = content
         if message_type == MessageType.AUDIO and audio_url:
+            t0 = time.time()
             transcribed_content = await self._transcribe_audio(audio_url)
+            timings["transcribe_audio"] = time.time() - t0
 
+        t0 = time.time()
         user_message = await self._save_message(
             conversation_id=conversation_id,
             role=MessageRole.USER,
@@ -222,18 +217,29 @@ class ChatService:
             audio_url=audio_url,
             audio_duration_seconds=audio_duration_seconds
         )
+        timings["save_user_message"] = time.time() - t0
+        return user_message, transcribed_content or ""
 
-        logger.info(f"User message saved: {user_message.id}")
-
+    async def _build_ai_context(
+        self,
+        conversation_id: str,
+        user_message_id: str,
+        influencer: object,
+        memories: dict[str, object],
+        timings: dict[str, float]
+    ) -> tuple[list[Message], str]:
+        """Fetch history and build system instructions"""
+        t0 = time.time()
         all_recent = await self.message_repo.get_recent_for_context(
             conversation_id=conversation_id,
             limit=11
         )
-        history = [msg for msg in all_recent if msg.id != user_message.id][:10]
+        history = [msg for msg in all_recent if msg.id != user_message_id][:10]
+        timings["get_history"] = time.time() - t0
 
+        t0 = time.time()
         await self._convert_history_storage_keys_async(history)
-
-        ai_input_content = str(content or transcribed_content or "What do you think?")
+        timings["convert_history_urls"] = time.time() - t0
 
         enhanced_system_instructions = influencer.system_instructions
         if memories:
@@ -241,39 +247,96 @@ class ChatService:
                 f"- {key}: {value}" for key, value in memories.items()
             )
             enhanced_system_instructions = influencer.system_instructions + memories_text
+            
+        return history, enhanced_system_instructions
 
-        media_urls_for_ai = None
-        if message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and media_urls:
-            media_urls_for_ai = await self._convert_media_urls_for_ai_async(media_urls)
-
+    async def _generate_ai_response(
+        self,
+        influencer: object,
+        ai_input_content: str,
+        enhanced_instructions: str,
+        history: list[Message],
+        media_urls_for_ai: list[str] | None,
+        timings: dict[str, float]
+    ) -> tuple[str, int]:
+        """Select client and generate AI response"""
         try:
-            # Select appropriate AI client based on influencer's NSFW status
             ai_client = self._select_ai_client(influencer.is_nsfw)
             provider_name = "OpenRouter" if influencer.is_nsfw else "Gemini"
             logger.info(
                 f"Generating response for influencer {influencer.id} ({influencer.display_name}) "
                 f"using {provider_name} provider"
             )
+            t0 = time.time()
             response_text, token_count = await ai_client.generate_response(
                 user_message=ai_input_content,
-                system_instructions=enhanced_system_instructions,
+                system_instructions=enhanced_instructions,
                 conversation_history=history,
                 media_urls=media_urls_for_ai
             )
+            timings["ai_generate_response"] = time.time() - t0
             logger.info(
                 f"Response generated successfully from {provider_name}: "
                 f"{len(response_text)} chars, {token_count} tokens"
             )
+            return response_text, token_count
         except Exception as e:
+            timings["ai_generate_response"] = time.time() - t0
             logger.error(
                 "AI response generation failed for influencer {}: {}",
                 influencer.id,
                 str(e),
                 exc_info=True
             )
-            response_text = self.FALLBACK_ERROR_MESSAGE
-            token_count = 0
+            return self.FALLBACK_ERROR_MESSAGE, 0
 
+    async def send_message(
+        self,
+        conversation_id: str,
+        user_id: str,
+        content: str,
+        message_type: str = "text",
+        media_urls: list[str] | None = None,
+        audio_url: str | None = None,
+        audio_duration_seconds: int | None = None,
+        background_tasks: "BackgroundTasks | None" = None
+    ) -> tuple[Message, Message]:
+        """Send a message and get AI response"""
+        timings: dict[str, float] = {}
+        total_start = time.time()
+
+        # 1. Validation & Context
+        t0 = time.time()
+        conversation, influencer = await self._validate_and_get_context(conversation_id, user_id)
+        timings["get_context"] = time.time() - t0
+        memories = conversation.metadata.get("memories", {})
+
+        # 2. User Message
+        user_message, transcribed_payload = await self._prepare_user_message(
+            conversation_id, content, message_type, audio_url, audio_duration_seconds, media_urls, timings
+        )
+        logger.info(f"User message saved: {user_message.id}")
+
+        # 3. Context & History
+        history, enhanced_instructions = await self._build_ai_context(
+            conversation_id, user_message.id, influencer, memories, timings
+        )
+        ai_input_content = str(content or transcribed_payload or "What do you think?")
+
+        # 4. Multimodal Preparation
+        media_urls_for_ai = None
+        if message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and media_urls:
+            t0 = time.time()
+            media_urls_for_ai = await self._convert_media_urls_for_ai_async(media_urls)
+            timings["convert_media_urls"] = time.time() - t0
+
+        # 5. AI Generation
+        response_text, token_count = await self._generate_ai_response(
+            influencer, ai_input_content, enhanced_instructions, history, media_urls_for_ai, timings
+        )
+
+        # 6. Save Assistant Message
+        t0 = time.time()
         assistant_message = await self._save_message(
             conversation_id=conversation_id,
             role=MessageRole.ASSISTANT,
@@ -281,28 +344,20 @@ class ChatService:
             message_type=MessageType.TEXT,
             token_count=token_count
         )
-
+        timings["save_assistant_message"] = time.time() - t0
         logger.info(f"Assistant message saved: {assistant_message.id}")
 
+        # 7. Finalize & Latency Tracking
+        timings["total"] = time.time() - total_start
+        timing_str = ", ".join(f"{k}={v*1000:.0f}ms" for k, v in timings.items())
+        log_lvl = logger.warning if timings["total"] > 5 else logger.info
+        log_lvl(f"send_message timings [{conversation_id}]: {timing_str}")
+
+        update_args = (conversation_id, conversation, ai_input_content, response_text, memories)
         if background_tasks:
-            background_tasks.add_task(
-                self._update_conversation_memories,
-                conversation_id,
-                conversation,
-                ai_input_content,
-                response_text,
-                memories,
-                is_nsfw=influencer.is_nsfw
-            )
+            background_tasks.add_task(self._update_conversation_memories, *update_args, is_nsfw=influencer.is_nsfw)
         else:
-            await self._update_conversation_memories(
-                conversation_id,
-                conversation,
-                ai_input_content,
-                response_text,
-                memories,
-                is_nsfw=influencer.is_nsfw
-            )
+            await self._update_conversation_memories(*update_args, is_nsfw=influencer.is_nsfw)
 
         return user_message, assistant_message
 
