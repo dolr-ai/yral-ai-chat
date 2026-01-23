@@ -2,6 +2,7 @@
 Google Gemini AI Client
 """
 import asyncio
+import mimetypes
 import time
 from collections.abc import Callable
 from typing import TypeVar
@@ -145,15 +146,10 @@ class GeminiClient(BaseAIClient):
             raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
 
     def _get_mime_type_from_url(self, url: str) -> str:
-        """Infer MIME type from URL extension"""
-        url_lower = url.lower().split("?")[0]  # Remove query params
-        if url_lower.endswith(".png"):
-            return "image/png"
-        if url_lower.endswith(".gif"):
-            return "image/gif"
-        if url_lower.endswith(".webp"):
-            return "image/webp"
-        return "image/jpeg"
+        """Infer MIME type from URL using mimetypes library"""
+        url_path = url.split("?")[0]  # Remove query params
+        mime_type, _ = mimetypes.guess_type(url_path)
+        return mime_type or "image/jpeg"
 
     async def _build_history_contents(self, conversation_history: list[Message]) -> list[dict]:
         """Build conversation history contents - pass URLs directly to Gemini API"""
@@ -227,10 +223,10 @@ class GeminiClient(BaseAIClient):
                     contents=contents,
                     config=types.GenerateContentConfig(**config_args)
                 ),
-                timeout=60.0
+                timeout=settings.gemini_timeout
             )
-        except asyncio.TimeoutError:
-            logger.error("Gemini API call timed out after 60 seconds")
+        except TimeoutError:
+            logger.error(f"Gemini API call timed out after {settings.gemini_timeout} seconds")
             raise AIServiceException("Gemini API call timed out") from None
 
         response_text = response.text

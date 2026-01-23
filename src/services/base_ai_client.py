@@ -12,14 +12,12 @@ import httpx
 import tiktoken
 from loguru import logger
 
+from src.config import settings
 from src.core.exceptions import AIServiceException
 from src.models.entities import Message
 from src.models.internal import AIProviderHealth
 
 T = TypeVar("T")
-
-# Timeout for individual image/audio downloads (seconds)
-MEDIA_DOWNLOAD_TIMEOUT = 15.0
 
 
 class BaseAIClient(ABC):
@@ -78,8 +76,9 @@ class BaseAIClient(ABC):
                             continue
             return {}
 
-    async def _download_image(self, url: str, timeout: float = MEDIA_DOWNLOAD_TIMEOUT) -> dict[str, Any]:
+    async def _download_image(self, url: str) -> dict[str, Any]:
         """Download and encode image with timeout"""
+        timeout = settings.media_download_timeout
         t0 = time.time()
         try:
             logger.debug(f"Downloading image from URL: {url[:100]}...")
@@ -98,7 +97,7 @@ class BaseAIClient(ABC):
                 "mime_type": mime_type,
                 "data": image_data
             }
-        except asyncio.TimeoutError:
+        except TimeoutError:
             elapsed = time.time() - t0
             logger.error(f"Image download timeout ({elapsed:.1f}s): {url[:100]}")
             raise AIServiceException(f"Image download timed out after {timeout}s") from None
@@ -136,8 +135,9 @@ class BaseAIClient(ABC):
 
         return results
 
-    async def _download_audio(self, url: str, timeout: float = MEDIA_DOWNLOAD_TIMEOUT) -> dict[str, Any]:
+    async def _download_audio(self, url: str) -> dict[str, Any]:
         """Download and encode audio with timeout"""
+        timeout = settings.media_download_timeout
         t0 = time.time()
         try:
             response = await asyncio.wait_for(
@@ -155,7 +155,7 @@ class BaseAIClient(ABC):
                 "mime_type": mime_type,
                 "data": audio_data
             }
-        except asyncio.TimeoutError:
+        except TimeoutError:
             elapsed = time.time() - t0
             logger.error(f"Audio download timeout ({elapsed:.1f}s): {url[:100]}")
             raise AIServiceException(f"Audio download timed out after {timeout}s") from None
