@@ -5,6 +5,7 @@ Chat service - Business logic for conversations and messages
 import sqlite3
 from uuid import UUID
 
+import httpx
 from loguru import logger
 from pydantic import validate_call
 
@@ -14,6 +15,7 @@ from src.models.entities import Conversation, Message, MessageRole, MessageType
 from src.models.internal import LLMGenerateParams, SendMessageParams
 from src.services.gemini_client import GeminiClient
 from src.services.openrouter_client import OpenRouterClient
+from src.services.replicate_client import ReplicateClient
 from src.services.storage_service import StorageService
 
 
@@ -30,6 +32,7 @@ class ChatService:
         message_repo: MessageRepository,
         storage_service: StorageService | None = None,
         openrouter_client: OpenRouterClient | None = None,
+        replicate_client: ReplicateClient | None = None,
     ):
         self.influencer_repo = influencer_repo
         self.conversation_repo = conversation_repo
@@ -37,6 +40,7 @@ class ChatService:
         self.storage_service = storage_service
         self.gemini_client = gemini_client
         self.openrouter_client = openrouter_client
+        self.replicate_client = replicate_client
 
     def _select_ai_client(self, is_nsfw: bool):
         """Select appropriate AI client based on content type (NSFW or regular)"""
@@ -275,6 +279,96 @@ class ChatService:
             )
 
         return user_message, assistant_message
+
+    async def generate_image_for_conversation(self, conversation_id: str, user_id: str, prompt: str | None = None) -> Message:
+        """
+        Generate an image for a conversation
+
+        Args:
+            conversation_id: Conversation ID
+            user_id: User requesting the image
+            prompt: Optional prompt. If None, generated from context.
+
+        Returns:
+            Created message with image
+        """
+        if not self.replicate_client:
+            raise NotImplementedError("Image generation service not available")
+
+        if not self.storage_service:
+            raise NotImplementedError("Storage service not available")
+
+        conversation = await self.get_conversation(UUID(conversation_id), user_id)
+        influencer = await self.influencer_repo.get_by_id(conversation.influencer_id)
+        if not influencer:
+            raise NotFoundException("Influencer not found")
+
+        # 1. Determine Prompt
+        final_prompt = prompt
+        if not final_prompt:
+            logger.info("No prompt provided, generating from context...")
+            # Fetch recent context
+            messages = await self.message_repo.list_by_conversation(
+                conversation_id=conversation.id,
+                limit=10,
+                order="desc"
+            )
+            # Reverse to chronological order
+            context_msgs = messages[::-1]
+            
+            # Simple content join for now, could be more sophisticated
+            context_str = "\n".join([f"{m.role}: {m.content}" for m in context_msgs if m.content])
+            
+            extract_prompt_system = (
+                "You are an AI assistant helping to visualize a scene. "
+                "Based on the recent conversation, generate a detailed image generation prompt "
+                "that captures the current context, action, or requested visual. "
+                "Output ONLY the prompt, no other text."
+            )
+            
+            response = await self.gemini_client.generate_response(
+                LLMGenerateParams(
+                    user_message=f"Conversation Context:\n{context_str}\n\nGenerate an image prompt:",
+                    system_instructions=extract_prompt_system,
+                )
+            )
+            final_prompt = response.text.strip()
+            logger.info(f"Generated prompt: {final_prompt}")
+
+        # 2. Generate Image
+        logger.info(f"Generating image with prompt: {final_prompt}")
+        image_url = await self.replicate_client.generate_image_via_image(
+            prompt=final_prompt,
+            aspect_ratio="9:16",
+            input_image=influencer.avatar_url
+        )
+        
+        if not image_url:
+            raise RuntimeError("Failed to generate image from upstream provider")
+
+        # 3. Download and Upload to S3
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(image_url)
+            if resp.status_code != 200:
+                raise RuntimeError(f"Failed to download generated image: {resp.status_code}")
+            image_data = resp.content
+
+        # Save to S3
+        s3_key, _, _ = await self.storage_service.save_file(
+            file_content=image_data,
+            filename=f"generated_{UUID(int=0)}.jpg",
+            user_id=user_id
+        )
+
+        # 4. Create Assistant Message
+        return await self._save_message(
+            conversation_id=conversation.id,
+            role=MessageRole.ASSISTANT,
+            content="",
+            message_type=MessageType.IMAGE,
+            media_urls=[s3_key],
+            token_count=0
+        )
 
     async def get_conversation(self, conversation_id: UUID, user_id: str) -> Conversation:
         """Get conversation by ID and verify ownership"""

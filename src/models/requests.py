@@ -204,3 +204,16 @@ class CreateInfluencerRequest(BaseModel):
     is_nsfw: bool = Field(default=False, description="Whether the character is NSFW (Ignored: Enforced to False)")
     bot_principal_id: str = Field(..., description="ID of the bot principal (used as primary ID)")
     parent_principal_id: str | None = Field(None, description="ID of the parent principal (user who created it)")
+
+
+class GenerateImageRequest(BaseModel):
+    """Request to generate an image in a conversation"""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    prompt: str | None = Field(
+        None,
+        max_length=1000,
+        description="Optional prompt for image generation. If not provided, one will be generated from conversation history.",
+        examples=["A futuristic city skyline"],
+    )

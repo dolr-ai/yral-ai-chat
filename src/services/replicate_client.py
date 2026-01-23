@@ -1,6 +1,4 @@
-"""
-Replicate API Client
-"""
+import asyncio
 
 import replicate
 from loguru import logger
@@ -23,51 +21,90 @@ class ReplicateClient:
             self.client = None
 
     @validate_call
-    async def generate_image(self, prompt: str) -> str | None:
+    async def generate_image(self, prompt: str, aspect_ratio: str = "1:1") -> str | None:
         """
-        Generate image from prompt
-
-        Args:
-            prompt: Image generation prompt
-
-        Returns:
-            URL of generated image or None if failed
+        Generate image from prompt using standard flux-dev model.
         """
         if not self.client:
             logger.error("Replicate client not initialized")
             return None
 
-        try:
-            logger.info(f"Generating image with prompt: {prompt[:50]}...")
 
-            # Run the model
-            # Note: synchronous call, might want to wrap in run_in_executor if blocking too long,
-            # but replicate client might handle async or be fast enough for now.
-            # Ideally we'd use their async client if available or threadpool.
-            # Replicate python client methods are sync mostly.
-
-            output = self.client.run(
+        def _run():
+            return self.client.run(
                 self.model,
                 input={
                     "prompt": prompt,
                     "go_fast": True,
                     "megapixels": "1",
-                    "num_outputs": 1,
-                    "aspect_ratio": "1:1",
+                    "aspect_ratio": aspect_ratio,
                     "output_format": "jpg",
                     "output_quality": 80,
                 },
             )
 
-            # Output is usually a list of strings (URLs) or a file object depending on model
+        try:
+            logger.info(f"Generating image with prompt: {prompt[:50]}...")
+            loop = asyncio.get_event_loop()
+            output = await loop.run_in_executor(None, _run)
+
             if isinstance(output, list) and output:
                 image_url = str(output[0])
                 logger.info(f"Image generated successfully: {image_url}")
                 return image_url
+            if isinstance(output, str):
+                logger.info(f"Image generated successfully (string format): {output}")
+                return output
 
             logger.error(f"Unexpected output format from Replicate: {type(output)}")
             return None
 
         except Exception as e:
             logger.error(f"Replicate image generation failed: {e}")
+            return None
+
+    @validate_call
+    async def generate_image_via_image(self, prompt: str, input_image: str, aspect_ratio: str = "9:16") -> str | None:
+        """
+        Generate image using a reference image (flux-kontext-dev).
+        """
+        if not self.client:
+            logger.error("Replicate client not initialized")
+            return None
+
+
+        def _run():
+            return self.client.run(
+                "black-forest-labs/flux-kontext-dev",
+                input={
+                    "prompt": prompt,
+                    "go_fast": True,
+                    "guidance": 2.5,
+                    "megapixels": "1",
+                    "num_inference_steps": 30,
+                    "aspect_ratio": aspect_ratio,
+                    "output_format": "jpg",
+                    "output_quality": 80,
+                    "input_image": input_image,
+                },
+            )
+
+        try:
+            logger.info(f"Generating image via context with prompt: {prompt[:50]}...")
+            loop = asyncio.get_event_loop()
+            output = await loop.run_in_executor(None, _run)
+
+            if isinstance(output, list) and output:
+                image_url = str(output[0])
+                logger.info(f"Image generated via context successfully: {image_url}")
+                return image_url
+            if isinstance(output, str):
+                logger.info(f"Image generated via context successfully (string format): {output}")
+                return output
+
+            logger.error(f"Unexpected output format from Replicate: {type(output)}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Replicate image-via-image generation failed: {e}")
             return None
