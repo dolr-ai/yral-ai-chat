@@ -14,7 +14,7 @@ from src.core.background_tasks import (
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
 from src.models.entities import Message
 from src.models.internal import SendMessageParams
-from src.models.requests import CreateConversationRequest, SendMessageRequest
+from src.models.requests import CreateConversationRequest, GenerateImageRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,
     DeleteConversationResponse,
@@ -405,6 +405,48 @@ async def send_message(
         user_message=await _convert_message_to_response(user_msg, storage_service),
         assistant_message=await _convert_message_to_response(assistant_msg, storage_service),
     )
+
+
+@router.post(
+    "/conversations/{conversation_id}/images",
+    response_model=MessageResponse,
+    operation_id="generateImage",
+    summary="Generate an image in conversation",
+    description="""
+    Generate an image based on a prompt or conversation context.
+    
+    If 'prompt' is provided, it is used directly.
+    If 'prompt' is omitted, the last few messages are used to generate a relevant image prompt.
+    The generated image is saved to storage and returned as a new message.
+    """,
+    responses={
+        201: {"description": "Image generated successfully"},
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden - Not your conversation"},
+        404: {"description": "Conversation not found"},
+        500: {"description": "Internal server error"},
+        503: {"description": "Image generation service unavailable"},
+    },
+    status_code=201,
+)
+async def generate_image(
+    conversation_id: str,
+    request: GenerateImageRequest,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
+    chat_service: ChatServiceDep = None,
+    storage_service: StorageServiceDep = None,
+):
+    """Generate an image in the conversation"""
+    try:
+        message = await chat_service.generate_image_for_conversation(
+            conversation_id=conversation_id,
+            user_id=current_user.user_id,
+            prompt=request.prompt,
+        )
+        return await _convert_message_to_response(message, storage_service)
+    except NotImplementedError:
+        # 503 if service not configured
+        return Response(status_code=503, content="Image generation service unavailable")
 
 
 @router.delete(

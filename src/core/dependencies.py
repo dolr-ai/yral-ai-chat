@@ -67,11 +67,13 @@ def get_chat_service(
     storage_service: Annotated[StorageService, Depends(get_storage_service)],
     gemini_client: Annotated[GeminiClient, Depends(get_gemini_client)],
     openrouter_client: Annotated[OpenRouterClient, Depends(get_openrouter_client)],
+    replicate_client: Annotated[ReplicateClient, Depends(get_replicate_client)],
 ) -> ChatService:
     """Get chat service instance with injected dependencies"""
     return ChatService(
         gemini_client=gemini_client,
         openrouter_client=openrouter_client,
+        replicate_client=replicate_client,
         influencer_repo=influencer_repo,
         conversation_repo=conversation_repo,
         message_repo=message_repo,

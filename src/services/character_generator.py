@@ -97,7 +97,10 @@ class CharacterGeneratorService:
                 try:
                     # Enhance prompt for better results
                     enhanced_prompt = f"{image_prompt}, high quality, detailed, centered portrait"
-                    avatar_url = await self.replicate_client.generate_image(enhanced_prompt)
+                    avatar_url = await self.replicate_client.generate_image(
+                        enhanced_prompt,
+                        aspect_ratio="1:1"
+                    )
                 except Exception as e:
                     logger.error(f"Failed to generate avatar: {e}")
 
