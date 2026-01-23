@@ -9,6 +9,7 @@ from uuid import UUID
 if TYPE_CHECKING:
     from fastapi import BackgroundTasks
 
+import sentry_sdk
 from loguru import logger
 
 from src.core.exceptions import ForbiddenException, NotFoundException
@@ -54,43 +55,47 @@ class ChatService:
         influencer_id: UUID
     ) -> tuple[Conversation, bool]:
         """Create a new conversation or return existing one"""
-        influencer = await self.influencer_repo.get_by_id(influencer_id)
-        if not influencer:
-            raise NotFoundException("Influencer not found")
+        with sentry_sdk.start_span(op="conversation.create", name="Create Conversation") as span:
+            span.set_data("user.id", user_id)
+            span.set_data("influencer.id", str(influencer_id))
 
-        existing = await self.conversation_repo.get_existing(user_id, influencer_id)
-        if existing:
-            logger.info(f"Returning existing conversation: {existing.id}")
-            existing.influencer = influencer
-            return existing, False
+            influencer = await self.influencer_repo.get_by_id(influencer_id)
+            if not influencer:
+                raise NotFoundException("Influencer not found")
 
-        try:
-            conversation = await self.conversation_repo.create(user_id, influencer_id)
-        except sqlite3.IntegrityError:
-            logger.warning(
-                f"Race condition detected creating conversation for user {user_id} "
-                f"and influencer {influencer_id}. Retrying fetch."
-            )
             existing = await self.conversation_repo.get_existing(user_id, influencer_id)
             if existing:
+                logger.info(f"Returning existing conversation: {existing.id}")
                 existing.influencer = influencer
                 return existing, False
-            raise
-        logger.info(f"Created new conversation: {conversation.id}")
 
-        if influencer.initial_greeting:
-            logger.info(f"Creating initial greeting for conversation {conversation.id}")
-            await self._save_message(
-                conversation_id=conversation.id,
-                role=MessageRole.ASSISTANT,
-                content=influencer.initial_greeting,
-                message_type=MessageType.TEXT
-            )
-        else:
-            logger.info(f"No initial_greeting configured for influencer {influencer.id} ({influencer.display_name})")
+            try:
+                conversation = await self.conversation_repo.create(user_id, influencer_id)
+            except sqlite3.IntegrityError:
+                logger.warning(
+                    f"Race condition detected creating conversation for user {user_id} "
+                    f"and influencer {influencer_id}. Retrying fetch."
+                )
+                existing = await self.conversation_repo.get_existing(user_id, influencer_id)
+                if existing:
+                    existing.influencer = influencer
+                    return existing, False
+                raise
+            logger.info(f"Created new conversation: {conversation.id}")
 
-        conversation.influencer = influencer
-        return conversation, True
+            if influencer.initial_greeting:
+                logger.info(f"Creating initial greeting for conversation {conversation.id}")
+                await self._save_message(
+                    conversation_id=conversation.id,
+                    role=MessageRole.ASSISTANT,
+                    content=influencer.initial_greeting,
+                    message_type=MessageType.TEXT
+                )
+            else:
+                logger.info(f"No initial_greeting configured for influencer {influencer.id} ({influencer.display_name})")
+
+            conversation.influencer = influencer
+            return conversation, True
 
     async def _transcribe_audio(self, audio_url: str) -> str:
         """Transcribe audio and return transcribed content"""
@@ -306,45 +311,54 @@ class ChatService:
         total_start = time.time()
 
         # 1. Validation & Context
-        t0 = time.time()
-        conversation, influencer = await self._validate_and_get_context(conversation_id, user_id)
-        timings["get_context"] = time.time() - t0
+        with sentry_sdk.start_span(op="logic.validate", name="Validate and Get Context"):
+            t0 = time.time()
+            conversation, influencer = await self._validate_and_get_context(conversation_id, user_id)
+            timings["get_context"] = time.time() - t0
+        
         memories = conversation.metadata.get("memories", {})
 
         # 2. User Message
-        user_message, transcribed_payload = await self._prepare_user_message(
-            conversation_id, content, message_type, audio_url, audio_duration_seconds, media_urls, timings
-        )
+        with sentry_sdk.start_span(op="logic.prepare", name="Prepare User Message"):
+            user_message, transcribed_payload = await self._prepare_user_message(
+                conversation_id, content, message_type, audio_url, audio_duration_seconds, media_urls, timings
+            )
         logger.info(f"User message saved: {user_message.id}")
 
         # 3. Context & History
-        history, enhanced_instructions = await self._build_ai_context(
-            conversation_id, user_message.id, influencer, memories, timings
-        )
+        with sentry_sdk.start_span(op="logic.context", name="Build AI Context"):
+            history, enhanced_instructions = await self._build_ai_context(
+                conversation_id, user_message.id, influencer, memories, timings
+            )
         ai_input_content = str(content or transcribed_payload or "What do you think?")
 
         # 4. Multimodal Preparation
         media_urls_for_ai = None
         if message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and media_urls:
-            t0 = time.time()
-            media_urls_for_ai = await self._convert_media_urls_for_ai_async(media_urls)
-            timings["convert_media_urls"] = time.time() - t0
+            with sentry_sdk.start_span(op="media.convert", name="Convert Media URLs") as span:
+                span.set_data("media.count", len(media_urls))
+                t0 = time.time()
+                media_urls_for_ai = await self._convert_media_urls_for_ai_async(media_urls)
+                timings["convert_media_urls"] = time.time() - t0
 
         # 5. AI Generation
-        response_text, token_count = await self._generate_ai_response(
-            influencer, ai_input_content, enhanced_instructions, history, media_urls_for_ai, timings
-        )
+        with sentry_sdk.start_span(op="ai.generate", name="Generate AI Response") as span:
+            span.set_data("ai.provider", "OpenRouter" if influencer.is_nsfw else "Gemini")
+            response_text, token_count = await self._generate_ai_response(
+                influencer, ai_input_content, enhanced_instructions, history, media_urls_for_ai, timings
+            )
 
         # 6. Save Assistant Message
-        t0 = time.time()
-        assistant_message = await self._save_message(
-            conversation_id=conversation_id,
-            role=MessageRole.ASSISTANT,
-            content=response_text,
-            message_type=MessageType.TEXT,
-            token_count=token_count
-        )
-        timings["save_assistant_message"] = time.time() - t0
+        with sentry_sdk.start_span(op="db.save", name="Save Assistant Message"):
+            t0 = time.time()
+            assistant_message = await self._save_message(
+                conversation_id=conversation_id,
+                role=MessageRole.ASSISTANT,
+                content=response_text,
+                message_type=MessageType.TEXT,
+                token_count=token_count
+            )
+            timings["save_assistant_message"] = time.time() - t0
         logger.info(f"Assistant message saved: {assistant_message.id}")
 
         # 7. Finalize & Latency Tracking
@@ -384,31 +398,36 @@ class ChatService:
         offset: int = 0
     ) -> tuple[list[Conversation], int]:
         """List user's conversations with recent messages populated"""
-        conversations = await self.conversation_repo.list_by_user(
-            user_id=user_id,
-            influencer_id=influencer_id,
-            limit=limit,
-            offset=offset
-        )
+        with sentry_sdk.start_span(op="conversation.list", name="List Conversations") as span:
+            span.set_data("user.id", user_id)
+            if influencer_id:
+                span.set_data("influencer.id", str(influencer_id))
 
-        total = await self.conversation_repo.count_by_user(
-            user_id=user_id,
-            influencer_id=influencer_id
-        )
-        
-        # Batch fetch recent messages for all conversations to avoid N+1 queries
-        if conversations:
-            conversation_ids = [UUID(conv.id) for conv in conversations]
-            recent_messages_map = await self.message_repo.get_recent_for_conversations_batch(
-                conversation_ids=conversation_ids,
-                limit_per_conv=10
+            conversations = await self.conversation_repo.list_by_user(
+                user_id=user_id,
+                influencer_id=influencer_id,
+                limit=limit,
+                offset=offset
+            )
+
+            total = await self.conversation_repo.count_by_user(
+                user_id=user_id,
+                influencer_id=influencer_id
             )
             
-            # Map back to conversations
-            for conv in conversations:
-                conv.recent_messages = recent_messages_map.get(conv.id, [])
+            # Batch fetch recent messages for all conversations to avoid N+1 queries
+            if conversations:
+                conversation_ids = [UUID(conv.id) for conv in conversations]
+                recent_messages_map = await self.message_repo.get_recent_for_conversations_batch(
+                    conversation_ids=conversation_ids,
+                    limit_per_conv=10
+                )
+                
+                # Map back to conversations
+                for conv in conversations:
+                    conv.recent_messages = recent_messages_map.get(conv.id, [])
 
-        return conversations, total
+            return conversations, total
 
     async def list_messages(
         self,
@@ -419,18 +438,22 @@ class ChatService:
         order: str = "desc"
     ) -> tuple[list[Message], int]:
         """List messages in a conversation"""
-        await self.get_conversation(conversation_id, user_id)
+        with sentry_sdk.start_span(op="conversation.messages", name="List Messages") as span:
+            span.set_data("conversation.id", str(conversation_id))
+            span.set_data("user.id", user_id)
 
-        messages = await self.message_repo.list_by_conversation(
-            conversation_id=conversation_id,
-            limit=limit,
-            offset=offset,
-            order=order
-        )
+            await self.get_conversation(conversation_id, user_id)
 
-        total = await self.message_repo.count_by_conversation(conversation_id)
+            messages = await self.message_repo.list_by_conversation(
+                conversation_id=conversation_id,
+                limit=limit,
+                offset=offset,
+                order=order
+            )
 
-        return messages, total
+            total = await self.message_repo.count_by_conversation(conversation_id)
+
+            return messages, total
 
     async def delete_conversation(
         self,
@@ -438,15 +461,19 @@ class ChatService:
         user_id: str
     ) -> int:
         """Delete a conversation"""
-        await self.get_conversation(conversation_id, user_id)
+        with sentry_sdk.start_span(op="conversation.delete", name="Delete Conversation") as span:
+            span.set_data("conversation.id", str(conversation_id))
+            span.set_data("user.id", user_id)
 
-        deleted_messages = await self.message_repo.delete_by_conversation(conversation_id)
+            await self.get_conversation(conversation_id, user_id)
 
-        await self.conversation_repo.delete(conversation_id)
+            deleted_messages = await self.message_repo.delete_by_conversation(conversation_id)
 
-        logger.info(f"Deleted conversation {conversation_id} with {deleted_messages} messages")
+            await self.conversation_repo.delete(conversation_id)
 
-        return deleted_messages
+            logger.info(f"Deleted conversation {conversation_id} with {deleted_messages} messages")
+
+            return deleted_messages
 
     async def _save_message(self, **kwargs) -> Message:
         """

@@ -1,6 +1,7 @@
 """
 Chat endpoints
 """
+import sentry_sdk
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from fastapi.security import HTTPBearer
 
@@ -35,46 +36,47 @@ async def _convert_message_to_response(
     presigned_urls: dict[str, str] | None = None
 ) -> MessageResponse:
     """Convert Message to MessageResponse with presigned URLs"""
-    presigned_media_urls = []
-    
-    # Process media URLs
-    if msg.media_urls:
-        for media_key in msg.media_urls:
-            if not media_key:
-                continue
-            
-            s3_key = storage_service.extract_key_from_url(media_key)
-            # Use batch-generated URL if available, otherwise generate on-demand
+    with sentry_sdk.start_span(op="api.convert_msg", name="Convert Message for Response"):
+        presigned_media_urls = []
+        
+        # Process media URLs
+        if msg.media_urls:
+            for media_key in msg.media_urls:
+                if not media_key:
+                    continue
+                
+                s3_key = storage_service.extract_key_from_url(media_key)
+                # Use batch-generated URL if available, otherwise generate on-demand
+                if presigned_urls and s3_key in presigned_urls:
+                    presigned_media_urls.append(presigned_urls[s3_key])
+                else:
+                    try:
+                        presigned_media_urls.append(await storage_service.generate_presigned_url(s3_key))
+                    except Exception:
+                        presigned_media_urls.append(media_key)
+
+        presigned_audio_url = None
+        if msg.audio_url:
+            s3_key = storage_service.extract_key_from_url(msg.audio_url)
             if presigned_urls and s3_key in presigned_urls:
-                presigned_media_urls.append(presigned_urls[s3_key])
+                presigned_audio_url = presigned_urls[s3_key]
             else:
                 try:
-                    presigned_media_urls.append(await storage_service.generate_presigned_url(s3_key))
+                    presigned_audio_url = await storage_service.generate_presigned_url(s3_key)
                 except Exception:
-                    presigned_media_urls.append(media_key)
+                    presigned_audio_url = msg.audio_url
 
-    presigned_audio_url = None
-    if msg.audio_url:
-        s3_key = storage_service.extract_key_from_url(msg.audio_url)
-        if presigned_urls and s3_key in presigned_urls:
-            presigned_audio_url = presigned_urls[s3_key]
-        else:
-            try:
-                presigned_audio_url = await storage_service.generate_presigned_url(s3_key)
-            except Exception:
-                presigned_audio_url = msg.audio_url
-
-    return MessageResponse(
-        id=msg.id,
-        role=msg.role,
-        content=msg.content,
-        message_type=msg.message_type,
-        media_urls=presigned_media_urls,
-        audio_url=presigned_audio_url,
-        audio_duration_seconds=msg.audio_duration_seconds,
-        token_count=msg.token_count,
-        created_at=msg.created_at,
-    )
+        return MessageResponse(
+            id=msg.id,
+            role=msg.role,
+            content=msg.content,
+            message_type=msg.message_type,
+            media_urls=presigned_media_urls,
+            audio_url=presigned_audio_url,
+            audio_duration_seconds=msg.audio_duration_seconds,
+            token_count=msg.token_count,
+            created_at=msg.created_at,
+        )
 
 
 @router.post(

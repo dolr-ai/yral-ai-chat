@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 
 import httpx
+import sentry_sdk
 from google import genai
 from google.genai import types
 from loguru import logger
@@ -201,48 +202,49 @@ class GeminiClient(BaseAIClient):
     @_gemini_retry_decorator
     async def _generate_content(self, contents: list[dict], system_instructions: str | None = None) -> tuple[str, int]:
         """Generate content using Gemini API with retry logic"""
-        logger.info(f"Generating Gemini response with {len(contents)} messages")
+        with sentry_sdk.start_span(op="ai.gemini", name="Gemini Generate Content") as span:
+            span.set_data("ai.model", self.model_name)
+            logger.info(f"Generating Gemini response with {len(contents)} messages")
 
-        config_args = {
-            "max_output_tokens": settings.gemini_max_tokens,
-            "temperature": settings.gemini_temperature
-        }
+            config_args = {
+                "max_output_tokens": settings.gemini_max_tokens,
+                "temperature": settings.gemini_temperature
+            }
 
-        if system_instructions:
-            # Append language instruction to system prompt as it was in the manual prompt
-            full_instructions = f"{system_instructions}"
-            config_args["system_instruction"] = full_instructions
+            if system_instructions:
+                # Append language instruction to system prompt as it was in the manual prompt
+                full_instructions = f"{system_instructions}"
+                config_args["system_instruction"] = full_instructions
 
-        try:
-            response = await asyncio.wait_for(
-                self.client.aio.models.generate_content(
-                    model=self.model_name,
-                    contents=contents,
-                    config=types.GenerateContentConfig(**config_args)
-                ),
-                timeout=settings.gemini_timeout
-            )
-        except TimeoutError:
-            logger.error(f"Gemini API call timed out after {settings.gemini_timeout} seconds")
-            raise AIServiceException("Gemini API call timed out") from None
+            try:
+                response = await asyncio.wait_for(
+                    self.client.aio.models.generate_content(
+                        model=self.model_name,
+                        contents=contents,
+                        config=types.GenerateContentConfig(**config_args)
+                    ),
+                    timeout=settings.gemini_timeout
+                )
+            except TimeoutError:
+                logger.error(f"Gemini API call timed out after {settings.gemini_timeout} seconds")
+                raise AIServiceException("Gemini API call timed out") from None
 
-        response_text = response.text
+            response_text = response.text
 
-        if response.candidates and response.candidates[0].finish_reason != types.FinishReason.STOP:
-            logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (expected STOP)")
+            if response.candidates and response.candidates[0].finish_reason != types.FinishReason.STOP:
+                logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (expected STOP)")
 
+            # Use tiktoken for accurate token counting
+            if self.tokenizer:
+                token_count = len(self.tokenizer.encode(response_text))
+            else:
+                token_count = int(len(response_text.split()) * 1.3)
+                logger.warning("Using approximate token counting (tiktoken not available)")
 
+            span.set_data("ai.tokens_out", token_count)
+            logger.info(f"Generated response: {len(response_text)} chars, {token_count} tokens")
 
-        # Use tiktoken for accurate token counting
-        if self.tokenizer:
-            token_count = len(self.tokenizer.encode(response_text))
-        else:
-            token_count = int(len(response_text.split()) * 1.3)
-            logger.warning("Using approximate token counting (tiktoken not available)")
-
-        logger.info(f"Generated response: {len(response_text)} chars, {token_count} tokens")
-
-        return response_text, token_count
+            return response_text, token_count
 
     async def transcribe_audio(self, audio_url: str) -> str:
         """
