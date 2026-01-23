@@ -95,6 +95,8 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     assert response.status_code == 200
     created_data = response.json()
     assert created_data["name"] == "neo_hacker"
+    assert "starter_video_prompt" in created_data
+    assert isinstance(created_data["starter_video_prompt"], str)
     influencer_id = created_data["id"]
 
     # --- Step 4: Retrieve ---
@@ -103,6 +105,7 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     retrieved_data = response.json()
     assert retrieved_data["id"] == influencer_id
     assert retrieved_data["display_name"] == "Neo"
+    assert "starter_video_prompt" not in retrieved_data
 
 
 def test_character_creation_nsfw_rejection(client, mock_gemini):

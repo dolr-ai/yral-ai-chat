@@ -13,6 +13,7 @@ from src.models.requests import (
 )
 from src.models.responses import (
     GeneratedMetadataResponse,
+    InfluencerCreateResponse,
     InfluencerResponse,
     ListInfluencersResponse,
     SystemPromptResponse,
@@ -154,7 +155,7 @@ async def validate_and_generate_metadata(
 
 @router.post(
     "/create",
-    response_model=InfluencerResponse,
+    response_model=InfluencerCreateResponse,
     operation_id="createInfluencer",
     summary="Create a new influencer",
     description="Create a new AI influencer character",
@@ -193,7 +194,7 @@ async def create_influencer(
         system_instructions=request.system_instructions,
     )
 
-    return InfluencerResponse(
+    return InfluencerCreateResponse(
         id=created.id,
         name=created.name,
         display_name=created.display_name,
