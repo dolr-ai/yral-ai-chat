@@ -11,6 +11,7 @@ from botocore.config import Config
 from loguru import logger
 
 from src.config import settings
+import sentry_sdk
 from src.core.exceptions import BadRequestException
 
 
@@ -45,33 +46,38 @@ class StorageService:
 
         file_size = len(file_content)
         mime_type = self._get_mime_type(file_ext)
-        async with await self.get_s3_client() as s3:
-            upload_url = await s3.generate_presigned_url(
-                "put_object",
-                Params={
-                    "Bucket": self.bucket,
-                    "Key": s3_key,
-                    "ContentType": mime_type,
-                    "ContentLength": file_size,
-                },
-                ExpiresIn=300
-            )
+        
+        with sentry_sdk.start_span(op="storage.upload", name="Save File to S3") as span:
+            span.set_data("file.size", file_size)
+            span.set_data("file.mime", mime_type)
+            
+            async with await self.get_s3_client() as s3:
+                upload_url = await s3.generate_presigned_url(
+                    "put_object",
+                    Params={
+                        "Bucket": self.bucket,
+                        "Key": s3_key,
+                        "ContentType": mime_type,
+                        "ContentLength": file_size,
+                    },
+                    ExpiresIn=300
+                )
 
-        async with (
-            aiohttp.ClientSession() as session,
-            session.put(
-                upload_url,
-                data=file_content,
-                headers={
-                    "Content-Type": mime_type,
-                    "Content-Length": str(file_size)
-                }
-            ) as response
-        ):
-            if response.status not in [200, 201]:
-                text = await response.text()
-                logger.error(f"S3 Upload failed status={response.status}: {text}")
-                raise RuntimeError(f"S3 Upload failed: {response.status} {text}")
+            async with (
+                aiohttp.ClientSession() as session,
+                session.put(
+                    upload_url,
+                    data=file_content,
+                    headers={
+                        "Content-Type": mime_type,
+                        "Content-Length": str(file_size)
+                    }
+                ) as response
+            ):
+                if response.status not in [200, 201]:
+                    text = await response.text()
+                    logger.error(f"S3 Upload failed status={response.status}: {text}")
+                    raise RuntimeError(f"S3 Upload failed: {response.status} {text}")
 
         logger.info(f"File uploaded to storage: {s3_key} ({file_size} bytes)")
         return s3_key, mime_type, file_size
@@ -104,12 +110,13 @@ class StorageService:
             )
 
         # Otherwise create a new client
-        async with await self.get_s3_client() as s3:
-            return await s3.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": self.bucket, "Key": key},
-                ExpiresIn=expiration,
-            )
+        with sentry_sdk.start_span(op="storage.presign", name="Generate Single Presigned URL"):
+            async with await self.get_s3_client() as s3:
+                return await s3.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self.bucket, "Key": key},
+                    ExpiresIn=expiration,
+                )
 
     async def generate_presigned_urls_batch(self, keys: list[str]) -> dict[str, str]:
         """Generate presigned URLs for multiple keys in parallel"""

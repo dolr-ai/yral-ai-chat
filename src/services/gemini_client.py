@@ -130,10 +130,38 @@ class GeminiClient(BaseAIClient):
             raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
 
     async def _build_history_contents(self, conversation_history: list[Message]) -> list[dict]:
-        """Build conversation history contents"""
+        """Build conversation history contents with parallel image downloading"""
         contents = []
         
-        for msg in conversation_history[-10:]:  # Last 10 messages for context
+        # 1. Collect all URLs to download
+        messages_to_process = conversation_history[-10:]
+        all_urls = []
+        for msg in messages_to_process:
+            if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and msg.media_urls:
+                all_urls.extend(msg.media_urls[:3])  # Limit 3 images per history message
+
+        # 2. Download all in parallel
+        url_blob_map = {}
+        if all_urls:
+            unique_urls = list(set(all_urls))
+            
+            async def _download_and_map(url: str):
+                try:
+                    data = await self._download_image(url)
+                    return url, data
+                except Exception as e:
+                    logger.warning(f"Failed to load image from history {url}: {e}")
+                    return url, None
+
+            tasks = [_download_and_map(url) for url in unique_urls]
+            results = await asyncio.gather(*tasks)
+            
+            for url, data in results:
+                if data:
+                    url_blob_map[url] = data
+
+        # 3. Build contents using downloaded blobs
+        for msg in messages_to_process:
             role = "user" if msg.role == MessageRole.USER else "model"
             parts = []
 
@@ -141,12 +169,14 @@ class GeminiClient(BaseAIClient):
                 text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
                 parts.append({"text": text_content})
 
-            if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
-                await self._add_images_to_parts(msg.media_urls[:3], parts, warn_on_error=True)
+            if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and msg.media_urls:
+                for url in msg.media_urls[:3]:
+                    if url in url_blob_map:
+                        parts.append({"inline_data": url_blob_map[url]})
 
             if parts:
                 contents.append({"role": role, "parts": parts})
-        
+
         return contents
 
     async def _build_current_message(self, user_message: str, media_urls: list[str] | None) -> dict:
@@ -158,66 +188,62 @@ class GeminiClient(BaseAIClient):
             current_parts.append({"text": text_content})
 
         if media_urls:
-            await self._add_images_to_parts(media_urls[:5], current_parts, warn_on_error=False)
-
-        return {"role": "user", "parts": current_parts}
-
-    async def _add_images_to_parts(
-        self,
-        image_urls: list[str],
-        parts: list[dict],
-        warn_on_error: bool = False
-    ) -> None:
-        """Add images to message parts"""
-        for url in image_urls:
-            try:
-                image_data = await self._download_image(url)
-                parts.append({"inline_data": image_data})
-            except Exception as e:
-                if warn_on_error:
-                    logger.warning(f"Failed to load image from history: {e}")
-                else:
+            async def _process_url(url: str) -> dict | None:
+                try:
+                    image_data = await self._download_image(url)
+                    return {"inline_data": image_data}
+                except Exception as e:
                     logger.error(f"Failed to download image {url}: {e}")
                     raise AIServiceException(f"Failed to process image: {e}") from e
+
+            # Download all images in parallel
+            tasks = [_process_url(url) for url in media_urls[:5]]
+            results = await asyncio.gather(*tasks)
+            
+            # Add successful results to parts
+            for result in results:
+                if result:
+                    current_parts.append(result)
+
+        return {"role": "user", "parts": current_parts}
 
     @_gemini_retry_decorator
     async def _generate_content(self, contents: list[dict], system_instructions: str | None = None) -> tuple[str, int]:
         """Generate content using Gemini API with retry logic"""
-        logger.info(f"Generating Gemini response with {len(contents)} messages")
+        with sentry_sdk.start_span(op="ai.gemini", name="Gemini Generate Content") as span:
+            span.set_data("ai.model", self.model_name)
+            logger.info(f"Generating Gemini response with {len(contents)} messages")
 
-        config_args = {
-            "max_output_tokens": settings.gemini_max_tokens,
-            "temperature": settings.gemini_temperature
-        }
-        
-        if system_instructions:
-            # Append language instruction to system prompt as it was in the manual prompt
-            full_instructions = f"{system_instructions}"
-            config_args["system_instruction"] = full_instructions
+            config_args = {
+                "max_output_tokens": settings.gemini_max_tokens,
+                "temperature": settings.gemini_temperature,
+                "response_mime_type": "text/plain",
+            }
+            if system_instructions:
+                config_args["system_instruction"] = system_instructions
 
-        response = await self.client.aio.models.generate_content(
-            model=self.model_name,
-            contents=contents,
-            config=types.GenerateContentConfig(**config_args)
-        )
+            response = await self.client.aio.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=types.GenerateContentConfig(**config_args)
+            )
 
-        response_text = response.text
-        
-        if response.candidates and response.candidates[0].finish_reason != types.FinishReason.STOP:
-            logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (expected STOP)")
+            if not response.text:
+                raise AIServiceException("Empty response from Gemini")
 
+            response_text = response.text
+            
+            # Count tokens (approximate if tiktoken not available)
+            if self.tokenizer:
+                token_count = len(self.tokenizer.encode(response_text))
+            else:
+                token_count = int(len(response_text.split()) * 1.3)
+                logger.warning("Using approximate token counting (tiktoken not available)")
 
+            span.set_data("ai.tokens_out", token_count)
+            logger.info(f"Generated response: {len(response_text)} chars, {token_count} tokens")
 
-        # Use tiktoken for accurate token counting
-        if self.tokenizer:
-            token_count = len(self.tokenizer.encode(response_text))
-        else:
-            token_count = int(len(response_text.split()) * 1.3)
-            logger.warning("Using approximate token counting (tiktoken not available)")
-
-        logger.info(f"Generated response: {len(response_text)} chars, {token_count} tokens")
-
-        return response_text, token_count
+            return response_text, token_count
 
     async def transcribe_audio(self, audio_url: str) -> str:
         """
