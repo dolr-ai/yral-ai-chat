@@ -23,6 +23,8 @@ class MessageRepository:
         audio_url: str | None = None,
         audio_duration_seconds: int | None = None,
         token_count: int | None = None,
+        status: str = "delivered",
+        is_read: bool = False,
     ) -> Message:
         """Create a new message"""
         message_id = str(uuid.uuid4())
@@ -31,9 +33,10 @@ class MessageRepository:
         query = """
             INSERT INTO messages (
                 id, conversation_id, role, content, message_type,
-                media_urls, audio_url, audio_duration_seconds, token_count
+                media_urls, audio_url, audio_duration_seconds, token_count,
+                status, is_read
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         """
 
         await db.execute(
@@ -47,6 +50,8 @@ class MessageRepository:
             audio_url,
             audio_duration_seconds,
             token_count,
+            status,
+            is_read,
         )
 
         return await self.get_by_id(UUID(message_id))
@@ -57,7 +62,7 @@ class MessageRepository:
             SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
-                token_count, created_at, metadata
+                token_count, created_at, metadata, status, is_read
             FROM messages
             WHERE id = $1
         """
@@ -75,7 +80,7 @@ class MessageRepository:
             "SELECT "
             "id, conversation_id, role, content, message_type, "
             "media_urls, audio_url, audio_duration_seconds, "
-            "token_count, created_at, metadata "
+            "token_count, created_at, metadata, status, is_read "
             "FROM messages "
             "WHERE conversation_id = $1 "
             "ORDER BY created_at " + order_clause + " "
@@ -91,7 +96,7 @@ class MessageRepository:
             SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
-                token_count, created_at, metadata
+                token_count, created_at, metadata, status, is_read
             FROM messages
             WHERE conversation_id = $1
             ORDER BY created_at DESC
@@ -100,6 +105,15 @@ class MessageRepository:
 
         rows = await db.fetch(query, str(conversation_id), limit)
         return [self._row_to_message(row) for row in reversed(rows)]
+
+    async def mark_as_read(self, conversation_id: UUID) -> None:
+        """Mark all messages in a conversation as read"""
+        query = """
+            UPDATE messages
+            SET is_read = 1, status = 'read'
+            WHERE conversation_id = $1 AND is_read = 0 AND role = 'assistant'
+        """
+        await db.execute(query, str(conversation_id))
 
     async def count_by_conversation(self, conversation_id: UUID) -> int:
         """Count messages in a conversation"""
@@ -146,5 +160,7 @@ class MessageRepository:
             audio_duration_seconds=row["audio_duration_seconds"],
             token_count=row["token_count"],
             created_at=row["created_at"],
+            status=row.get("status", "delivered"),
+            is_read=bool(row.get("is_read", False)),
             metadata=metadata,
         )

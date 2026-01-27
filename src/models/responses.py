@@ -49,6 +49,8 @@ class MessageResponse(BaseModel):
     audio_duration_seconds: int | None = Field(None, description="Audio duration in seconds", examples=[None])
     token_count: int | None = Field(None, description="AI tokens used (assistant messages only)", examples=[150])
     created_at: datetime = Field(..., description="Message timestamp")
+    status: str = Field("delivered", description="Message status: sent, delivered, read")
+    is_read: bool = Field(False, description="Whether message has been read")
 
 
 class ConversationResponse(BaseModel):
@@ -62,6 +64,7 @@ class ConversationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     message_count: int = 0
+    unread_count: int = 0
     last_message: LastMessageInfo | None = None
     recent_messages: list[MessageResponse] | None = None
 
@@ -221,6 +224,16 @@ class DeleteConversationResponse(BaseModel):
     message: str
     deleted_conversation_id: str
     deleted_messages_count: int
+
+
+class MarkConversationAsReadResponse(BaseModel):
+    """Response for marking conversation as read"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str = Field(..., description="Conversation ID")
+    unread_count: int = Field(..., description="Updated unread count (should be 0)")
+    last_read_at: datetime = Field(..., description="Timestamp when conversation was marked as read")
 
 
 class ErrorResponse(BaseModel):

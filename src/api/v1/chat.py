@@ -2,7 +2,7 @@
 Chat endpoints
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer
 
 from src.auth.jwt_auth import CurrentUser, get_current_user
@@ -12,6 +12,7 @@ from src.core.background_tasks import (
     update_conversation_stats,
 )
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
+from src.core.websocket import manager
 from src.models.entities import Message
 from src.models.internal import SendMessageParams
 from src.models.requests import CreateConversationRequest, GenerateImageRequest, SendMessageRequest
@@ -21,6 +22,7 @@ from src.models.responses import (
     InfluencerBasicInfo,
     ListConversationsResponse,
     ListMessagesResponse,
+    MarkConversationAsReadResponse,
     MessageResponse,
     SendMessageResponse,
 )
@@ -76,6 +78,8 @@ async def _convert_message_to_response(
         audio_duration_seconds=msg.audio_duration_seconds,
         token_count=msg.token_count,
         created_at=msg.created_at,
+        status=msg.status,
+        is_read=msg.is_read,
     )
 
 
@@ -239,6 +243,8 @@ async def list_conversations(
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
                 message_count=msg_count,
+                unread_count=conv.unread_count,
+                last_message=conv.last_message,
                 recent_messages=recent_messages,
             )
         )
@@ -481,3 +487,59 @@ async def delete_conversation(
         deleted_conversation_id=conversation_id,
         deleted_messages_count=deleted_messages,
     )
+
+
+@router.post(
+    "/conversations/{conversation_id}/read",
+    response_model=MarkConversationAsReadResponse,
+    operation_id="markConversationAsRead",
+    summary="Mark conversation as read",
+    description="Mark all messages in a conversation as read and reset unread count to 0",
+    responses={
+        200: {"description": "Conversation marked as read successfully"},
+        401: {"description": "Unauthorized - Invalid or missing JWT token"},
+        403: {"description": "Forbidden - Not authorized to access this conversation"},
+        404: {"description": "Conversation not found"},
+        429: {"description": "Rate limit exceeded"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def mark_conversation_as_read(
+    conversation_id: str,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
+    chat_service: ChatServiceDep = None,
+):
+    """Mark all messages in a conversation as read"""
+    result = await chat_service.mark_conversation_as_read(
+        conversation_id=conversation_id,
+        user_id=current_user.user_id,
+    )
+
+    return MarkConversationAsReadResponse(**result)
+
+
+@router.websocket("/ws/inbox/{user_id}")
+async def websocket_inbox_endpoint(
+    websocket: WebSocket,
+    user_id: str,
+):
+    """
+    WebSocket endpoint for real-time inbox updates
+    
+    Clients connect to receive real-time events:
+    - new_message: When a new message arrives in any conversation
+    - conversation_read: When a conversation is marked as read
+    - typing_status: When an influencer is typing
+    
+    Note: Authentication should be implemented via query parameters or initial message
+    """
+    await manager.connect(websocket, user_id)
+    try:
+        # Keep connection alive and listen for client messages if needed
+        while True:
+            # Wait for any message from client (e.g., ping/pong)
+            _data = await websocket.receive_text()
+            # Echo back or handle client messages if needed
+            # For now, we just keep the connection alive
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, user_id)

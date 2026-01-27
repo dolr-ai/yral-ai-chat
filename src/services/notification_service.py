@@ -62,4 +62,41 @@ class NotificationService:
         except Exception as e:
             logger.error(f"Error sending to Google Chat: {e}")
 
+    async def send_push_notification(
+        self,
+        user_id: str,
+        title: str,
+        body: str,
+        data: dict | None = None,
+    ):
+        """
+        Send push notification to user's device
+        
+        This is a stub implementation. In production, this would integrate with:
+        - Firebase Cloud Messaging (FCM) for Android/iOS
+        - Apple Push Notification Service (APNS) for iOS
+        - Web Push for web clients
+        
+        Args:
+            user_id: User to send notification to
+            title: Notification title
+            body: Notification body text
+            data: Additional data payload (conversation_id, message_id, etc.)
+        """
+        logger.info(
+            f"Push notification stub called for user {user_id}: "
+            f"title='{title}', body='{body}', data={data}"
+        )
+        
+        # TODO: Implement actual push notification logic
+        # Example integration points:
+        # 1. Look up user's device tokens from database
+        # 2. Send via FCM/APNS based on device type
+        # 3. Handle failures and retry logic
+        # 4. Track delivery status
+        
+        if settings.environment == "production":
+            logger.warning("Push notifications not yet implemented in production")
+
+
 notification_service = NotificationService()
