@@ -10,9 +10,13 @@ Set TEST_API_URL environment variable to test against remote APIs:
 
 Note: Make sure src/config.py has media_upload_dir and media_base_url fields.
 """
+
 import base64
 import json
 import os
+import subprocess
+import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -90,26 +94,27 @@ def auth_headers():
 
 class RemoteClient:
     """HTTP client wrapper for testing remote APIs - compatible with TestClient interface"""
+
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
-    
+
     def get(self, path: str, **kwargs):
         """GET request - returns requests.Response (compatible with TestClient)"""
         return self.session.get(f"{self.base_url}{path}", **kwargs)
-    
+
     def post(self, path: str, **kwargs):
         """POST request - returns requests.Response (compatible with TestClient)"""
         return self.session.post(f"{self.base_url}{path}", **kwargs)
-    
+
     def put(self, path: str, **kwargs):
         """PUT request - returns requests.Response (compatible with TestClient)"""
         return self.session.put(f"{self.base_url}{path}", **kwargs)
-    
+
     def delete(self, path: str, **kwargs):
         """DELETE request - returns requests.Response (compatible with TestClient)"""
         return self.session.delete(f"{self.base_url}{path}", **kwargs)
-    
+
     def patch(self, path: str, **kwargs):
         """PATCH request - returns requests.Response (compatible with TestClient)"""
         return self.session.patch(f"{self.base_url}{path}", **kwargs)
@@ -129,10 +134,6 @@ def _setup_test_database():
     3. Runs migrations to ensure schema matches production
     4. Fails HARD if setup encounters any error
     """
-    import subprocess
-    import sys
-    import tempfile
-    
     # 1. Determine unique database path for this worker
     # 'gw0', 'gw1' etc for parallel runs, or 'master' for sequential
     worker_id = os.getenv("PYTEST_XDIST_WORKER", "master")
@@ -190,18 +191,19 @@ def _setup_test_database():
 def client():
     """
     Client fixture - supports both local (TestClient) and remote (HTTP) testing
-    
+
     Set TEST_API_URL environment variable to test against remote APIs:
       TEST_API_URL=https://staging.example.com pytest
     """
     test_api_url = os.getenv("TEST_API_URL")
-    
+
     if test_api_url:
         # Remote mode: test against staging/prod
         yield RemoteClient(test_api_url)
     else:
         # Local mode: use TestClient (no uvicorn needed)
         from src.main import app
+
         with TestClient(app) as test_client:
             yield test_client
 
@@ -225,9 +227,7 @@ def test_conversation_id(client, test_influencer_id, auth_headers):
     Create a test conversation and return its ID
     """
     response = client.post(
-        "/api/v1/chat/conversations",
-        json={"influencer_id": test_influencer_id},
-        headers=auth_headers
+        "/api/v1/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
     )
     assert response.status_code == 201
     data = response.json()
@@ -241,9 +241,7 @@ def clean_conversation_id(client, test_influencer_id, auth_headers):
     """
     # Create conversation
     response = client.post(
-        "/api/v1/chat/conversations",
-        json={"influencer_id": test_influencer_id},
-        headers=auth_headers
+        "/api/v1/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
     )
     assert response.status_code == 201
     conversation_id = response.json()["id"]

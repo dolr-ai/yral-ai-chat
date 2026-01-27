@@ -1,6 +1,7 @@
 """
 Chat endpoints
 """
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from fastapi.security import HTTPBearer
 
@@ -12,7 +13,8 @@ from src.core.background_tasks import (
 )
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
 from src.models.entities import Message
-from src.models.requests import CreateConversationRequest, SendMessageRequest
+from src.models.internal import SendMessageParams
+from src.models.requests import CreateConversationRequest, GenerateImageRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,
     DeleteConversationResponse,
@@ -139,7 +141,7 @@ async def create_conversation(
     )
 
     message_count = await message_repo.count_by_conversation(conversation.id)
-    
+
     recent_messages: list[MessageResponse] | None = None
     if message_count >= 1:
         recent_messages_list = await message_repo.list_by_conversation(
@@ -162,15 +164,14 @@ async def create_conversation(
             name=conversation.influencer.name,
             display_name=conversation.influencer.display_name,
             avatar_url=conversation.influencer.avatar_url,
-            suggested_messages=conversation.influencer.suggested_messages
-            if message_count <= 1
-            else None,
+            suggested_messages=conversation.influencer.suggested_messages if message_count <= 1 else None,
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         message_count=message_count,
         recent_messages=recent_messages,
     )
+
 
 @router.get(
     "/conversations",
@@ -197,7 +198,7 @@ async def list_conversations(
 ):
     """
     List user's conversations
-    
+
     Optionally filter by influencer_id
     """
     conversations, total = await chat_service.list_conversations(
@@ -372,24 +373,26 @@ async def send_message(
 ):
     """
     Send a message to AI influencer
-    
+
     Supports:
     - Text-only messages
     - Image-only messages
     - Text + Image messages (multimodal)
     - Audio/voice messages
-    
+
     Background tasks are used for logging and cache invalidation.
     """
     user_msg, assistant_msg = await chat_service.send_message(
-        conversation_id=conversation_id,
-        user_id=current_user.user_id,
-        content=request.content,
-        message_type=request.message_type,
-        media_urls=request.media_urls or [],
-        audio_url=request.audio_url,
-        audio_duration_seconds=request.audio_duration_seconds,
-        background_tasks=background_tasks,
+        SendMessageParams(
+            conversation_id=conversation_id,
+            user_id=current_user.user_id,
+            content=request.content,
+            message_type=request.message_type,
+            media_urls=request.media_urls or [],
+            audio_url=request.audio_url,
+            audio_duration_seconds=request.audio_duration_seconds,
+            background_tasks=background_tasks,
+        )
     )
 
     # Check if we hit the fallback error message
@@ -419,6 +422,48 @@ async def send_message(
         user_message=await _convert_message_to_response(user_msg, storage_service),
         assistant_message=await _convert_message_to_response(assistant_msg, storage_service),
     )
+
+
+@router.post(
+    "/conversations/{conversation_id}/images",
+    response_model=MessageResponse,
+    operation_id="generateImage",
+    summary="Generate an image in conversation",
+    description="""
+    Generate an image based on a prompt or conversation context.
+    
+    If 'prompt' is provided, it is used directly.
+    If 'prompt' is omitted, the last few messages are used to generate a relevant image prompt.
+    The generated image is saved to storage and returned as a new message.
+    """,
+    responses={
+        201: {"description": "Image generated successfully"},
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden - Not your conversation"},
+        404: {"description": "Conversation not found"},
+        500: {"description": "Internal server error"},
+        503: {"description": "Image generation service unavailable"},
+    },
+    status_code=201,
+)
+async def generate_image(
+    conversation_id: str,
+    request: GenerateImageRequest,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
+    chat_service: ChatServiceDep = None,
+    storage_service: StorageServiceDep = None,
+):
+    """Generate an image in the conversation"""
+    try:
+        message = await chat_service.generate_image_for_conversation(
+            conversation_id=conversation_id,
+            user_id=current_user.user_id,
+            prompt=request.prompt,
+        )
+        return await _convert_message_to_response(message, storage_service)
+    except NotImplementedError:
+        # 503 if service not configured
+        return Response(status_code=503, content="Image generation service unavailable")
 
 
 @router.delete(
@@ -453,5 +498,3 @@ async def delete_conversation(
         deleted_conversation_id=conversation_id,
         deleted_messages_count=deleted_messages,
     )
-
-

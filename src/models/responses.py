@@ -1,6 +1,7 @@
 """
 Response models for API endpoints
 """
+
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003
@@ -12,16 +13,19 @@ from src.models.entities import InfluencerStatus, LastMessageInfo, MessageRole, 
 
 class InfluencerBasicInfo(BaseModel):
     """Basic influencer information"""
-    model_config = ConfigDict(
-        from_attributes=True,
-        use_enum_values=True,
-        populate_by_name=True
-    )
 
-    id: str = Field(..., description="Unique identifier for the influencer (UUID or IC Principal)", examples=["550e8400-e29b-41d4-a716-446655440000"])
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
+
+    id: str = Field(
+        ...,
+        description="Unique identifier for the influencer (UUID or IC Principal)",
+        examples=["550e8400-e29b-41d4-a716-446655440000"],
+    )
     name: str = Field(..., description="URL-friendly username", examples=["tech_guru_ai"])
     display_name: str = Field(..., description="Display name for the influencer", examples=["Tech Guru AI"])
-    avatar_url: str | None = Field(None, description="Profile picture URL", examples=["https://cdn.yral.com/avatars/tech_guru.png"])
+    avatar_url: str | None = Field(
+        None, description="Profile picture URL", examples=["https://cdn.yral.com/avatars/tech_guru.png"]
+    )
     suggested_messages: list[str] | None = Field(
         default=None,
         description="Initial suggested messages users can ask to get started",
@@ -31,12 +35,15 @@ class InfluencerBasicInfo(BaseModel):
 
 class MessageResponse(BaseModel):
     """Message response model"""
+
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     id: str = Field(..., description="Unique message identifier")
     role: MessageRole = Field(..., description="Message sender: 'user' or 'assistant'", examples=["user"])
     content: str | None = Field(None, description="Message text content", examples=["Hello! How are you today?"])
-    message_type: MessageType = Field(..., description="Message type: TEXT, IMAGE, MULTIMODAL, or AUDIO", examples=["TEXT"])
+    message_type: MessageType = Field(
+        ..., description="Message type: TEXT, IMAGE, MULTIMODAL, or AUDIO", examples=["TEXT"]
+    )
     media_urls: list[str] = Field(default_factory=list, description="Array of image URLs", examples=[[]])
     audio_url: str | None = Field(None, description="URL to audio file", examples=[None])
     audio_duration_seconds: int | None = Field(None, description="Audio duration in seconds", examples=[None])
@@ -46,6 +53,7 @@ class MessageResponse(BaseModel):
 
 class ConversationResponse(BaseModel):
     """Conversation response model"""
+
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     id: str
@@ -60,6 +68,7 @@ class ConversationResponse(BaseModel):
 
 class SendMessageResponse(BaseModel):
     """Response when sending a message"""
+
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     user_message: MessageResponse
@@ -68,6 +77,7 @@ class SendMessageResponse(BaseModel):
 
 class ListConversationsResponse(BaseModel):
     """Response for listing conversations"""
+
     model_config = ConfigDict(from_attributes=True)
 
     conversations: list[ConversationResponse]
@@ -78,6 +88,7 @@ class ListConversationsResponse(BaseModel):
 
 class ListMessagesResponse(BaseModel):
     """Response for listing messages"""
+
     model_config = ConfigDict(from_attributes=True)
 
     conversation_id: str
@@ -89,6 +100,7 @@ class ListMessagesResponse(BaseModel):
 
 class InfluencerResponse(BaseModel):
     """AI Influencer response model"""
+
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     id: str = Field(..., description="Unique identifier for the influencer (UUID or IC Principal)")
@@ -97,12 +109,23 @@ class InfluencerResponse(BaseModel):
     avatar_url: str | None = Field(None, description="Profile picture URL")
     description: str | None = Field(None, description="Bio/description of the influencer")
     category: str | None = Field(None, description="Category/expertise area", examples=["Technology"])
-    is_active: InfluencerStatus = Field(..., description="Influencer status: 'active', 'coming_soon', or 'discontinued'")
+    is_active: InfluencerStatus = Field(
+        ..., description="Influencer status: 'active', 'coming_soon', or 'discontinued'"
+    )
+    parent_principal_id: str | None = Field(None, description="ID of the parent principal")
+    source: str | None = Field(None, description="Creation source: 'admin-created-influencer' or 'user-created-influencer'")
     created_at: datetime = Field(..., description="Creation timestamp")
+
+
+class InfluencerCreateResponse(InfluencerResponse):
+    """Response model for influencer creation with extra data"""
+
+    starter_video_prompt: str | None = Field(None, description="Prompt for generating an intro video of the character")
 
 
 class ListInfluencersResponse(BaseModel):
     """Response for listing influencers"""
+
     model_config = ConfigDict(from_attributes=True)
 
     influencers: list[InfluencerResponse]
@@ -113,6 +136,7 @@ class ListInfluencersResponse(BaseModel):
 
 class ServiceHealth(BaseModel):
     """Health status of a service"""
+
     model_config = ConfigDict(from_attributes=True)
 
     status: str
@@ -124,6 +148,7 @@ class ServiceHealth(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response"""
+
     model_config = ConfigDict(from_attributes=True)
 
     status: str
@@ -133,6 +158,7 @@ class HealthResponse(BaseModel):
 
 class DatabaseStats(BaseModel):
     """Database statistics"""
+
     model_config = ConfigDict(from_attributes=True)
 
     connected: bool
@@ -142,6 +168,7 @@ class DatabaseStats(BaseModel):
 
 class SystemStatistics(BaseModel):
     """System-wide statistics"""
+
     model_config = ConfigDict(from_attributes=True)
 
     total_conversations: int = 0
@@ -151,6 +178,7 @@ class SystemStatistics(BaseModel):
 
 class StatusResponse(BaseModel):
     """System status response"""
+
     model_config = ConfigDict(from_attributes=True)
 
     service: str
@@ -164,6 +192,7 @@ class StatusResponse(BaseModel):
 
 class MediaUploadResponse(BaseModel):
     """Media upload response"""
+
     model_config = ConfigDict(from_attributes=True)
 
     url: str = Field(
@@ -185,6 +214,7 @@ class MediaUploadResponse(BaseModel):
 
 class DeleteConversationResponse(BaseModel):
     """Delete conversation response"""
+
     model_config = ConfigDict(from_attributes=True)
 
     success: bool
@@ -195,6 +225,7 @@ class DeleteConversationResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Error response model"""
+
     model_config = ConfigDict(from_attributes=True)
 
     error: str
@@ -202,3 +233,26 @@ class ErrorResponse(BaseModel):
     details: dict[str, object] | None = None
 
 
+class SystemPromptResponse(BaseModel):
+    """Response containing generated system instructions"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    system_instructions: str
+
+
+class GeneratedMetadataResponse(BaseModel):
+    """Response containing generated character metadata"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    is_valid: bool
+    reason: str | None = None
+    name: str | None = None
+    display_name: str | None = None
+    description: str | None = None
+    initial_greeting: str | None = None
+    suggested_messages: list[str] | None = None
+    personality_traits: dict[str, object] | None = None
+    category: str | None = None
+    avatar_url: str | None = None

@@ -1,6 +1,7 @@
 """
 Configuration management for Yral AI Chat API
 """
+
 from typing import Literal
 
 from pydantic import Field, field_validator
@@ -12,10 +13,7 @@ class Settings(BaseSettings):
 
     app_name: str = Field(default="Yral AI Chat API", alias="APP_NAME")
     app_version: str = Field(default="1.0.0", alias="APP_VERSION")
-    environment: Literal["development", "staging", "production"] = Field(
-        default="development",
-        alias="ENVIRONMENT"
-    )
+    environment: Literal["development", "staging", "production"] = Field(default="development", alias="ENVIRONMENT")
     debug: bool = Field(default=False, alias="DEBUG")
     host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8000, ge=1, le=65535, alias="PORT")
@@ -47,6 +45,12 @@ class Settings(BaseSettings):
     max_audio_size_mb: int = Field(default=20, ge=1, le=200, alias="MAX_AUDIO_SIZE_MB")
     max_audio_duration_seconds: int = Field(default=300, ge=1, le=600, alias="MAX_AUDIO_DURATION_SECONDS")
     media_download_timeout: float = Field(default=15.0, gt=0, alias="MEDIA_DOWNLOAD_TIMEOUT")
+
+    # ===========================================
+    # Replicate API (for Image Generation)
+    # ===========================================
+    replicate_api_token: str = Field(default="", min_length=0, alias="REPLICATE_API_TOKEN")
+    replicate_model: str = Field(default="black-forest-labs/flux-dev", alias="REPLICATE_MODEL")
 
     aws_access_key_id: str = Field(..., min_length=1, alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str = Field(..., min_length=1, alias="AWS_SECRET_ACCESS_KEY")
@@ -89,23 +93,20 @@ class Settings(BaseSettings):
                 raise ValueError("Hourly rate limit must be >= per-minute rate limit")
         return v
 
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
-        default="INFO",
-        alias="LOG_LEVEL"
-    )
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO", alias="LOG_LEVEL")
     log_format: Literal["json", "text"] = Field(default="json", alias="LOG_FORMAT")
 
     sentry_dsn: str | None = Field(
         default=None,
         alias="SENTRY_DSN",
-        description="Sentry DSN URL for error tracking. Format: https://<key>@apm.yral.com/<project_id>"
+        description="Sentry DSN URL for error tracking. Format: https://<key>@apm.yral.com/<project_id>",
     )
     sentry_traces_sample_rate: float = Field(
         default=1.0,
         ge=0.0,
         le=1.0,
         alias="SENTRY_TRACES_SAMPLE_RATE",
-        description="Performance monitoring sample rate (0.0 to 1.0). Default: 1.0 for production, recommend 0.1 for development"
+        description="Performance monitoring sample rate (0.0 to 1.0). Default: 1.0 for production, recommend 0.1 for development",
     )
     sentry_profiles_sample_rate: float = Field(
         default=1.0,
@@ -157,10 +158,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,
-        extra="ignore"  # Allow extra fields like Litestream configs that aren't used by the app
+        extra="ignore",  # Allow extra fields like Litestream configs that aren't used by the app
     )
 
 
 settings = Settings()
-
-
