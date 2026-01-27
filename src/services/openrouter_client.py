@@ -6,7 +6,6 @@ Used for NSFW content handling via alternative LLM providers
 import base64
 import time
 from collections.abc import Callable
-from typing import TypeVar
 
 import httpx
 from loguru import logger
@@ -24,8 +23,6 @@ from src.core.exceptions import AIServiceException, TranscriptionException
 from src.models.entities import Message, MessageRole, MessageType
 from src.models.internal import AIProviderHealth, AIResponse, LLMGenerateParams
 from src.services.base_ai_client import BaseAIClient
-
-T = TypeVar("T")
 
 
 def _is_retryable_http_error(exception: BaseException) -> bool:  # type: ignore[name-defined]
