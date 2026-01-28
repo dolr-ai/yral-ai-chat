@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     gemini_max_tokens: int = Field(default=2048, ge=1, le=8192, alias="GEMINI_MAX_TOKENS")
     gemini_temperature: float = Field(default=0.7, ge=0.0, le=2.0, alias="GEMINI_TEMPERATURE")
+    gemini_timeout: float = Field(default=60.0, gt=0, alias="GEMINI_TIMEOUT")
 
     # ===========================================
     # OpenRouter API (for NSFW content)
@@ -45,6 +46,7 @@ class Settings(BaseSettings):
     max_image_size_mb: int = Field(default=10, ge=1, le=100, alias="MAX_IMAGE_SIZE_MB")
     max_audio_size_mb: int = Field(default=20, ge=1, le=200, alias="MAX_AUDIO_SIZE_MB")
     max_audio_duration_seconds: int = Field(default=300, ge=1, le=600, alias="MAX_AUDIO_DURATION_SECONDS")
+    media_download_timeout: float = Field(default=15.0, gt=0, alias="MEDIA_DOWNLOAD_TIMEOUT")
 
     aws_access_key_id: str = Field(..., min_length=1, alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str = Field(..., min_length=1, alias="AWS_SECRET_ACCESS_KEY")

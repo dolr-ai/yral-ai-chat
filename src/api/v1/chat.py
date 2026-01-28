@@ -208,20 +208,34 @@ async def list_conversations(
     )
 
     conversation_responses: list[ConversationResponse] = []
+    
+    # Collect all messages that need URL signing
+    all_messages_for_signing = []
     for conv in conversations:
-        msg_count = conv.message_count or 0
+        if conv.recent_messages:
+            all_messages_for_signing.extend(conv.recent_messages)
+            
+    # Batch generate presigned URLs if StorageService is available
+    presigned_map = {}
+    if storage_service and all_messages_for_signing:
+        all_keys = []
+        for msg in all_messages_for_signing:
+            if msg.media_urls:
+                for url in msg.media_urls:
+                    if url:
+                        all_keys.append(storage_service.extract_key_from_url(url))
+            if msg.audio_url:
+                all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
+        
+        if all_keys:
+            presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
 
-        recent_messages_list = await message_repo.list_by_conversation(
-            conversation_id=conv.id,
-            limit=10,
-            offset=0,
-            order="desc",
-        )
+    for conv in conversations:
         recent_messages: list[MessageResponse] | None = None
-        if recent_messages_list:
+        if conv.recent_messages:
             recent_messages = [
-                await _convert_message_to_response(msg, storage_service)
-                for msg in recent_messages_list
+                await _convert_message_to_response(msg, storage_service, presigned_map)
+                for msg in conv.recent_messages
             ]
 
         conversation_responses.append(
@@ -233,13 +247,14 @@ async def list_conversations(
                     name=conv.influencer.name,
                     display_name=conv.influencer.display_name,
                     avatar_url=conv.influencer.avatar_url,
+                    # Only show suggested messages if conversation is empty or has just 1 message (greeting)
                     suggested_messages=conv.influencer.suggested_messages
-                    if msg_count <= 1
+                    if (conv.message_count or 0) <= 1
                     else None,
                 ),
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
-                message_count=msg_count,
+                message_count=conv.message_count or 0,
                 recent_messages=recent_messages,
             )
         )

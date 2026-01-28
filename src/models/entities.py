@@ -76,6 +76,7 @@ class Conversation(BaseModel):
     influencer: AIInfluencer | None = None
     message_count: int | None = None
     last_message: LastMessageInfo | None = None
+    recent_messages: list[Message] | None = None
 
 
 class Message(BaseModel):

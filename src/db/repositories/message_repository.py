@@ -108,6 +108,57 @@ class MessageRepository:
         rows = await db.fetch(query, str(conversation_id), limit)
         return [self._row_to_message(row) for row in reversed(rows)]
 
+    async def get_recent_for_conversations_batch(
+        self,
+        conversation_ids: list[UUID],
+        limit_per_conv: int = 10
+    ) -> dict[str, list[Message]]:
+        """
+        Get recent messages for multiple conversations in a single query.
+        Returns a dictionary mapping conversation_id (str) to list of Messages (ordered oldest to newest).
+        """
+        if not conversation_ids:
+            return {}
+
+        id_strings = [str(cid) for cid in conversation_ids]
+        placeholders = ", ".join([f"${i+1}" for i in range(len(id_strings))])
+        
+        # Use ROW_NUMBER() window function to limit messages per conversation
+        query = f"""
+            WITH RankedsMessages AS (
+                SELECT
+                    id, conversation_id, role, content, message_type,
+                    media_urls, audio_url, audio_duration_seconds,
+                    token_count, created_at, metadata,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY conversation_id
+                        ORDER BY created_at DESC
+                    ) as rn
+                FROM messages
+                WHERE conversation_id IN ({placeholders})
+            )
+            SELECT *
+            FROM RankedsMessages
+            WHERE rn <= ${len(id_strings) + 1}
+            ORDER BY conversation_id, created_at ASC
+        """  # noqa: S608
+
+        # Execute query with all conversation IDs + the limit parameter
+        rows = await db.fetch(query, *id_strings, limit_per_conv)
+        
+        # Group by conversation_id
+        result: dict[str, list[Message]] = {str(cid): [] for cid in conversation_ids}
+        
+        for row in rows:
+            # Note: _row_to_message might need handling if "rn" is not expected,
+            # but since it selects specific columns in _row_to_message it should be fine
+            # OR we need to be careful. Checked code: _row_to_message only accesses keys it needs.
+            msg = self._row_to_message(row)
+            if msg.conversation_id in result:
+                result[msg.conversation_id].append(msg)
+                
+        return result
+
     async def count_by_conversation(self, conversation_id: UUID) -> int:
         """Count messages in a conversation"""
         query = "SELECT COUNT(*) FROM messages WHERE conversation_id = $1"

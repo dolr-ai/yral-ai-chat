@@ -14,6 +14,10 @@ import aiosqlite
 from loguru import logger
 
 from src.config import settings
+from src.core.metrics import (
+    db_connections_active,
+    db_query_duration_seconds,
+)
 from src.models.internal import DatabaseHealth
 
 
@@ -78,8 +82,10 @@ class ConnectionPool:
         async with conn.execute("PRAGMA busy_timeout") as cursor:
             row = await cursor.fetchone()
             timeout_setting = row[0] if row else "unknown"
-            if self._created_connections == 0: # Only log for the first connection to reduce noise
-                logger.info(f"Database initialized with busy_timeout={timeout_setting}ms (requested={actual_timeout}ms)")
+            if self._created_connections == 0:  # Only log for the first connection to reduce noise
+                logger.info(
+                    f"Database initialized with busy_timeout={timeout_setting}ms (requested={actual_timeout}ms)"
+                )
 
         conn.row_factory = aiosqlite.Row
 
@@ -89,10 +95,7 @@ class ConnectionPool:
     async def acquire(self) -> aiosqlite.Connection:
         """Acquire a connection from the pool"""
         try:
-            return await asyncio.wait_for(
-                self._pool.get(),
-                timeout=self.timeout
-            )
+            return await asyncio.wait_for(self._pool.get(), timeout=self.timeout)
         except TimeoutError as e:
             logger.error("Timeout waiting for database connection from pool")
             raise DatabaseConnectionPoolTimeoutError("Database connection pool timeout") from e
@@ -100,6 +103,12 @@ class ConnectionPool:
     async def release(self, conn: aiosqlite.Connection):
         """Release a connection back to the pool"""
         try:
+            try:
+                await conn.execute("PRAGMA optimize")
+            except Exception as e:
+                logger.debug(f"PRAGMA optimize failed during shutdown: {e}")
+            
+            db_connections_active.dec()
             await self._pool.put(conn)
         except asyncio.QueueFull:
             await conn.close()
@@ -151,6 +160,7 @@ class Database:
                 f"Connected to SQLite database: {self.db_path} "
                 f"(pool size: {settings.database_pool_size})"
             )
+            db_connections_active.set(settings.database_pool_size)
 
             conn = await self._pool.acquire()
             try:
@@ -205,6 +215,8 @@ class Database:
                                 f"exec_query={exec_duration_ms}ms, "
                                 f"attempt={attempt + 1}. Query: {query[:200]}"
                             )
+                        
+                        db_query_duration_seconds.labels(operation="execute").observe(exec_duration_ms / 1000.0)
                         return f"Rows affected: {cursor.rowcount}"
 
                 except Exception as e:
@@ -250,6 +262,13 @@ class Database:
                 row_list = [dict(row) for row in rows]
                 if duration_ms > 100:
                     logger.warning(f"Slow query ({duration_ms}ms, {len(row_list)} rows): {query[:200]}")
+                
+                db_query_duration_seconds.labels(operation="fetch").observe(duration_ms / 1000.0)
+
+                # Commit if it's a mutation (e.g. INSERT ... RETURNING)
+                if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+                    await conn.commit()
+
                 return row_list
         except Exception as e:
             logger.error(f"Fetch error: {e}, Query: {query[:100]}")
@@ -270,6 +289,12 @@ class Database:
                 duration_ms = int((time.time() - start_time) * 1000)
                 if duration_ms > 50:
                     logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")
+                
+                # Commit if it's a mutation (e.g. INSERT ... RETURNING)
+                if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+                    await conn.commit()
+
+                db_query_duration_seconds.labels(operation="fetchone").observe(duration_ms / 1000.0)
                 return dict(row) if row else None
         except Exception as e:
             logger.error(f"Fetchone error: {e}, Query: {query[:100]}")
@@ -283,9 +308,12 @@ class Database:
             raise RuntimeError("Database connection pool not initialized")
         query = self._convert_query(query)
         conn = await self._pool.acquire()
+        start_time = time.time()
         try:
             async with conn.execute(query, args) as cursor:
                 row = await cursor.fetchone()
+                duration_ms = int((time.time() - start_time) * 1000)
+                db_query_duration_seconds.labels(operation="fetchval").observe(duration_ms / 1000.0)
                 return row[0] if row else None
         except Exception as e:
             logger.error(f"Fetchval error: {e}, Query: {query[:100]}")
