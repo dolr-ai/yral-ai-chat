@@ -69,19 +69,6 @@ class BaseAIClient(ABC):
                             continue
             return {}
 
-    async def _download_image(self, url: str) -> dict[str, Any]:
-        """Download and encode image"""
-        try:
-            logger.info(f"Downloading image from URL: {url}")
-            response = await self.http_client.get(url)
-            response.raise_for_status()
-
-            image_data = response.content
-            mime_type = response.headers.get("content-type", "image/jpeg")
-            return {"mime_type": mime_type, "data": image_data}
-        except Exception as e:
-            logger.error(f"Failed to download image from {url}: {e}")
-            raise AIServiceException(f"Failed to process image: {e}") from e
 
 
     async def _download_audio(self, url: str) -> dict[str, Any]:
@@ -112,6 +99,7 @@ class BaseAIClient(ABC):
             elapsed = time.time() - t0
             logger.error(f"Failed to download audio ({elapsed:.1f}s) {url[:100]}: {e}")
             raise AIServiceException(f"Failed to process audio: {e}") from e
+
 
     async def extract_memories(
         self, user_message: str, assistant_response: str, existing_memories: dict[str, str] | None = None

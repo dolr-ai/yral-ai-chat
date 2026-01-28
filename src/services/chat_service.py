@@ -4,7 +4,6 @@ Chat service - Business logic for conversations and messages
 
 import sqlite3
 import time
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
@@ -93,7 +92,7 @@ class ChatService:
         conversation.influencer = influencer
         return conversation, True
 
-    async def _transcribe_audio(self, audio_url: str) -> str:
+    async def _transcribe_audio(self, audio_url: str, is_nsfw: bool = False) -> str:
         """Transcribe audio and return transcribed content"""
         try:
             audio_url_for_transcription = audio_url
@@ -101,9 +100,10 @@ class ChatService:
                 s3_key = self.storage_service.extract_key_from_url(audio_url)
                 audio_url_for_transcription = await self.storage_service.generate_presigned_url(s3_key)
             
-            transcription = await self.gemini_client.transcribe_audio(audio_url_for_transcription)
+            ai_client = self._select_ai_client(is_nsfw)
+            transcription = await ai_client.transcribe_audio(audio_url_for_transcription)
             transcribed_content = f"[Transcribed: {transcription}]"
-            logger.info(f"Audio transcribed: {transcription[:100]}...")
+            logger.info(f"Audio transcribed by {ai_client.provider_name}: {transcription[:100]}...")
             return transcribed_content
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
@@ -197,13 +197,14 @@ class ChatService:
         audio_url: str | None,
         audio_duration_seconds: int | None,
         media_urls: list[str] | None,
-        timings: dict[str, float]
+        timings: dict[str, float],
+        is_nsfw: bool = False,
     ) -> tuple[Message, str]:
         """Transcribe (if needed) and save user message"""
         transcribed_content = content
         if message_type == MessageType.AUDIO and audio_url:
             t0 = time.time()
-            transcribed_content = await self._transcribe_audio(audio_url)
+            transcribed_content = await self._transcribe_audio(audio_url, is_nsfw=is_nsfw)
             timings["transcribe_audio"] = time.time() - t0
 
         t0 = time.time()
@@ -309,7 +310,14 @@ class ChatService:
 
         # 2. User Message
         user_message, transcribed_payload = await self._prepare_user_message(
-            params.conversation_id, params.content, params.message_type, params.audio_url, params.audio_duration_seconds, params.media_urls, timings
+            params.conversation_id,
+            params.content,
+            params.message_type,
+            params.audio_url,
+            params.audio_duration_seconds,
+            params.media_urls,
+            timings,
+            is_nsfw=influencer.is_nsfw
         )
         logger.info(f"User message saved: {user_message.id}")
 
