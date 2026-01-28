@@ -43,8 +43,8 @@ is_test = (
     Path(sys.argv[0]).name.startswith("pytest")
 )
 
-# Sentry initialization (Production only)
-sentry_env = settings.environment if settings.environment == "production" else None
+# Sentry initialization
+sentry_env = settings.environment if settings.environment in ("production", "staging") else None
 if not is_test and settings.sentry_dsn and sentry_env:
     try:
         sentry_sdk.init(
@@ -163,6 +163,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle Pydantic validation errors"""
     logger.warning(f"Validation error on {request.url.path}: {exc.errors()}")
+    
     # Pydantic v2 errors contain non-serializable objects (like ValueError) in 'ctx'
     # We must sanitize them before sending to JSONResponse
     def sanitize(obj):

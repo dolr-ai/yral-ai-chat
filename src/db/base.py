@@ -15,6 +15,10 @@ import aiosqlite
 from loguru import logger
 
 from src.config import settings
+from src.core.metrics import (
+    db_connections_active,
+    db_query_duration_seconds,
+)
 from src.models.internal import DatabaseHealth
 
 
@@ -107,7 +111,13 @@ class ConnectionPool:
         """Close all connections in the pool"""
         while not self._pool.empty():
             conn = await self._pool.get()
+            try:
+                # Safe optimization: HELP SQLite query planner by analyzing data before close
+                await conn.execute("PRAGMA optimize")
+            except Exception as e:
+                logger.debug(f"PRAGMA optimize failed during shutdown: {e}")
             await conn.close()
+            db_connections_active.dec()
         logger.info(f"Closed all {self._created_connections} database connections")
 
 
@@ -143,6 +153,8 @@ class Database:
             await self._pool.initialize()
 
             logger.info(f"Connected to SQLite database: {self.db_path} " f"(pool size: {settings.database_pool_size})")
+
+            db_connections_active.set(settings.database_pool_size)
 
             conn = await self._pool.acquire()
             try:
@@ -190,6 +202,8 @@ class Database:
                         exec_duration_ms = int((time.time() - start_exec) * 1000)
                         total_duration_ms = wait_duration_ms + exec_duration_ms
                         
+                        db_query_duration_seconds.labels(operation="execute").observe(exec_duration_ms / 1000.0)
+
                         if total_duration_ms > 100:
                             logger.warning(
                                 f"Slow execute ({total_duration_ms}ms total): "
@@ -239,6 +253,7 @@ class Database:
             async with conn.execute(query, args) as cursor:
                 rows = await cursor.fetchall()
                 duration_ms = int((time.time() - start_time) * 1000)
+                db_query_duration_seconds.labels(operation="fetch").observe(duration_ms / 1000.0)
                 row_list = [dict(row) for row in rows]
 
                 # Commit if it's a mutation (e.g. INSERT ... RETURNING)
@@ -270,6 +285,7 @@ class Database:
                     await conn.commit()
 
                 duration_ms = int((time.time() - start_time) * 1000)
+                db_query_duration_seconds.labels(operation="fetchone").observe(duration_ms / 1000.0)
                 if duration_ms > 50:
                     logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")
                 return dict(row) if row else None
@@ -287,7 +303,10 @@ class Database:
         conn = await self._pool.acquire()
         try:
             async with conn.execute(query, args) as cursor:
+                start_time = time.time()
                 row = await cursor.fetchone()
+                duration_ms = int((time.time() - start_time) * 1000)
+                db_query_duration_seconds.labels(operation="fetchval").observe(duration_ms / 1000.0)
                 return row[0] if row else None
         except Exception as e:
             logger.error(f"Fetchval error: {e}, Query: {query[:100]}")
