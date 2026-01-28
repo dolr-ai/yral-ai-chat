@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 
 import httpx
+import sentry_sdk
 from loguru import logger
 from tenacity import (
     retry,
@@ -137,40 +138,43 @@ class OpenRouterClient(BaseAIClient):
     @_openrouter_retry_decorator
     async def _generate_content(self, messages: list[dict]) -> tuple[str, int]:
         """Generate content using OpenRouter API with retry logic"""
-        logger.info(f"Generating OpenRouter response with {len(messages)} messages")
+        with sentry_sdk.start_span(op="ai.openrouter", name="OpenRouter Generate Content") as span:
+            span.set_data("ai.model", self.model_name)
+            logger.info(f"Generating OpenRouter response with {len(messages)} messages")
 
-        payload = {
-            "model": self.model_name,
-            "messages": messages,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
-        }
+            payload = {
+                "model": self.model_name,
+                "messages": messages,
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
+            }
 
-        response = await self.http_client.post(
-            f"{self.api_base}/chat/completions",
-            json=payload
-        )
+            response = await self.http_client.post(
+                f"{self.api_base}/chat/completions",
+                json=payload
+            )
 
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            logger.error(f"OpenRouter API error: {e.response.status_code} - {e.response.text}")
-            raise
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"OpenRouter API error: {e.response.status_code} - {e.response.text}")
+                raise
 
-        data = response.json()
-        response_text = data["choices"][0]["message"]["content"].strip()
+            data = response.json()
+            response_text = data["choices"][0]["message"]["content"].strip()
 
-        # Token counting
-        if self.tokenizer:
-            token_count = len(self.tokenizer.encode(response_text))
-        else:
-            # Estimate: ~1.3 words per token
-            token_count = int(len(response_text.split()) * 1.3)
-            logger.warning("Using approximate token counting for OpenRouter (tiktoken not available)")
+            # Token counting
+            if self.tokenizer:
+                token_count = len(self.tokenizer.encode(response_text))
+            else:
+                # Estimate: ~1.3 words per token
+                token_count = int(len(response_text.split()) * 1.3)
+                logger.warning("Using approximate token counting for OpenRouter (tiktoken not available)")
 
-        logger.info(f"Generated response: {len(response_text)} chars, {token_count} tokens")
+            span.set_data("ai.tokens_out", token_count)
+            logger.info(f"Generated response: {len(response_text)} chars, {token_count} tokens")
 
-        return response_text, token_count
+            return response_text, token_count
 
     async def transcribe_audio(self, audio_url: str) -> str:
         """

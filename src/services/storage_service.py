@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import aioboto3
 import aiohttp
+import sentry_sdk
 from botocore.config import Config
 from loguru import logger
 
@@ -39,42 +40,46 @@ class StorageService:
         user_id: str
     ) -> tuple[str, str, int]:
         """Save file to S3 and return (storage_key, mime_type, file_size)"""
-        file_ext = Path(filename).suffix.lower()
-        unique_filename = f"{uuid4()}{file_ext}"
-        s3_key = f"{user_id}/{unique_filename}"
+        with sentry_sdk.start_span(op="storage.upload", name="Save File to S3") as span:
+            file_ext = Path(filename).suffix.lower()
+            unique_filename = f"{uuid4()}{file_ext}"
+            s3_key = f"{user_id}/{unique_filename}"
 
-        file_size = len(file_content)
-        mime_type = self._get_mime_type(file_ext)
-        async with await self.get_s3_client() as s3:
-            upload_url = await s3.generate_presigned_url(
-                "put_object",
-                Params={
-                    "Bucket": self.bucket,
-                    "Key": s3_key,
-                    "ContentType": mime_type,
-                    "ContentLength": file_size,
-                },
-                ExpiresIn=300
-            )
+            file_size = len(file_content)
+            mime_type = self._get_mime_type(file_ext)
+            span.set_data("file.mime_type", mime_type)
+            span.set_data("file.size", file_size)
+            
+            async with await self.get_s3_client() as s3:
+                upload_url = await s3.generate_presigned_url(
+                    "put_object",
+                    Params={
+                        "Bucket": self.bucket,
+                        "Key": s3_key,
+                        "ContentType": mime_type,
+                        "ContentLength": file_size,
+                    },
+                    ExpiresIn=300
+                )
 
-        async with (
-            aiohttp.ClientSession() as session,
-            session.put(
-                upload_url,
-                data=file_content,
-                headers={
-                    "Content-Type": mime_type,
-                    "Content-Length": str(file_size)
-                }
-            ) as response
-        ):
-            if response.status not in [200, 201]:
-                text = await response.text()
-                logger.error(f"S3 Upload failed status={response.status}: {text}")
-                raise RuntimeError(f"S3 Upload failed: {response.status} {text}")
+            async with (
+                aiohttp.ClientSession() as session,
+                session.put(
+                    upload_url,
+                    data=file_content,
+                    headers={
+                        "Content-Type": mime_type,
+                        "Content-Length": str(file_size)
+                    }
+                ) as response
+            ):
+                if response.status not in [200, 201]:
+                    text = await response.text()
+                    logger.error(f"S3 Upload failed status={response.status}: {text}")
+                    raise RuntimeError(f"S3 Upload failed: {response.status} {text}")
 
-        logger.info(f"File uploaded to storage: {s3_key} ({file_size} bytes)")
-        return s3_key, mime_type, file_size
+            logger.info(f"File uploaded to storage: {s3_key} ({file_size} bytes)")
+            return s3_key, mime_type, file_size
 
     async def generate_presigned_url(
         self,
@@ -93,23 +98,24 @@ class StorageService:
         if key.startswith(("http://", "https://")):
             return key
 
-        expiration = expires_in or settings.s3_url_expires_seconds
+        with sentry_sdk.start_span(op="storage.presign", name="Generate Single Presigned URL"):
+            expiration = expires_in or settings.s3_url_expires_seconds
 
-        # Reuse existing client if provided (for batch operations)
-        if s3_client:
-            return await s3_client.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": self.bucket, "Key": key},
-                ExpiresIn=expiration,
-            )
+            # Reuse existing client if provided (for batch operations)
+            if s3_client:
+                return await s3_client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self.bucket, "Key": key},
+                    ExpiresIn=expiration,
+                )
 
-        # Otherwise create a new client
-        async with await self.get_s3_client() as s3:
-            return await s3.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": self.bucket, "Key": key},
-                ExpiresIn=expiration,
-            )
+            # Otherwise create a new client
+            async with await self.get_s3_client() as s3:
+                return await s3.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self.bucket, "Key": key},
+                    ExpiresIn=expiration,
+                )
 
     async def generate_presigned_urls_batch(self, keys: list[str]) -> dict[str, str]:
         """Generate presigned URLs for multiple keys in parallel"""
@@ -125,10 +131,12 @@ class StorageService:
         if not unique_keys:
             return {}
             
-        # Generate all URLs in parallel using a single client session
-        async with await self.get_s3_client() as s3:
-            tasks = [self.generate_presigned_url(key, s3_client=s3) for key in unique_keys]
-            urls = await asyncio.gather(*tasks)
+        with sentry_sdk.start_span(op="storage.s3", name="Generate Presigned URLs") as span:
+            span.set_data("storage.count", len(unique_keys))
+            # Generate all URLs in parallel using a single client session
+            async with await self.get_s3_client() as s3:
+                tasks = [self.generate_presigned_url(key, s3_client=s3) for key in unique_keys]
+                urls = await asyncio.gather(*tasks)
         
         return {k: u for k, u in zip(unique_keys, urls, strict=False) if u}
 
