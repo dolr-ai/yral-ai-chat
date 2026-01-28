@@ -6,7 +6,7 @@ FROM python:3.12-slim as builder
 WORKDIR /build
 
 # Install system dependencies for building Python packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     libffi-dev \
@@ -23,7 +23,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Install runtime system dependencies + wget for Litestream
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     libmagic1 \
     libsqlite3-0 \
     wget \

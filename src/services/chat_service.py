@@ -311,6 +311,7 @@ class ChatService:
         total_start = time.time()
 
         # 1. Validation & Context
+        # 1. Validation & Context
         with sentry_sdk.start_span(op="logic.validate", name="Validate and Get Context"):
             t0 = time.time()
             conversation, influencer = await self._validate_and_get_context(conversation_id, user_id)
