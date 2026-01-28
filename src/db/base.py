@@ -103,12 +103,6 @@ class ConnectionPool:
     async def release(self, conn: aiosqlite.Connection):
         """Release a connection back to the pool"""
         try:
-            try:
-                await conn.execute("PRAGMA optimize")
-            except Exception as e:
-                logger.debug(f"PRAGMA optimize failed during shutdown: {e}")
-            
-            db_connections_active.dec()
             await self._pool.put(conn)
         except asyncio.QueueFull:
             await conn.close()
@@ -118,7 +112,13 @@ class ConnectionPool:
         """Close all connections in the pool"""
         while not self._pool.empty():
             conn = await self._pool.get()
+            try:
+                # Safe optimization: HELP SQLite query planner by analyzing data before close
+                await conn.execute("PRAGMA optimize")
+            except Exception as e:
+                logger.debug(f"PRAGMA optimize failed during shutdown: {e}")
             await conn.close()
+            db_connections_active.dec()
         logger.info(f"Closed all {self._created_connections} database connections")
 
 
