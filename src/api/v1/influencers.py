@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Query, Response
 
 from src.core.dependencies import CharacterGeneratorServiceDep, InfluencerServiceDep
-from src.core.moderation import MODERATION_PROMPT
+from src.core.moderation import MODERATION_PROMPT, STYLE_PROMPT
 from src.models.entities import AIInfluencer, InfluencerStatus
 from src.models.requests import (
     CreateInfluencerRequest,
