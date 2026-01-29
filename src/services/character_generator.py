@@ -104,6 +104,26 @@ class CharacterGeneratorService:
             if not validation.is_valid:
                 return GeneratedMetadataResponse(is_valid=False, reason=validation.reason or "Invalid character concept")
 
+            # Check for safety refusals even if LLM said is_valid=True
+            if validation.is_valid:
+                refusal_patterns = [
+                    "i cannot create",
+                    "i'm sorry, but i cannot",
+                    "safety guidelines",
+                    "harmful and unethical",
+                    "harmless and helpful",
+                    "sexually suggestive",
+                    "falls outside of my safety",
+                    "cannot assist you with this request",
+                ]
+                combined_text = f"{validation.description or ''}".lower()
+                if any(pattern in combined_text for pattern in refusal_patterns):
+                    logger.warning(f"Detected safety refusal in LLM response for character: {validation.name}")
+                    return GeneratedMetadataResponse(
+                        is_valid=False,
+                        reason="Content violates safety guidelines and was refused by the AI."
+                    )
+
             # 2. Generate Avatar using Replicate
             image_prompt = validation.image_prompt
             avatar_url = None
