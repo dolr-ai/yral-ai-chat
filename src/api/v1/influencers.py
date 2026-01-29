@@ -173,7 +173,7 @@ async def create_influencer(
         avatar_url=request.avatar_url,
         description=request.description,
         category=request.category,
-        system_instructions=f"{request.system_instructions}\n{MODERATION_PROMPT}",
+        system_instructions=f"{request.system_instructions}\n{STYLE_PROMPT}\n{MODERATION_PROMPT}",
         personality_traits=request.personality_traits,
         initial_greeting=request.initial_greeting,
         suggested_messages=request.suggested_messages,
