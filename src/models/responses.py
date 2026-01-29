@@ -251,8 +251,8 @@ class GeneratedMetadataResponse(BaseModel):
     name: str | None = None
     display_name: str | None = None
     description: str | None = None
+    avatar_url: str | None = None
     initial_greeting: str | None = None
     suggested_messages: list[str] | None = None
     personality_traits: dict[str, object] | None = None
     category: str | None = None
-    avatar_url: str | None = None
