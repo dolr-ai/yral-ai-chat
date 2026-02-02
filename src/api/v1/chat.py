@@ -163,26 +163,26 @@ async def create_conversation(
     return ConversationResponse(
         id=conversation.id,
         user_id=conversation.user_id,
+        influencer_id=conversation.influencer.id,
         influencer=InfluencerBasicInfo(
             id=conversation.influencer.id,
-            name=conversation.influencer.name,
             display_name=conversation.influencer.display_name,
             avatar_url=conversation.influencer.avatar_url,
-            suggested_messages=conversation.influencer.suggested_messages if message_count <= 1 else None,
+            is_online=True,
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        message_count=message_count,
-        recent_messages=recent_messages,
+        unread_count=0,
+        last_message=None,
     )
 
 
 @router.get(
     "/conversations",
-    response_model=ListConversationsResponse,
+    response_model=list[ConversationResponse],
     operation_id="listConversations",
     summary="List user conversations",
-    description="Retrieve paginated list of user's conversations, optionally filtered by influencer. Includes the last 10 messages per conversation.",
+    description="Retrieve list of user's conversations, optionally filtered by influencer.",
     responses={
         200: {"description": "List of conversations retrieved successfully"},
         401: {"description": "Unauthorized - Invalid or missing JWT token"},
@@ -205,7 +205,7 @@ async def list_conversations(
 
     Optionally filter by influencer_id
     """
-    conversations, total = await chat_service.list_conversations(
+    conversations, _total = await chat_service.list_conversations(
         user_id=current_user.user_id,
         influencer_id=influencer_id,
         limit=limit,
@@ -214,64 +214,26 @@ async def list_conversations(
 
     conversation_responses: list[ConversationResponse] = []
     
-    # Collect all messages that need URL signing
-    all_messages_for_signing = []
     for conv in conversations:
-        if conv.recent_messages:
-            all_messages_for_signing.extend(conv.recent_messages)
-            
-    # Batch generate presigned URLs if StorageService is available
-    presigned_map = {}
-    if storage_service and all_messages_for_signing:
-        all_keys = []
-        for msg in all_messages_for_signing:
-            if msg.media_urls:
-                for url in msg.media_urls:
-                    if url:
-                        all_keys.append(storage_service.extract_key_from_url(url))
-            if msg.audio_url:
-                all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
-        
-        if all_keys:
-            presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
-
-    for conv in conversations:
-        recent_messages: list[MessageResponse] | None = None
-        if conv.recent_messages:
-            recent_messages = [
-                await _convert_message_to_response(msg, storage_service, presigned_map)
-                for msg in conv.recent_messages
-            ]
-
         conversation_responses.append(
             ConversationResponse(
                 id=conv.id,
                 user_id=conv.user_id,
+                influencer_id=conv.influencer.id,
                 influencer=InfluencerBasicInfo(
                     id=conv.influencer.id,
-                    name=conv.influencer.name,
                     display_name=conv.influencer.display_name,
                     avatar_url=conv.influencer.avatar_url,
-                    # Only show suggested messages if conversation is empty or has just 1 message (greeting)
-                    suggested_messages=conv.influencer.suggested_messages
-                    if (conv.message_count or 0) <= 1
-                    else None,
+                    is_online=True,  # Defaulting to True as requested in schema
                 ),
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
-                message_count=msg_count,
                 unread_count=conv.unread_count,
                 last_message=conv.last_message,
-                recent_messages=recent_messages,
             )
         )
 
-    return ListConversationsResponse(
-        conversations=conversation_responses,
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    return conversation_responses
 
 
 @router.get(

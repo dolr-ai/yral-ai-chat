@@ -106,6 +106,59 @@ class MessageRepository:
         rows = await db.fetch(query, str(conversation_id), limit)
         return [self._row_to_message(row) for row in reversed(rows)]
 
+    async def get_recent_for_conversations_batch(
+        self, conversation_ids: list[UUID], limit_per_conv: int = 10
+    ) -> dict[str, list[Message]]:
+        """
+        Get recent messages for multiple conversations efficiently.
+        Returns a dictionary mapping conversation_id to list of messages (ordered oldest to newest).
+        """
+        if not conversation_ids:
+            return {}
+
+        # Dynamically build placeholders for the IN clause
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(conversation_ids)))
+        
+        # We need the limit as the last parameter
+        limit_param_index = len(conversation_ids) + 1
+
+        query = f"""
+            WITH RankedMessages AS (
+                SELECT
+                    id, conversation_id, role, content, message_type,
+                    media_urls, audio_url, audio_duration_seconds,
+                    token_count, created_at, metadata, status, is_read,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY conversation_id 
+                        ORDER BY created_at DESC
+                    ) as rn
+                FROM messages
+                WHERE conversation_id IN ({placeholders})
+            )
+            SELECT *
+            FROM RankedMessages
+            WHERE rn <= ${limit_param_index}
+            ORDER BY conversation_id, created_at ASC
+        """
+        
+        # Combine arguments: conversation IDs + limit
+        args = [str(cid) for cid in conversation_ids] + [limit_per_conv]
+        
+        rows = await db.fetch(query, *args)
+        
+        # Group by conversation_id
+        # Use strings for keys because Message.conversation_id is a string
+        result: dict[str, list[Message]] = {str(cid): [] for cid in conversation_ids}
+        
+        for row in rows:
+            # Parse the message
+            message = self._row_to_message(row)
+            # Add to the appropriate list
+            if message.conversation_id in result:
+                result[message.conversation_id].append(message)
+                
+        return result
+
     async def mark_as_read(self, conversation_id: UUID) -> None:
         """Mark all messages in a conversation as read"""
         query = """

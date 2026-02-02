@@ -3,8 +3,8 @@ Chat service - Business logic for conversations and messages
 """
 
 import sqlite3
-from datetime import UTC, datetime
 import time
+from datetime import UTC, datetime
 from uuid import UUID
 
 import httpx

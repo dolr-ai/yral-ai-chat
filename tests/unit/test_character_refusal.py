@@ -1,9 +1,11 @@
 
-import pytest
 from unittest.mock import AsyncMock
-from src.services.character_generator import CharacterGeneratorService
+
+import pytest
+
 from src.models.internal import AIResponse
-from src.models.responses import GeneratedMetadataResponse
+from src.services.character_generator import CharacterGeneratorService
+
 
 @pytest.fixture
 def mock_gemini_client():
@@ -73,5 +75,5 @@ async def test_validate_metadata_returns_no_sys_prompt(character_service, mock_g
     # Assert
     assert result.is_valid is True
     # Verify field is absent or not used
-    assert not hasattr(result, 'system_instructions') or result.system_instructions is None
+    assert not hasattr(result, "system_instructions") or result.system_instructions is None
     assert result.description == "A refined tech expert bio"
