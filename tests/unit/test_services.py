@@ -180,10 +180,23 @@ class TestChatService:
     @pytest.fixture
     def mock_repos(self):
         """Group of mocked repositories needed by ChatService"""
+        mock_influencer = MagicMock()
+        mock_influencer.get_by_id = AsyncMock()
+        
+        mock_conv = MagicMock()
+        mock_conv.get_existing = AsyncMock()
+        mock_conv.create = AsyncMock()
+        mock_conv.get_by_id = AsyncMock()
+        mock_conv.touch_updated_at = AsyncMock()
+        
+        mock_msg = MagicMock()
+        mock_msg.create = AsyncMock()
+        mock_msg.get_recent_for_context = AsyncMock()
+        
         return {
-            "influencer": MagicMock(),
-            "conversation": MagicMock(),
-            "message": MagicMock()
+            "influencer": mock_influencer,
+            "conversation": mock_conv,
+            "message": mock_msg
         }
 
     @pytest.fixture
@@ -252,7 +265,10 @@ class TestChatService:
         # We expect the AI to have been called
         service.gemini_client.generate_response.assert_called_once()
         
-        # We expect a background task to be added for memory extraction
-        mock_background.add_task.assert_called_once()
-        # Verify it's calling the memory update internal function
-        assert mock_background.add_task.call_args[0][0] == service._update_conversation_memories
+        # We expect background tasks to be added for persistence, memory, usage, etc.
+        assert mock_background.add_task.called
+        # Verify it's calling persistence for at least the messages
+        # The specific order or count isn't as critical as ensuring it's queued
+        queued_funcs = [call.args[0] for call in mock_background.add_task.call_args_list]
+        assert service._persist_message in queued_funcs
+        assert service._update_conversation_memories in queued_funcs

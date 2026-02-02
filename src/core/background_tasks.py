@@ -3,7 +3,7 @@ Background task utilities for non-blocking operations
 """
 from loguru import logger
 
-from src.core.cache import cache, invalidate_cache_pattern
+from src.core.cache import cache
 from src.core.metrics import ai_tokens_used_total
 
 
@@ -59,8 +59,7 @@ async def invalidate_cache_for_user(user_id: str):
         user_id: User identifier
     """
     try:
-        invalidate_cache_pattern(f"conversations:{user_id}")
-
+        await cache.invalidate_pattern(f"conversations:{user_id}")
         logger.debug(f"Invalidated cache for user: {user_id}")
     except Exception as e:
         logger.error(f"Failed to invalidate cache: {e}")
@@ -71,8 +70,8 @@ async def cleanup_old_cache_entries():
     Background task to clean up expired cache entries
     """
     try:
-        cache.cleanup_expired()
-        stats = cache.get_stats()
+        await cache.cleanup_expired()
+        stats = await cache.get_stats()
 
         logger.info(
             "Cache cleanup completed",

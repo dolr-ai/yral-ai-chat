@@ -3,6 +3,8 @@ Chat service - Business logic for conversations and messages
 """
 import sqlite3
 import time
+import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -11,6 +13,12 @@ if TYPE_CHECKING:
 
 from loguru import logger
 
+from src.core.background_tasks import (
+    invalidate_cache_for_user,
+    log_ai_usage,
+    update_conversation_stats,
+)
+from src.core.cache import cache
 from src.core.exceptions import ForbiddenException, NotFoundException
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
 from src.models.entities import Conversation, Message, MessageRole, MessageType
@@ -86,6 +94,7 @@ class ChatService:
                 content=influencer.initial_greeting,
                 message_type=MessageType.TEXT
             )
+            await self.conversation_repo.touch_updated_at(conversation.id)
         else:
             logger.info(f"No initial_greeting configured for influencer {influencer.id} ({influencer.display_name})")
 
@@ -107,6 +116,13 @@ class ChatService:
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
             return "[Audio message - transcription failed]"
+
+    async def _persist_message(self, **kwargs) -> None:
+        """Background task helper to persist message and log errors"""
+        try:
+            await self._save_message(**kwargs)
+        except Exception as e:
+            logger.error(f"Failed to persist message in background: {e}", exc_info=True)
 
     async def _convert_history_storage_keys_async(self, history: list[Message]) -> None:
         """Convert storage keys to presigned URLs in message history asynchronously"""
@@ -163,11 +179,13 @@ class ChatService:
                 assistant_response=assistant_response,
                 existing_memories=memories.copy()
             )
-            
             if updated_memories != memories:
                 conversation.metadata["memories"] = updated_memories
                 await self.conversation_repo.update_metadata(conversation_id, conversation.metadata)
                 logger.info(f"Updated memories: {len(updated_memories)} total memories")
+            else:
+                # Still touch updated_at to ensure conversation moves to top
+                await self.conversation_repo.touch_updated_at(conversation_id)
         except Exception as e:
             logger.error(f"Failed to update memories: {e}", exc_info=True)
 
@@ -200,25 +218,14 @@ class ChatService:
         media_urls: list[str] | None,
         timings: dict[str, float]
     ) -> tuple[Message, str]:
-        """Transcribe (if needed) and save user message"""
+        """Transcribe (if needed) and prepare user message"""
         transcribed_content = content
         if message_type == MessageType.AUDIO and audio_url:
             t0 = time.time()
             transcribed_content = await self._transcribe_audio(audio_url)
             timings["transcribe_audio"] = time.time() - t0
 
-        t0 = time.time()
-        user_message = await self._save_message(
-            conversation_id=conversation_id,
-            role=MessageRole.USER,
-            content=transcribed_content or "",
-            message_type=message_type,
-            media_urls=media_urls or [],
-            audio_url=audio_url,
-            audio_duration_seconds=audio_duration_seconds
-        )
-        timings["save_user_message"] = time.time() - t0
-        return user_message, transcribed_content or ""
+        return transcribed_content, transcribed_content or ""
 
     async def _build_ai_context(
         self,
@@ -229,13 +236,29 @@ class ChatService:
         timings: dict[str, float]
     ) -> tuple[list[Message], str]:
         """Fetch history and build system instructions"""
-        t0 = time.time()
-        all_recent = await self.message_repo.get_recent_for_context(
-            conversation_id=conversation_id,
-            limit=11
-        )
-        history = [msg for msg in all_recent if msg.id != user_message_id][:10]
-        timings["get_history"] = time.time() - t0
+        # Try Redis cache first (Write-Through Cache for immediate consistency)
+        cache_key = f"conversation:{conversation_id}:messages"
+        cached_messages = await cache.lrange(cache_key, 0, 10)
+        
+        if cached_messages:
+            history = [msg for msg in cached_messages if msg.id != user_message_id]
+            history.reverse()  # Convert to oldest->newest for AI context
+            history = history[:10]
+            logger.debug(f"Context cache hit for {conversation_id}: {len(history)} msgs")
+        else:
+            # Cache miss: fetch from DB and populate cache
+            logger.debug(f"Context cache miss for {conversation_id}. Fetching from DB.")
+            t0 = time.time()
+            all_recent = await self.message_repo.get_recent_for_context(
+                conversation_id=conversation_id,
+                limit=11
+            )
+            history = [msg for msg in all_recent if msg.id != user_message_id][:10]
+            timings["get_history"] = time.time() - t0
+            
+            if history:
+                await cache.lpush(cache_key, *history)
+                await cache.expire(cache_key, 3600)
 
         t0 = time.time()
         await self._convert_history_storage_keys_async(history)
@@ -312,10 +335,25 @@ class ChatService:
         memories = conversation.metadata.get("memories", {})
 
         # 2. User Message
-        user_message, transcribed_payload = await self._prepare_user_message(
+        t0 = time.time()
+        user_message_id = str(uuid.uuid4())
+        transcribed_content, transcribed_payload = await self._prepare_user_message(
             conversation_id, content, message_type, audio_url, audio_duration_seconds, media_urls, timings
         )
-        logger.info(f"User message saved: {user_message.id}")
+        
+        user_message = Message(
+            id=user_message_id,
+            conversation_id=conversation_id,
+            role=MessageRole.USER,
+            content=transcribed_content or "",
+            message_type=MessageType(message_type),
+            media_urls=media_urls or [],
+            audio_url=audio_url,
+            audio_duration_seconds=audio_duration_seconds,
+            created_at=datetime.now(UTC),
+            metadata={}
+        )
+        timings["prepare_user_message"] = time.time() - t0
 
         # 3. Context & History
         history, enhanced_instructions = await self._build_ai_context(
@@ -335,29 +373,65 @@ class ChatService:
             influencer, ai_input_content, enhanced_instructions, history, media_urls_for_ai, timings
         )
 
-        # 6. Save Assistant Message
-        t0 = time.time()
-        assistant_message = await self._save_message(
+        # 6. Assistant Message
+        assistant_message_id = str(uuid.uuid4())
+        assistant_message = Message(
+            id=assistant_message_id,
             conversation_id=conversation_id,
             role=MessageRole.ASSISTANT,
             content=response_text,
             message_type=MessageType.TEXT,
-            token_count=token_count
+            token_count=token_count,
+            created_at=datetime.now(UTC),
+            metadata={}
         )
-        timings["save_assistant_message"] = time.time() - t0
-        logger.info(f"Assistant message saved: {assistant_message.id}")
 
-        # 7. Finalize & Latency Tracking
+        # 7. Persistence & Post-Processing
+        user_msg_kwargs = {
+            "conversation_id": conversation_id,
+            "role": MessageRole.USER,
+            "content": transcribed_content or "",
+            "message_type": MessageType(message_type),
+            "media_urls": media_urls or [],
+            "audio_url": audio_url,
+            "audio_duration_seconds": audio_duration_seconds,
+            "message_id_override": user_message_id
+        }
+        
+        assistant_msg_kwargs = {
+            "conversation_id": conversation_id,
+            "role": MessageRole.ASSISTANT,
+            "content": response_text,
+            "message_type": MessageType.TEXT,
+            "token_count": token_count,
+            "message_id_override": assistant_message_id
+        }
+
+
+        # 7. Write-Through Cache (Immediate Consistency)
+        cache_key = f"conversation:{conversation_id}:messages"
+        await cache.lpush(cache_key, user_message, assistant_message)
+        await cache.expire(cache_key, 3600)
+
+        # 8. Queue persistence & secondary tasks
+        if background_tasks:
+            background_tasks.add_task(self._persist_message, **user_msg_kwargs)
+            background_tasks.add_task(self._persist_message, **assistant_msg_kwargs)
+            logger.info(f"Messages queued for background persistence: {user_message_id}, {assistant_message_id}")
+            
+            # Queue secondary tasks
+            background_tasks.add_task(self._update_conversation_memories, conversation_id, conversation, ai_input_content, response_text, memories, is_nsfw=influencer.is_nsfw)
+            background_tasks.add_task(log_ai_usage, model="gemini", tokens=token_count, user_id=user_id, conversation_id=str(conversation_id))
+            background_tasks.add_task(update_conversation_stats, conversation_id=str(conversation_id))
+            background_tasks.add_task(invalidate_cache_for_user, user_id=user_id)
+        else:
+            logger.warning(f"No background_tasks provided for send_message in conversation {conversation_id}. Messages will not be persisted.")
+
+        # 9. Latency Tracking
         timings["total"] = time.time() - total_start
         timing_str = ", ".join(f"{k}={v*1000:.0f}ms" for k, v in timings.items())
         log_lvl = logger.warning if timings["total"] > 5 else logger.info
         log_lvl(f"send_message timings [{conversation_id}]: {timing_str}")
-
-        update_args = (conversation_id, conversation, ai_input_content, response_text, memories)
-        if background_tasks:
-            background_tasks.add_task(self._update_conversation_memories, *update_args, is_nsfw=influencer.is_nsfw)
-        else:
-            await self._update_conversation_memories(*update_args, is_nsfw=influencer.is_nsfw)
 
         return user_message, assistant_message
 

@@ -3,6 +3,7 @@ Repository for Message operations
 """
 import json
 import uuid
+from datetime import UTC, datetime
 from uuid import UUID
 
 from src.db.base import db
@@ -21,10 +22,11 @@ class MessageRepository:
         media_urls: list[str] = None,
         audio_url: str | None = None,
         audio_duration_seconds: int | None = None,
-        token_count: int | None = None
+        token_count: int | None = None,
+        message_id_override: str | None = None
     ) -> Message:
         """Create a new message"""
-        message_id = str(uuid.uuid4())
+        message_id = message_id_override or str(uuid.uuid4())
         media_urls_json = json.dumps(media_urls or [])
 
         query = """
@@ -48,7 +50,19 @@ class MessageRepository:
             token_count
         )
 
-        return await self.get_by_id(UUID(message_id))
+        return Message(
+            id=message_id,
+            conversation_id=str(conversation_id),
+            role=role,
+            content=content,
+            message_type=message_type,
+            media_urls=media_urls or [],
+            audio_url=audio_url,
+            audio_duration_seconds=audio_duration_seconds,
+            token_count=token_count,
+            created_at=datetime.now(UTC),
+            metadata={}
+        )
 
     async def get_by_id(self, message_id: UUID) -> Message | None:
         """Get message by ID"""

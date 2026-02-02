@@ -5,11 +5,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from fastapi.security import HTTPBearer
 
 from src.auth.jwt_auth import CurrentUser, get_current_user
-from src.core.background_tasks import (
-    invalidate_cache_for_user,
-    log_ai_usage,
-    update_conversation_stats,
-)
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
 from src.models.entities import Message
 from src.models.requests import CreateConversationRequest, SendMessageRequest
@@ -392,28 +387,8 @@ async def send_message(
         background_tasks=background_tasks,
     )
 
-    # Check if we hit the fallback error message
     if assistant_msg.content == ChatService.FALLBACK_ERROR_MESSAGE:
         response.status_code = 503
-
-    if assistant_msg.token_count:
-        background_tasks.add_task(
-            log_ai_usage,
-            model="gemini",
-            tokens=assistant_msg.token_count,
-            user_id=current_user.user_id,
-            conversation_id=str(conversation_id),
-        )
-
-    background_tasks.add_task(
-        update_conversation_stats,
-        conversation_id=str(conversation_id),
-    )
-
-    background_tasks.add_task(
-        invalidate_cache_for_user,
-        user_id=current_user.user_id,
-    )
 
     return SendMessageResponse(
         user_message=await _convert_message_to_response(user_msg, storage_service),

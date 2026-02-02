@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     database_path: str = Field(default="data/yral_chat.db", alias="DATABASE_PATH")
     database_pool_size: int = Field(default=10, ge=1, le=50, alias="DATABASE_POOL_SIZE")
     database_pool_timeout: float = Field(default=60.0, gt=0, alias="DATABASE_POOL_TIMEOUT")
+    
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
 
     jwt_secret_key: str = Field(..., alias="JWT_SECRET_KEY")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")

@@ -1,6 +1,5 @@
-"""
-Repository for Conversation operations
-"""
+from __future__ import annotations
+
 import json
 import uuid
 from datetime import UTC, datetime
@@ -24,10 +23,16 @@ class ConversationRepository:
 
         await db.execute(query, conversation_id, user_id, str(influencer_id))
 
-        result = await self.get_by_id(UUID(conversation_id))
-        if result is None:
-            raise RuntimeError(f"Failed to create conversation {conversation_id}")
-        return result
+        # Return approximate object to avoid extra read
+        now = datetime.now(UTC)
+        return Conversation(
+            id=conversation_id,
+            user_id=user_id,
+            influencer_id=str(influencer_id),
+            created_at=now,
+            updated_at=now,
+            metadata={},
+        )
 
     async def get_by_id(self, conversation_id: UUID) -> Conversation | None:
         """Get conversation by ID"""
@@ -142,10 +147,15 @@ class ConversationRepository:
         await db.execute(delete_query, str(conversation_id))
 
     async def update_metadata(self, conversation_id: UUID, metadata: dict[str, object]) -> None:
-        """Update conversation metadata"""
+        """Update conversation metadata and timestamp"""
         metadata_json = json.dumps(metadata)
-        query = "UPDATE conversations SET metadata = $1 WHERE id = $2"
+        query = "UPDATE conversations SET metadata = $1, updated_at = datetime('now') WHERE id = $2"
         await db.execute(query, metadata_json, str(conversation_id))
+
+    async def touch_updated_at(self, conversation_id: UUID) -> None:
+        """Update updated_at timestamp only"""
+        query = "UPDATE conversations SET updated_at = datetime('now') WHERE id = $1"
+        await db.execute(query, str(conversation_id))
 
     async def _get_last_message(self, conversation_id: UUID) -> LastMessageInfo | None:
         """Get last message in conversation"""

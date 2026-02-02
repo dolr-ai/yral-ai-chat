@@ -255,3 +255,40 @@ def clean_conversation_id(client, test_influencer_id, auth_headers):
         client.delete(f"/api/v1/chat/conversations/{conversation_id}", headers=auth_headers)
     except Exception:
         pass  # Ignore cleanup errors
+
+
+class MockRedisCache:
+    """Mock Redis cache for testing"""
+    def __init__(self):
+        self._cache = {}
+
+    async def get(self, key: str):
+        return self._cache.get(key)
+
+    async def set(self, key: str, value: object, ttl: int | None = None):
+        self._cache[key] = value
+
+    async def delete(self, key: str):
+        if key in self._cache:
+            del self._cache[key]
+
+    async def clear(self):
+        self._cache.clear()
+
+    async def cleanup_expired(self):
+        return 0
+
+    async def get_stats(self):
+        from src.models.internal import CacheStats
+        return CacheStats(
+            total_items=len(self._cache), active_items=len(self._cache),
+            expired_items=0, max_size=0, hits=0, misses=0, hit_rate=0.0, evictions=0
+        )
+
+
+@pytest.fixture(autouse=True)
+def mock_cache(monkeypatch):
+    """Patch the global cache instance with a mock"""
+    mock = MockRedisCache()
+    monkeypatch.setattr("src.core.cache.cache", mock)
+    return mock

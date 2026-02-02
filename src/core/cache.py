@@ -1,135 +1,129 @@
-"""
-Caching utilities with in-memory fallback
-LRU cache with TTL support and bounded size
-"""
+from __future__ import annotations
+
 import hashlib
 import json
-import time
-from collections import OrderedDict
-from collections.abc import Callable
+import pickle
 from functools import wraps
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from loguru import logger
+from redis import asyncio as aioredis
 
+from src.config import settings
 from src.models.internal import CacheStats
 
 
-class LRUCache:
-    """LRU cache with TTL support and maximum size limit"""
+class RedisCache:
+    """Redis cache implementation"""
 
-    def __init__(self, max_size: int = 1000, default_ttl: int = 300):
+    def __init__(self, redis_url: str, default_ttl: int = 300):
         """
-        Initialize cache
+        Initialize Redis cache
         
         Args:
-            max_size: Maximum number of items in cache (default: 1000)
+            redis_url: Redis connection URL
             default_ttl: Default time-to-live in seconds (default: 300)
         """
-        self._cache: OrderedDict[str, tuple[object, float]] = OrderedDict()
-        self._max_size = max_size
+        self._redis = aioredis.from_url(redis_url, encoding="utf-8", decode_responses=False)
         self._default_ttl = default_ttl
-        self._hits = 0
-        self._misses = 0
-        self._evictions = 0
 
-    def get(self, key: str) -> object | None:
-        """
-        Get value from cache (LRU: moves to end)
-        
-        Args:
-            key: Cache key
-            
-        Returns:
-            Cached value or None if not found or expired
-        """
-        if key not in self._cache:
-            self._misses += 1
+    async def _run_safe(self, operation: str, method_or_func: str | Callable, *args, **kwargs):
+        """Helper to run Redis operations with error handling"""
+        try:
+            func = getattr(self._redis, method_or_func) if isinstance(method_or_func, str) else method_or_func
+            return await func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Redis {operation} failed: {e}")
             return None
 
-        value, expiry = self._cache[key]
+    async def get(self, key: str) -> object | None:
+        """Get value from cache"""
+        value = await self._run_safe(f"get {key}", "get", key)
+        return pickle.loads(value) if value else None  # noqa: S301
 
-        if time.time() > expiry:
-            del self._cache[key]
-            self._misses += 1
-            return None
+    async def set(self, key: str, value: object, ttl: int | None = None):
+        """Set value in cache with TTL"""
+        packed_value = pickle.dumps(value)
+        await self._run_safe(f"set {key}", "set", key, packed_value, ex=ttl or self._default_ttl)
 
-        self._cache.move_to_end(key)
-        self._hits += 1
-        return value
-
-    def set(self, key: str, value: object, ttl: int | None = None):
-        """
-        Set value in cache with TTL and LRU eviction
-        
-        Args:
-            key: Cache key
-            value: Value to cache
-            ttl: Time to live in seconds (None for default)
-        """
-        ttl = ttl or self._default_ttl
-        expiry = time.time() + ttl
-
-        if key in self._cache:
-            del self._cache[key]
-
-        self._cache[key] = (value, expiry)
-
-        while len(self._cache) > self._max_size:
-            oldest_key = next(iter(self._cache))
-            del self._cache[oldest_key]
-            self._evictions += 1
-            logger.debug(f"Cache evicted LRU item: {oldest_key}")
-
-    def delete(self, key: str):
+    async def delete(self, key: str):
         """Delete key from cache"""
-        if key in self._cache:
-            del self._cache[key]
+        await self._run_safe(f"delete {key}", "delete", key)
 
-    def clear(self):
+    async def clear(self):
         """Clear all cached items"""
-        self._cache.clear()
-        self._hits = 0
-        self._misses = 0
-        self._evictions = 0
+        await self._run_safe("flushdb", "flushdb")
 
-    def cleanup_expired(self) -> int:
+    async def cleanup_expired(self) -> int:
         """
         Remove expired items from cache
-        
-        Returns:
-            Number of items removed
+        (Redis handles this automatically, so this is a no-op or manual scan-del)
         """
-        now = time.time()
-        expired_keys = [
-            key for key, (_, expiry) in self._cache.items()
-            if now > expiry
-        ]
-        for key in expired_keys:
-            del self._cache[key]
+        return 0
 
-        if expired_keys:
-            logger.debug(f"Cleaned up {len(expired_keys)} expired cache entries")
-
-        return len(expired_keys)
-
-    def get_stats(self) -> CacheStats:
+    async def get_stats(self) -> CacheStats:
         """Get cache statistics"""
-        now = time.time()
-        active_items = sum(1 for _, expiry in self._cache.values() if now <= expiry)
-        hit_rate = self._hits / (self._hits + self._misses) if (self._hits + self._misses) > 0 else 0.0
+        # Note: Getting accurate global stats from Redis is expensive (full scan or info)
+        # We'll return basic info if available or placeholders
+        try:
+            info = await self._redis.info()
+            return CacheStats(
+                total_items=await self._redis.dbsize(),
+                active_items=0, # Hard to track without scan
+                expired_items=info.get("expired_keys", 0),
+                max_size=0,
+                hits=info.get("keyspace_hits", 0),
+                misses=info.get("keyspace_misses", 0),
+                hit_rate=0.0,
+                evictions=info.get("evicted_keys", 0)
+            )
+        except Exception as e:
+            logger.error(f"Redis info failed: {e}")
+            return CacheStats(
+                total_items=0, active_items=0, expired_items=0, max_size=0,
+                hits=0, misses=0, hit_rate=0.0, evictions=0
+            )
 
-        return CacheStats(
-            total_items=len(self._cache),
-            active_items=active_items,
-            expired_items=len(self._cache) - active_items,
-            max_size=self._max_size,
-            hits=self._hits,
-            misses=self._misses,
-            hit_rate=round(hit_rate, 3),
-            evictions=self._evictions
-        )
+    async def invalidate_pattern(self, pattern: str):
+        """
+        Invalidate cache entries matching a pattern
+        
+        Args:
+            pattern: Pattern to match (e.g., 'user:*')
+        """
+        async def _do_invalidate():
+            cur = b"0"
+            while True:
+                cur, keys = await self._redis.scan(cursor=cur, match=f"*{pattern}*", count=100)
+                if keys:
+                    await self._redis.delete(*keys)
+                if cur in (b"0", 0):
+                    break
+            return True
 
-cache = LRUCache(max_size=1000, default_ttl=300)
+        await self._run_safe(f"invalidate_pattern {pattern}", _do_invalidate)
+
+    async def lpush(self, key: str, *values: object):
+        """Prepend values to a list"""
+        packed_values = [pickle.dumps(v) for v in values]
+        await self._run_safe(f"lpush {key}", "lpush", key, *packed_values)
+
+    async def lrange(self, key: str, start: int, end: int) -> list[object]:
+        """Get range of values from list"""
+        items = await self._run_safe(f"lrange {key}", "lrange", key, start, end)
+        if not items:
+            return []
+        return [pickle.loads(item) for item in items]  # noqa: S301
+
+    async def expire(self, key: str, ttl: int):
+        """Set expiration on a key"""
+        await self._run_safe(f"expire {key}", "expire", key, ttl)
+
+
+cache = RedisCache(redis_url=settings.redis_url, default_ttl=300)
 
 
 def cache_key(*args, **kwargs) -> str:
@@ -169,14 +163,17 @@ def cached(ttl: int = 300, key_prefix: str = ""):
         async def wrapper(*args, **kwargs):
             key = f"{key_prefix}:{func.__name__}:{cache_key(*args, **kwargs)}"
 
-            cached_value = cache.get(key)
+            # Redis get is async
+            cached_value = await cache.get(key)
             if cached_value is not None:
                 logger.debug(f"Cache hit: {key}")
                 return cached_value
 
             logger.debug(f"Cache miss: {key}")
             result = await func(*args, **kwargs)
-            cache.set(key, result, ttl=ttl)
+            
+            # Redis set is async
+            await cache.set(key, result, ttl=ttl)
 
             return result
 
@@ -184,20 +181,4 @@ def cached(ttl: int = 300, key_prefix: str = ""):
     return decorator
 
 
-def invalidate_cache_pattern(pattern: str):
-    """
-    Invalidate cache entries matching a pattern
-    
-    Args:
-        pattern: Pattern to match (simple prefix matching)
-    """
-    keys_to_delete = [
-        key for key in cache._cache
-        if key.startswith(pattern)
-    ]
 
-    for key in keys_to_delete:
-        cache.delete(key)
-
-    if keys_to_delete:
-        logger.debug(f"Invalidated {len(keys_to_delete)} cache entries matching '{pattern}'")

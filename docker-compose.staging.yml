@@ -30,6 +30,7 @@ services:
 
       # Database (SQLite) - staging database (hardcoded to prevent .env override)
       - DATABASE_PATH=/app/data/yral_chat_staging.db
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
 
       # JWT Authentication (REQUIRED)
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
@@ -127,8 +128,24 @@ services:
       retries: 3
       start_period: 60s
 
+  redis:
+    image: redis:alpine
+    container_name: yral-ai-chat-redis-staging
+    restart: unless-stopped
+    ports:
+      - "6300:6379"
+    volumes:
+      - redis-data-staging:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   # Metabase metadata storage (dashboards, queries, settings)
   # Separate volumes for staging to keep data isolated
   metabase-staging-data:
+    driver: local
+  redis-data-staging:
     driver: local
