@@ -63,7 +63,7 @@ def test_create_conversation_with_initial_greeting_sets_message_count_and_greeti
     
     # 3) Verify greeting message was created by listing messages
     messages_response = client.get(
-        f"/api/v1/chat/conversations/{conversation_id}/messages", 
+        f"/api/v1/chat/conversations/{conversation_id}/messages",
         headers=auth_headers
     )
     assert messages_response.status_code == 200
@@ -169,7 +169,7 @@ def test_list_conversations(client, test_conversation_id, auth_headers):
 
 def test_list_conversations_with_pagination(client, auth_headers):
     """Test listing conversations with custom pagination"""
-    # Note: limit/offset are still accepted query params, but pagination metadata 
+    # Note: limit/offset are still accepted query params, but pagination metadata
     # is no longer returned in the response body.
     response = client.get("/api/v1/chat/conversations?limit=5&offset=0", headers=auth_headers)
 
@@ -472,7 +472,7 @@ def test_delete_conversation_deletes_all_messages(client, test_influencer_id, au
     # Verify conversation doesn't appear in list
     list_response = client.get("/api/v1/chat/conversations", headers=auth_headers)
     assert list_response.status_code == 200
-    conversations = list_response.json()["conversations"]
+    conversations = list_response.json()
     conversation_ids = [conv["id"] for conv in conversations]
     assert conversation_id not in conversation_ids
 

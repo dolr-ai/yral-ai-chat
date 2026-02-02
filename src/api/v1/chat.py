@@ -20,7 +20,6 @@ from src.models.responses import (
     ConversationResponse,
     DeleteConversationResponse,
     InfluencerBasicInfo,
-    ListConversationsResponse,
     ListMessagesResponse,
     MarkConversationAsReadResponse,
     MessageResponse,
@@ -144,22 +143,6 @@ async def create_conversation(
         user_id=current_user.user_id,
         influencer_id=request.influencer_id,
     )
-
-    message_count = await message_repo.count_by_conversation(conversation.id)
-
-    recent_messages: list[MessageResponse] | None = None
-    if message_count >= 1:
-        recent_messages_list = await message_repo.list_by_conversation(
-            conversation_id=conversation.id,
-            limit=10,
-            offset=0,
-            order="desc",
-        )
-        if recent_messages_list:
-            recent_messages = [
-                await _convert_message_to_response(msg, storage_service)
-                for msg in recent_messages_list
-            ]
 
     return ConversationResponse(
         id=conversation.id,

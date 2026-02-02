@@ -129,7 +129,7 @@ class MessageRepository:
                     media_urls, audio_url, audio_duration_seconds,
                     token_count, created_at, metadata, status, is_read,
                     ROW_NUMBER() OVER (
-                        PARTITION BY conversation_id 
+                        PARTITION BY conversation_id
                         ORDER BY created_at DESC
                     ) as rn
                 FROM messages
