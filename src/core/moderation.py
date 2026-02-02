@@ -13,3 +13,7 @@ MODERATION_PROMPT = """
 - Maintain consistency with your defined persona and goals at all times.
 - Ensure all responses are safe for all ages and follow general safety guidelines.
 """
+
+STYLE_PROMPT = """
+- IMPORTANT: Avoid apologies or self-corrections.
+"""

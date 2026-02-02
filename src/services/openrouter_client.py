@@ -123,9 +123,8 @@ class OpenRouterClient(BaseAIClient):
             logger.error(f"OpenRouter API error: {e}")
             raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
 
-    async def _build_image_content(self, image_url: str) -> dict | None:
+    def _build_image_content(self, image_url: str) -> dict:
         """Build image content dict for OpenAI-compatible API"""
-        # Pass URL directly - User confirmed these are public signed URLs
         return {"type": "image_url", "image_url": {"url": image_url}}
 
     @_openrouter_retry_decorator
@@ -190,7 +189,9 @@ class OpenRouterClient(BaseAIClient):
         prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
 
         # Ensure data is bytes
-        audio_bytes = audio_data["data"] if isinstance(audio_data["data"], bytes) else bytes(audio_data["data"])  # type: ignore[arg-type]
+        audio_bytes = (
+            audio_data["data"] if isinstance(audio_data["data"], bytes) else bytes(audio_data["data"])  # type: ignore[arg-type]
+        )
         base64_audio = base64.standard_b64encode(audio_bytes).decode("utf-8")
 
         messages = [
@@ -218,6 +219,7 @@ class OpenRouterClient(BaseAIClient):
         response.raise_for_status()
         data = response.json()
         return data["choices"][0]["message"]["content"].strip()
+
 
     async def health_check(self) -> AIProviderHealth:
         """Check OpenRouter API health"""
@@ -249,7 +251,7 @@ class OpenRouterClient(BaseAIClient):
         """Close HTTP client"""
         await self.http_client.aclose()
 
-    async def _construct_message_content(
+    def _construct_message_content(
         self, text_content: str, image_urls: list[str] | None, max_images: int = 3, warn_on_error: bool = True
     ) -> str | list[dict]:
         """Helper to construct message content with optional images"""
@@ -259,16 +261,8 @@ class OpenRouterClient(BaseAIClient):
         content_list = [{"type": "text", "text": text_content}] if text_content else []
 
         for image_url in image_urls[:max_images]:
-            try:
-                image_content = await self._build_image_content(image_url)
-                if image_content:
-                    content_list.append(image_content)
-            except Exception as e:
-                if warn_on_error:
-                    logger.warning(f"Failed to load image: {e}")
-                else:
-                    logger.error(f"Failed to download image {image_url}: {e}")
-                    raise AIServiceException(f"Failed to process image: {e}") from e
+            if image_url:
+                content_list.append(self._build_image_content(image_url))
 
         # If we only have the text part (no images successfully added), return simple string
         if len(content_list) <= 1 and text_content:
@@ -306,13 +300,13 @@ class OpenRouterClient(BaseAIClient):
                 if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
                     msg_media_urls = msg.media_urls
 
-                message_content = await self._construct_message_content(
+                message_content = self._construct_message_content(
                     str(content), msg_media_urls, max_images=3, warn_on_error=True
                 )
                 messages.append({"role": role, "content": message_content})
 
         # Add current message with optional images
-        current_content = await self._construct_message_content(
+        current_content = self._construct_message_content(
             user_message, media_urls, max_images=5, warn_on_error=False
         )
         messages.append({"role": "user", "content": current_content})

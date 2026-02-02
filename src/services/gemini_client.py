@@ -1,7 +1,8 @@
 """
 Google Gemini AI Client
 """
-
+import asyncio
+import mimetypes
 import time
 from collections.abc import Callable
 
@@ -91,15 +92,19 @@ class GeminiClient(BaseAIClient):
             params: LLM generation parameters
         """
         try:
+            timings: dict[str, float] = {}
             user_message_str = str(params.user_message) if not isinstance(params.user_message, str) else params.user_message
 
             # Build contents for Gemini API (Native Google GenAI SDK)
+            t0 = time.time()
             contents = await self._build_contents(
                 user_message_str,
                 params.conversation_history,  # type: ignore[arg-type]
                 params.media_urls
             )
+            timings["build_contents"] = time.time() - t0
 
+            t0 = time.time()
             response_text, token_count = await self._generate_content(
                 contents,
                 params.system_instructions,
@@ -107,6 +112,14 @@ class GeminiClient(BaseAIClient):
                 response_mime_type=params.response_mime_type,
                 response_schema=params.response_schema
             )
+            timings["gemini_api_call"] = time.time() - t0
+
+            timing_str = ", ".join(f"{k}={v*1000:.0f}ms" for k, v in timings.items())
+            total_time = sum(timings.values())
+            if total_time > 5:
+                logger.warning(f"SLOW Gemini generate_response: {timing_str}")
+            else:
+                logger.debug(f"Gemini generate_response timings: {timing_str}")
 
             return AIResponse(text=response_text, token_count=int(token_count))
 
@@ -116,55 +129,73 @@ class GeminiClient(BaseAIClient):
             logger.error(f"Gemini API error: {e}")
             raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
 
-    async def _build_contents(self, user_message: str, conversation_history: list[Message] | None, media_urls: list[str] | None) -> list[dict]:
+    def _get_mime_type_from_url(self, url: str) -> str:
+        """Infer MIME type from URL using mimetypes library"""
+        url_path = url.split("?")[0]  # Remove query params
+        mime_type, _ = mimetypes.guess_type(url_path)
+        return mime_type or "image/jpeg"
+
+    def _get_media_part(self, url: str) -> dict:
+        """Helper to create a media part with file_uri"""
+        return {
+            "file_data": {
+                "file_uri": url,
+                "mime_type": self._get_mime_type_from_url(url)
+            }
+        }
+
+    async def _build_contents(
+        self, user_message: str, conversation_history: list[Message] | None, media_urls: list[str] | None
+    ) -> list[dict]:
         """Build full contents for Gemini API"""
         contents = []
 
         # 1. Build conversation history
         if conversation_history:
-            for msg in conversation_history[-10:]:  # Last 10 messages for context
-                role = "user" if msg.role == MessageRole.USER else "model"
-                parts = []
-
-                if msg.content:
-                    text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
-                    parts.append({"text": text_content})
-
-                if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL]:
-                    await self._add_images_to_parts(msg.media_urls[:3], parts, warn_on_error=True)
-
-                if parts:
-                    contents.append({"role": role, "parts": parts})
+            contents.extend(self._build_history_contents(conversation_history))
 
         # 2. Ensure we don't start with a 'model' role (Gemini requirement)
         if contents and contents[0].get("role") == "model":
             contents.pop(0)
 
         # 3. Add current message
-        current_parts = []
-        if user_message:
-            text_content = str(user_message) if not isinstance(user_message, str) else user_message
-            current_parts.append({"text": text_content})
-
-        if media_urls:
-            await self._add_images_to_parts(media_urls[:5], current_parts, warn_on_error=False)
-
+        current_parts = self._build_current_parts(user_message, media_urls)
         contents.append({"role": "user", "parts": current_parts})
-
         return contents
 
-    async def _add_images_to_parts(self, image_urls: list[str], parts: list[dict], warn_on_error: bool = False) -> None:
-        """Add images to message parts"""
-        for url in image_urls:
-            try:
-                image_data = await self._download_image(url)
-                parts.append({"inline_data": image_data})
-            except Exception as e:
-                if warn_on_error:
-                    logger.warning(f"Failed to load image from history: {e}")
-                else:
-                    logger.error(f"Failed to download image {url}: {e}")
-                    raise AIServiceException(f"Failed to process image: {e}") from e
+    def _build_history_contents(self, history: list[Message]) -> list[dict]:
+        """Build contents from conversation history"""
+        history_contents = []
+        for msg in history[-10:]:  # Last 10 messages for context
+            role = "user" if msg.role == MessageRole.USER else "model"
+            parts = []
+
+            if msg.content:
+                text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
+                parts.append({"text": text_content})
+
+            if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and msg.media_urls:
+                for url in msg.media_urls[:3]:
+                    if url and url.startswith(("http://", "https://")):
+                        parts.append(self._get_media_part(url))
+
+            if parts:
+                history_contents.append({"role": role, "parts": parts})
+        return history_contents
+
+    def _build_current_parts(self, user_message: str, media_urls: list[str] | None) -> list[dict]:
+        """Build parts for the current message"""
+        parts = []
+        if user_message:
+            text_content = str(user_message) if not isinstance(user_message, str) else user_message
+            parts.append({"text": text_content})
+
+        if media_urls:
+            for url in media_urls[:5]:
+                if url and url.startswith(("http://", "https://")):
+                    parts.append(self._get_media_part(url))
+        return parts
+
 
     @_gemini_retry_decorator
     async def _generate_content(
@@ -187,15 +218,23 @@ class GeminiClient(BaseAIClient):
             config_args["response_mime_type"] = response_mime_type
         if response_schema:
             config_args["response_schema"] = self._prepare_schema(response_schema, root_schema=response_schema)
-
         if system_instructions:
             # Append language instruction to system prompt as it was in the manual prompt
             full_instructions = f"{system_instructions}"
             config_args["system_instruction"] = full_instructions
 
-        response = await self.client.aio.models.generate_content(
-            model=self.model_name, contents=contents, config=types.GenerateContentConfig(**config_args)
-        )
+        try:
+            response = await asyncio.wait_for(
+                self.client.aio.models.generate_content(
+                    model=self.model_name,
+                    contents=contents,
+                    config=types.GenerateContentConfig(**config_args)
+                ),
+                timeout=settings.gemini_timeout
+            )
+        except TimeoutError:
+            logger.error(f"Gemini API call timed out after {settings.gemini_timeout} seconds")
+            raise AIServiceException("Gemini API call timed out") from None
 
         response_text = response.text
         if response.candidates and response.candidates[0].finish_reason != types.FinishReason.STOP:
@@ -286,11 +325,13 @@ class GeminiClient(BaseAIClient):
             Transcribed text
         """
         try:
-            logger.info(f"Transcribing audio from {audio_url}")
+            logger.info(f"Transcribing audio from {audio_url} using Gemini link")
 
-            audio_data = await self._download_audio(audio_url)
+            prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
 
-            transcription = await self._transcribe_audio_with_retry(audio_data)
+            response = await self._transcribe_audio_with_link(audio_url, prompt)
+
+            transcription = response.text.strip()
             logger.info(f"Audio transcribed: {len(transcription)} characters")
             return transcription
         except Exception as e:
@@ -298,15 +339,11 @@ class GeminiClient(BaseAIClient):
             raise TranscriptionException(f"Failed to transcribe audio: {e!s}") from e
 
     @_gemini_retry_decorator
-    async def _transcribe_audio_with_retry(self, audio_data: dict[str, object]) -> str:
-        """Transcribe audio with retry logic"""
-        prompt = "Please transcribe this audio file accurately. Only return the transcription text without any additional commentary."
-
-        response = await self.client.aio.models.generate_content(
-            model=self.model_name, contents=[prompt, {"inline_data": audio_data}]
+    async def _transcribe_audio_with_link(self, audio_url: str, prompt: str) -> types.GenerateContentResponse:
+        """Transcribe audio with retry logic using direct link"""
+        return await self.client.aio.models.generate_content(
+            model=self.model_name, contents=[prompt, self._get_media_part(audio_url)]
         )
-
-        return response.text.strip()
 
     @_gemini_retry_decorator
     async def _extract_memories_with_retry(self, prompt: str) -> str:

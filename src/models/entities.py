@@ -88,6 +88,7 @@ class Conversation(BaseModel):
     message_count: int | None = None
     unread_count: int = 0
     last_message: LastMessageInfo | None = None
+    recent_messages: list[Message] | None = None
 
 
 class Message(BaseModel):

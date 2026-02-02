@@ -27,14 +27,9 @@ class CharacterGeneratorService:
         """
         system_prompt = (
             "You are an expert AI character designer. "
-            "Your task is to create detailed, immersive system instructions for an AI persona based on a short description. "
-            "The output MUST follow this exact structure:\n\n"
-            "1. Role Definition: Start with 'You are [Name], [Role]...'\n"
-            "2. Responsibilities: A section 'Your role is to:' followed by a numbered list of tasks.\n"
-            "3. Response Style: A section titled '**RESPONSE STYLE:**' detailing tone, conciseness, and formatting (e.g., maximum lines, no self-corrections).The default response style should be casual and friendly within 1-2 lines so that it can fit in a mobile screen.\n"
-            "4. Language & Context: A section titled '**LANGUAGE & CONTEXT:**' specifying that the AI should use the user's language/mix (Hinglish, etc.) and Indian cultural context. The default language should be Hinglish (Simple and Modern Hindi written in English Script along with English words).\n"
-            "5. Goal: A closing paragraph summarizing the character's purpose.\n\n"
-            "Do not include any preamble or explanation, just the raw system instructions."
+            "Your task is to create a concise, immersive system instruction paragraph for an AI persona based on a short description. "
+            "The output MUST be a single paragraph of maximum 500 characters focusing on the character's role, background, and personality. "
+            "Do not include any preamble or explanation, just the raw system instructions paragraph."
         )
 
         user_prompt = f"Create system instructions for a character described as: '{prompt}'"
@@ -66,10 +61,11 @@ class CharacterGeneratorService:
             "1. Determine if the character concept is VALID based on two criteria: "
             "   a) It must be coherent and not nonsensical. "
             "   b) It must be strictly NON-NSFW (no sexually explicit content, no erotica). "
-            "2. If invalid (nonsensical OR NSFW), set 'is_valid' to false and provide a reason. "
-            "3. If valid, refine the system instructions if needed to be more effective and store them in 'system_instructions'. "
-            "4. Generate metadata: name, display_name, description (should be a 1 liner), initial_greeting (In Hinglish), suggested_messages (In Hinglish), personality_traits, category. "
-            "5. Create a specific, detailed image generation prompt for the character's avatar and store it in 'image_prompt'. The style of the image should be realistic"
+            "2. IMPORTANT: If the concept violates safety guidelines, you MUST set 'is_valid' to false and provide a reason."
+            "3. If valid, generate metadata: name, display_name, description (should be a 1 liner), initial_greeting (In Hinglish), suggested_messages (In Hinglish), personality_traits, category. "
+            "4. If valid, refine the system instructions if needed to be more effective and store them in 'system_instructions'. "
+            "5. Create a specific, detailed image generation prompt for the character's avatar and store it in 'image_prompt'. The style of the image should be realistic. "
+
         )
 
         try:
@@ -84,16 +80,55 @@ class CharacterGeneratorService:
                 )
             )
 
+            # Pre-parse check for safety refusals in raw text
+            refusal_patterns = [
+                "i cannot create",
+                "i'm sorry, but i cannot",
+                "safety guidelines",
+                "harmful and unethical",
+                "harmless and helpful",
+                "sexually suggestive",
+                "falls outside of my safety",
+                "cannot assist you with this request",
+            ]
+            response_text_lower = response.text.lower()
+            if any(pattern in response_text_lower for pattern in refusal_patterns):
+                logger.warning("Detected safety refusal in LLM response text")
+                return GeneratedMetadataResponse(
+                    is_valid=False,
+                    reason="Content violates safety guidelines and was refused by the AI."
+                )
+
             # Parse using Pydantic
             validation = CharacterValidation.model_validate_json(response.text)
 
             if not validation.is_valid:
                 return GeneratedMetadataResponse(is_valid=False, reason=validation.reason or "Invalid character concept")
 
+            # Check for safety refusals even if LLM said is_valid=True
+            if validation.is_valid:
+                refusal_patterns = [
+                    "i cannot create",
+                    "i'm sorry, but i cannot",
+                    "safety guidelines",
+                    "harmful and unethical",
+                    "harmless and helpful",
+                    "sexually suggestive",
+                    "falls outside of my safety",
+                    "cannot assist you with this request",
+                ]
+                combined_text = f"{validation.description or ''}".lower()
+                if any(pattern in combined_text for pattern in refusal_patterns):
+                    logger.warning(f"Detected safety refusal in LLM response for character: {validation.name}")
+                    return GeneratedMetadataResponse(
+                        is_valid=False,
+                        reason="Content violates safety guidelines and was refused by the AI."
+                    )
+
             # 2. Generate Avatar using Replicate
             image_prompt = validation.image_prompt
             avatar_url = None
-            if image_prompt:
+            if image_prompt and validation.is_valid:
                 try:
                     # Enhance prompt for better results
                     enhanced_prompt = f"{image_prompt}, high quality, detailed, centered portrait"
