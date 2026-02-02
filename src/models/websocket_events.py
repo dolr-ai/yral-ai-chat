@@ -5,9 +5,12 @@ Used for both runtime validation (optional) and documentation (OpenAPI)
 
 from __future__ import annotations
 
-from typing import Literal, Union
+from typing import TYPE_CHECKING, Literal
+
 from pydantic import BaseModel, Field
-from src.models.responses import MessageResponse, InfluencerBasicInfo
+
+if TYPE_CHECKING:
+    from src.models.responses import InfluencerBasicInfo, MessageResponse
 
 class NewMessageEventData(BaseModel):
     """Data payload for the new_message event"""
@@ -45,8 +48,4 @@ class TypingStatusEvent(BaseModel):
     data: TypingStatusEventData
 
 # Union of all possible WebSocket events for documentation
-WebSocketEvent = Union[
-    NewMessageEvent,
-    ConversationReadEvent,
-    TypingStatusEvent
-]
+WebSocketEvent = NewMessageEvent | ConversationReadEvent | TypingStatusEvent

@@ -122,6 +122,7 @@ class MessageRepository:
         # We need the limit as the last parameter
         limit_param_index = len(conversation_ids) + 1
 
+        # Using parameterized placeholders, not direct interpolation
         query = f"""
             WITH RankedMessages AS (
                 SELECT
