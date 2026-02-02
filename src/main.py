@@ -94,14 +94,33 @@ async def lifespan(app: FastAPI):
 
 # --- App Initialization ---
 
+tags_metadata = [
+    {
+        "name": "Chat",
+        "description": "Operations with chat. Includes **WebSocket** support at `/api/v1/chat/ws/inbox/{user_id}`.",
+    },
+    {
+        "name": "Documentation",
+        "description": "Schemas and documentation for asynchronous event-driven features like WebSockets.",
+    },
+]
+
 root_path = "/staging" if settings.environment == "staging" else None
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="AI Chat API for Yral",
+    description="""
+AI Chat API for Yral.
+
+### WebSocket Connection
+Clients should connect to listen for real-time inbox updates:
+- **URL**: `ws://{host}/api/v1/chat/ws/inbox/{user_id}`
+- **Events**: See schemas in the **Documentation** section below.
+""",
     lifespan=lifespan,
     root_path=root_path,
+    openapi_tags=tags_metadata,
     docs_url="/docs",
     redoc_url="/redoc",
     swagger_ui_parameters={"persistAuthorization": True},

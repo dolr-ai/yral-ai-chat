@@ -26,6 +26,7 @@ from src.models.responses import (
     MessageResponse,
     SendMessageResponse,
 )
+from src.models.websocket_events import WebSocketEvent
 from src.services.chat_service import ChatService
 from src.services.storage_service import StorageService
 
@@ -503,22 +504,34 @@ async def websocket_inbox_endpoint(
     user_id: str,
 ):
     """
-    WebSocket endpoint for real-time inbox updates
+    WebSocket endpoint for real-time inbox updates.
     
+    ### Connection:
+    `ws://{host}/api/v1/chat/ws/inbox/{user_id}`
+    
+    ### Events:
     Clients connect to receive real-time events:
-    - new_message: When a new message arrives in any conversation
-    - conversation_read: When a conversation is marked as read
-    - typing_status: When an influencer is typing
-    
-    Note: Authentication should be implemented via query parameters or initial message
+    - `new_message`: When a new message arrives in any conversation
+    - `conversation_read`: When a conversation is marked as read
+    - `typing_status`: When an influencer is typing
     """
     await manager.connect(websocket, user_id)
     try:
-        # Keep connection alive and listen for client messages if needed
         while True:
-            # Wait for any message from client (e.g., ping/pong)
-            _data = await websocket.receive_text()
-            # Echo back or handle client messages if needed
-            # For now, we just keep the connection alive
+            await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, user_id)
+
+
+@router.get(
+    "/ws/docs",
+    response_model=WebSocketEvent,
+    include_in_schema=True,
+    summary="WebSocket Event Schemas (Documentation Only)",
+    description="This endpoint does not perform any action. It exists solely to expose the Pydantic models for WebSocket events to the OpenAPI (Swagger) documentation.",
+    tags=["Documentation"],
+)
+async def doc_websocket_events():
+    """Dummy endpoint for WebSocket documentation"""
+    return Response(status_code=418)  # I'm a teapot
+
