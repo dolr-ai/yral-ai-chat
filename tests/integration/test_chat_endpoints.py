@@ -23,25 +23,23 @@ def test_create_conversation(client, test_influencer_id, auth_headers):
     # Verify response structure
     assert "id" in data
     assert "user_id" in data
+    assert "influencer_id" in data
     assert "influencer" in data
     assert "created_at" in data
     assert "updated_at" in data
-    assert "message_count" in data
 
     # Verify data types
     UUID(data["id"])
     assert isinstance(data["user_id"], str)
-    assert isinstance(data["message_count"], int)
+    assert isinstance(data["influencer_id"], str)
 
     # Verify influencer info
     influencer = data["influencer"]
     assert "id" in influencer
     assert influencer["id"] == test_influencer_id
-    assert "name" in influencer
     assert "display_name" in influencer
     assert "avatar_url" in influencer
-    assert "suggested_messages" in influencer
-    assert isinstance(influencer["suggested_messages"], list)
+    assert "is_online" in influencer
 
 
 def test_create_conversation_with_initial_greeting_sets_message_count_and_greeting(client, auth_headers):
@@ -59,26 +57,29 @@ def test_create_conversation_with_initial_greeting_sets_message_count_and_greeti
     assert response.status_code == 201
     data = response.json()
 
-    # 3) message_count should reflect the greeting message that was auto-created
-    assert "message_count" in data
-    assert data["message_count"] == 1
-
-    # 4) recent_messages should be present and contain the greeting message
-    assert "recent_messages" in data
-    recent_messages = data.get("recent_messages")
-    assert recent_messages is not None
-    assert len(recent_messages) == 1
-
-    greeting = recent_messages[0]
-    assert greeting.get("role") == "assistant"
-    assert isinstance(greeting.get("content"), str)
-    assert greeting["content"].strip() != ""
-    assert "message_type" in greeting
-    assert "id" in greeting
-
-    # 5) created_at of greeting should be a valid ISO timestamp
-    assert "created_at" in greeting
-    datetime.fromisoformat(greeting["created_at"])
+    assert response.status_code == 201
+    data = response.json()
+    conversation_id = data["id"]
+    
+    # 3) Verify greeting message was created by listing messages
+    messages_response = client.get(
+        f"/api/v1/chat/conversations/{conversation_id}/messages",
+        headers=auth_headers
+    )
+    assert messages_response.status_code == 200
+    messages_data = messages_response.json()
+    
+    assert messages_data["total"] >= 1
+    messages = messages_data["messages"]
+    
+    # Check that at least one message is from assistant (the greeting)
+    has_greeting = False
+    for msg in messages:
+        if msg["role"] == "assistant":
+            has_greeting = True
+            break
+            
+    assert has_greeting, "Initial greeting message was not created"
 
 
 def test_initial_greeting_message_appears_in_conversation_history(client, auth_headers):
@@ -94,14 +95,9 @@ def test_initial_greeting_message_appears_in_conversation_history(client, auth_h
     conversation_data = create_response.json()
     conversation_id = conversation_data["id"]
 
-    # Verify greeting was returned in create response in recent_messages
-    recent_messages_from_create = conversation_data.get("recent_messages")
-    assert recent_messages_from_create is not None
-    assert len(recent_messages_from_create) == 1
-    greeting_from_create = recent_messages_from_create[0]
-    assert greeting_from_create is not None
-    expected_greeting_content = greeting_from_create["content"]
-
+    # Verify greeting was created
+    # Note: create response no longer returns recent_messages, so we verify via list messages
+    
     # 2) Fetch conversation messages to verify greeting is in history
     messages_response = client.get(
         f"/api/v1/chat/conversations/{conversation_id}/messages",
@@ -121,6 +117,10 @@ def test_initial_greeting_message_appears_in_conversation_history(client, auth_h
     assert len(messages) == 1
 
     greeting_message = messages[0]
+    
+    # Set expected content from the actual message since we can't get it from create response anymore
+    # (The content is dynamic based on the influencer)
+    expected_greeting_content = greeting_message["content"]
 
     # 5) Verify greeting message structure and content
     assert greeting_message["role"] == "assistant"
@@ -131,9 +131,8 @@ def test_initial_greeting_message_appears_in_conversation_history(client, auth_h
     assert "created_at" in greeting_message
     datetime.fromisoformat(greeting_message["created_at"])
 
-    # 6) Verify it matches the greeting from create response
-    assert greeting_message["content"] == greeting_from_create["content"]
-    assert greeting_message["role"] == greeting_from_create["role"]
+    # 6) Verify it matches structure
+    assert greeting_message["role"] == "assistant"
 
 
 def test_create_conversation_returns_existing(client, test_influencer_id, auth_headers):
@@ -163,31 +162,22 @@ def test_list_conversations(client, test_conversation_id, auth_headers):
     assert response.status_code == 200
     data = response.json()
 
-    # Verify response structure
-    assert "conversations" in data
-    assert "total" in data
-    assert "limit" in data
-    assert "offset" in data
-
-    # Verify pagination defaults
-    assert data["limit"] == 20
-    assert data["offset"] == 0
-
-    # Verify we have conversations
-    assert isinstance(data["conversations"], list)
-    assert data["total"] > 0
+    # Verify response structure (now a direct list)
+    assert isinstance(data, list)
+    assert len(data) > 0
 
 
 def test_list_conversations_with_pagination(client, auth_headers):
     """Test listing conversations with custom pagination"""
+    # Note: limit/offset are still accepted query params, but pagination metadata
+    # is no longer returned in the response body.
     response = client.get("/api/v1/chat/conversations?limit=5&offset=0", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
 
-    assert data["limit"] == 5
-    assert data["offset"] == 0
-    assert len(data["conversations"]) <= 5
+    assert isinstance(data, list)
+    assert len(data) <= 5
 
 
 def test_list_conversations_filtered_by_influencer(client, test_influencer_id, auth_headers):
@@ -196,9 +186,10 @@ def test_list_conversations_filtered_by_influencer(client, test_influencer_id, a
 
     assert response.status_code == 200
     data = response.json()
+    assert isinstance(data, list)
 
     # All conversations should be with the specified influencer
-    for conv in data["conversations"]:
+    for conv in data:
         assert conv["influencer"]["id"] == test_influencer_id
 
 
@@ -208,26 +199,36 @@ def test_list_conversations_response_structure(client, test_conversation_id, aut
 
     assert response.status_code == 200
     data = response.json()
-    assert len(data["conversations"]) > 0
+    assert len(data) > 0
 
-    conv = data["conversations"][0]
+    conv = data[0]
 
     # Verify required fields
     assert "id" in conv
     assert "user_id" in conv
+    assert "influencer_id" in conv
     assert "influencer" in conv
     assert "created_at" in conv
     assert "updated_at" in conv
-    assert "message_count" in conv
+    assert "unread_count" in conv
+    
+    # Check removed fields are NOT present
+    assert "message_count" not in conv
+    assert "recent_messages" not in conv
 
     # Verify data types
     UUID(conv["id"])
     assert isinstance(conv["user_id"], str)
-    assert isinstance(conv["message_count"], int)
+    assert isinstance(conv["influencer_id"], str)
+    assert isinstance(conv["unread_count"], int)
 
-    # recent_messages is optional but, if present, must be a list
-    if "recent_messages" in conv and conv["recent_messages"] is not None:
-        assert isinstance(conv["recent_messages"], list)
+    # Verify influencer structure
+    influencer = conv["influencer"]
+    assert "id" in influencer
+    assert "display_name" in influencer
+    assert "avatar_url" in influencer
+    assert "is_online" in influencer
+    assert isinstance(influencer["is_online"], bool)
 
     # Verify timestamps
     datetime.fromisoformat(conv["created_at"])
@@ -471,7 +472,7 @@ def test_delete_conversation_deletes_all_messages(client, test_influencer_id, au
     # Verify conversation doesn't appear in list
     list_response = client.get("/api/v1/chat/conversations", headers=auth_headers)
     assert list_response.status_code == 200
-    conversations = list_response.json()["conversations"]
+    conversations = list_response.json()
     conversation_ids = [conv["id"] for conv in conversations]
     assert conversation_id not in conversation_ids
 

@@ -21,15 +21,13 @@ class InfluencerBasicInfo(BaseModel):
         description="Unique identifier for the influencer (UUID or IC Principal)",
         examples=["550e8400-e29b-41d4-a716-446655440000"],
     )
-    name: str = Field(..., description="URL-friendly username", examples=["tech_guru_ai"])
     display_name: str = Field(..., description="Display name for the influencer", examples=["Tech Guru AI"])
     avatar_url: str | None = Field(
         None, description="Profile picture URL", examples=["https://cdn.yral.com/avatars/tech_guru.png"]
     )
-    suggested_messages: list[str] | None = Field(
-        default=None,
-        description="Initial suggested messages users can ask to get started",
-        examples=[["Help me create a simple fitness routine", "Give me a full body workout without gym equipment"]],
+    is_online: bool = Field(
+        default=True,
+        description="Whether the influencer is currently online",
     )
 
 
@@ -49,6 +47,8 @@ class MessageResponse(BaseModel):
     audio_duration_seconds: int | None = Field(None, description="Audio duration in seconds", examples=[None])
     token_count: int | None = Field(None, description="AI tokens used (assistant messages only)", examples=[150])
     created_at: datetime = Field(..., description="Message timestamp")
+    status: str = Field("delivered", description="Message status: sent, delivered, read")
+    is_read: bool = Field(False, description="Whether message has been read")
 
 
 class ConversationResponse(BaseModel):
@@ -58,12 +58,12 @@ class ConversationResponse(BaseModel):
 
     id: str
     user_id: str
+    influencer_id: str
     influencer: InfluencerBasicInfo
     created_at: datetime
     updated_at: datetime
-    message_count: int = 0
+    unread_count: int = 0
     last_message: LastMessageInfo | None = None
-    recent_messages: list[MessageResponse] | None = None
 
 
 class SendMessageResponse(BaseModel):
@@ -221,6 +221,16 @@ class DeleteConversationResponse(BaseModel):
     message: str
     deleted_conversation_id: str
     deleted_messages_count: int
+
+
+class MarkConversationAsReadResponse(BaseModel):
+    """Response for marking conversation as read"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str = Field(..., description="Conversation ID")
+    unread_count: int = Field(..., description="Updated unread count (should be 0)")
+    last_read_at: datetime = Field(..., description="Timestamp when conversation was marked as read")
 
 
 class ErrorResponse(BaseModel):

@@ -4,6 +4,7 @@ Chat service - Business logic for conversations and messages
 
 import sqlite3
 import time
+from datetime import UTC, datetime
 from uuid import UUID
 
 import httpx
@@ -11,10 +12,12 @@ from loguru import logger
 from pydantic import validate_call
 
 from src.core.exceptions import ForbiddenException, NotFoundException
+from src.core.websocket import manager
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
-from src.models.entities import Conversation, Message, MessageRole, MessageType
+from src.models.entities import AIInfluencer, Conversation, Message, MessageRole, MessageType
 from src.models.internal import LLMGenerateParams, SendMessageParams
 from src.services.gemini_client import GeminiClient
+from src.services.notification_service import notification_service
 from src.services.openrouter_client import OpenRouterClient
 from src.services.replicate_client import ReplicateClient
 from src.services.storage_service import StorageService
@@ -372,7 +375,69 @@ class ChatService:
                 params.conversation_id, conversation, ai_input_content, response_text, memories, is_nsfw=influencer.is_nsfw
             )
 
+        # Handle real-time updates and notifications
+        await self._handle_message_notifications(
+            user_id=params.user_id,
+            conversation_id=params.conversation_id,
+            assistant_message=assistant_message,
+            influencer=influencer,
+        )
+
         return user_message, assistant_message
+
+    async def _handle_message_notifications(
+        self,
+        user_id: str,
+        conversation_id: UUID | str,
+        assistant_message: Message,
+        influencer: AIInfluencer,
+    ) -> None:
+        """Handle real-time updates and push notifications for a new message"""
+        # Broadcast new message via WebSocket
+        try:
+            # Get updated unread count for this conversation
+            updated_conversation = await self.conversation_repo.get_by_id(conversation_id)
+            unread_count = updated_conversation.unread_count if updated_conversation else 1
+            
+            # Broadcast to user
+            await manager.broadcast_new_message(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                message={
+                    "id": str(assistant_message.id),
+                    "role": assistant_message.role.value,
+                    "content": assistant_message.content,
+                    "message_type": assistant_message.message_type.value,
+                    "created_at": assistant_message.created_at.isoformat(),
+                    "status": assistant_message.status,
+                    "is_read": assistant_message.is_read,
+                },
+                influencer={
+                    "id": str(influencer.id),
+                    "display_name": influencer.display_name,
+                    "avatar_url": influencer.avatar_url,
+                    "is_online": True,  # Influencers are always "online"
+                },
+                unread_count=unread_count,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to broadcast message via WebSocket: {e}")
+
+        # Send push notification
+        try:
+            await notification_service.send_push_notification(
+                user_id=user_id,
+                title=influencer.display_name,
+                body=assistant_message.content[:100] if assistant_message.content else "New message",
+                data={
+                    "conversation_id": str(conversation_id),
+                    "message_id": str(assistant_message.id),
+                    "influencer_id": str(influencer.id),
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send push notification: {e}")
+
 
     async def generate_image_for_conversation(self, conversation_id: str, user_id: str, prompt: str | None = None) -> Message:
         """
@@ -527,6 +592,33 @@ class ChatService:
         logger.info(f"Deleted conversation {conversation_id} with {deleted_messages} messages")
 
         return deleted_messages
+    async def mark_conversation_as_read(self, conversation_id: UUID, user_id: str) -> dict[str, object]:
+        """Mark conversation as read"""
+        await self.get_conversation(conversation_id, user_id)
+        
+        await self.message_repo.mark_as_read(conversation_id)
+        
+        read_at = datetime.now(UTC)
+        result = {
+            "id": str(conversation_id),
+            "unread_count": 0,
+            "last_read_at": read_at
+        }
+        
+        # Broadcast conversation read event via WebSocket
+        try:
+            await manager.broadcast_conversation_read(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                read_at=read_at.isoformat(),
+            )
+        except Exception as e:
+            # Don't fail the operation if WebSocket broadcast fails
+            logger.warning(f"Failed to broadcast conversation read via WebSocket: {e}")
+        
+        return result
+
+
     async def _save_message(self, **kwargs) -> Message:
         """
         Helper to save a message and handle conversation deletion race conditions.

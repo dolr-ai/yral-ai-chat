@@ -34,6 +34,8 @@ class LastMessageInfo(BaseModel):
     content: str | None = None
     role: MessageRole
     created_at: datetime
+    status: str | None = "delivered"
+    is_read: bool = False
 
 
 class InfluencerStatus(str, Enum):
@@ -84,6 +86,7 @@ class Conversation(BaseModel):
 
     influencer: AIInfluencer | None = None
     message_count: int | None = None
+    unread_count: int = 0
     last_message: LastMessageInfo | None = None
     recent_messages: list[Message] | None = None
 
@@ -103,4 +106,6 @@ class Message(BaseModel):
     audio_duration_seconds: int | None = None
     token_count: int | None = None
     created_at: datetime
+    status: str = "delivered"
+    is_read: bool = False
     metadata: dict[str, object] = Field(default_factory=dict)

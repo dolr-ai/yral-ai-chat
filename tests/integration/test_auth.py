@@ -226,8 +226,7 @@ def test_list_conversations_with_valid_token(client):
 
     assert response.status_code == 200
     data = response.json()
-    assert "conversations" in data
-    assert "total" in data
+    assert isinstance(data, list)  # Response is now a direct list
 
 
 def test_list_conversations_without_token(client):

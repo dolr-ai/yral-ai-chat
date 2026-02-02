@@ -2,7 +2,7 @@
 Chat endpoints
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer
 
 from src.auth.jwt_auth import CurrentUser, get_current_user
@@ -12,6 +12,7 @@ from src.core.background_tasks import (
     update_conversation_stats,
 )
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
+from src.core.websocket import manager
 from src.models.entities import Message
 from src.models.internal import SendMessageParams
 from src.models.requests import CreateConversationRequest, GenerateImageRequest, SendMessageRequest
@@ -19,11 +20,12 @@ from src.models.responses import (
     ConversationResponse,
     DeleteConversationResponse,
     InfluencerBasicInfo,
-    ListConversationsResponse,
     ListMessagesResponse,
+    MarkConversationAsReadResponse,
     MessageResponse,
     SendMessageResponse,
 )
+from src.models.websocket_events import WebSocketEvent
 from src.services.chat_service import ChatService
 from src.services.storage_service import StorageService
 
@@ -76,6 +78,8 @@ async def _convert_message_to_response(
         audio_duration_seconds=msg.audio_duration_seconds,
         token_count=msg.token_count,
         created_at=msg.created_at,
+        status=msg.status,
+        is_read=msg.is_read,
     )
 
 
@@ -140,45 +144,29 @@ async def create_conversation(
         influencer_id=request.influencer_id,
     )
 
-    message_count = await message_repo.count_by_conversation(conversation.id)
-
-    recent_messages: list[MessageResponse] | None = None
-    if message_count >= 1:
-        recent_messages_list = await message_repo.list_by_conversation(
-            conversation_id=conversation.id,
-            limit=10,
-            offset=0,
-            order="desc",
-        )
-        if recent_messages_list:
-            recent_messages = [
-                await _convert_message_to_response(msg, storage_service)
-                for msg in recent_messages_list
-            ]
-
     return ConversationResponse(
         id=conversation.id,
         user_id=conversation.user_id,
+        influencer_id=conversation.influencer.id,
         influencer=InfluencerBasicInfo(
             id=conversation.influencer.id,
-            name=conversation.influencer.name,
             display_name=conversation.influencer.display_name,
             avatar_url=conversation.influencer.avatar_url,
-            suggested_messages=conversation.influencer.suggested_messages if message_count <= 1 else None,
+            is_online=True,
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        message_count=message_count,
-        recent_messages=recent_messages,
+        unread_count=0,
+        last_message=None,
     )
 
 
 @router.get(
     "/conversations",
-    response_model=ListConversationsResponse,
+    response_model=list[ConversationResponse],
     operation_id="listConversations",
     summary="List user conversations",
-    description="Retrieve paginated list of user's conversations, optionally filtered by influencer. Includes the last 10 messages per conversation.",
+    description="Retrieve list of user's conversations, optionally filtered by influencer.",
     responses={
         200: {"description": "List of conversations retrieved successfully"},
         401: {"description": "Unauthorized - Invalid or missing JWT token"},
@@ -201,7 +189,7 @@ async def list_conversations(
 
     Optionally filter by influencer_id
     """
-    conversations, total = await chat_service.list_conversations(
+    conversations, _total = await chat_service.list_conversations(
         user_id=current_user.user_id,
         influencer_id=influencer_id,
         limit=limit,
@@ -210,62 +198,26 @@ async def list_conversations(
 
     conversation_responses: list[ConversationResponse] = []
     
-    # Collect all messages that need URL signing
-    all_messages_for_signing = []
     for conv in conversations:
-        if conv.recent_messages:
-            all_messages_for_signing.extend(conv.recent_messages)
-            
-    # Batch generate presigned URLs if StorageService is available
-    presigned_map = {}
-    if storage_service and all_messages_for_signing:
-        all_keys = []
-        for msg in all_messages_for_signing:
-            if msg.media_urls:
-                for url in msg.media_urls:
-                    if url:
-                        all_keys.append(storage_service.extract_key_from_url(url))
-            if msg.audio_url:
-                all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
-        
-        if all_keys:
-            presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
-
-    for conv in conversations:
-        recent_messages: list[MessageResponse] | None = None
-        if conv.recent_messages:
-            recent_messages = [
-                await _convert_message_to_response(msg, storage_service, presigned_map)
-                for msg in conv.recent_messages
-            ]
-
         conversation_responses.append(
             ConversationResponse(
                 id=conv.id,
                 user_id=conv.user_id,
+                influencer_id=conv.influencer.id,
                 influencer=InfluencerBasicInfo(
                     id=conv.influencer.id,
-                    name=conv.influencer.name,
                     display_name=conv.influencer.display_name,
                     avatar_url=conv.influencer.avatar_url,
-                    # Only show suggested messages if conversation is empty or has just 1 message (greeting)
-                    suggested_messages=conv.influencer.suggested_messages
-                    if (conv.message_count or 0) <= 1
-                    else None,
+                    is_online=True,  # Defaulting to True as requested in schema
                 ),
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
-                message_count=conv.message_count or 0,
-                recent_messages=recent_messages,
+                unread_count=conv.unread_count,
+                last_message=conv.last_message,
             )
         )
 
-    return ListConversationsResponse(
-        conversations=conversation_responses,
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
+    return conversation_responses
 
 
 @router.get(
@@ -498,3 +450,71 @@ async def delete_conversation(
         deleted_conversation_id=conversation_id,
         deleted_messages_count=deleted_messages,
     )
+
+
+@router.post(
+    "/conversations/{conversation_id}/read",
+    response_model=MarkConversationAsReadResponse,
+    operation_id="markConversationAsRead",
+    summary="Mark conversation as read",
+    description="Mark all messages in a conversation as read and reset unread count to 0",
+    responses={
+        200: {"description": "Conversation marked as read successfully"},
+        401: {"description": "Unauthorized - Invalid or missing JWT token"},
+        403: {"description": "Forbidden - Not authorized to access this conversation"},
+        404: {"description": "Conversation not found"},
+        429: {"description": "Rate limit exceeded"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def mark_conversation_as_read(
+    conversation_id: str,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
+    chat_service: ChatServiceDep = None,
+):
+    """Mark all messages in a conversation as read"""
+    result = await chat_service.mark_conversation_as_read(
+        conversation_id=conversation_id,
+        user_id=current_user.user_id,
+    )
+
+    return MarkConversationAsReadResponse(**result)
+
+
+@router.websocket("/ws/inbox/{user_id}")
+async def websocket_inbox_endpoint(
+    websocket: WebSocket,
+    user_id: str,
+):
+    """
+    WebSocket endpoint for real-time inbox updates.
+    
+    ### Connection:
+    `ws://{host}/api/v1/chat/ws/inbox/{user_id}`
+    
+    ### Events:
+    Clients connect to receive real-time events:
+    - `new_message`: When a new message arrives in any conversation
+    - `conversation_read`: When a conversation is marked as read
+    - `typing_status`: When an influencer is typing
+    """
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, user_id)
+
+
+@router.get(
+    "/ws/docs",
+    response_model=WebSocketEvent,
+    include_in_schema=True,
+    summary="WebSocket Event Schemas (Documentation Only)",
+    description="This endpoint does not perform any action. It exists solely to expose the Pydantic models for WebSocket events to the OpenAPI (Swagger) documentation.",
+    tags=["Documentation"],
+)
+async def doc_websocket_events():
+    """Dummy endpoint for WebSocket documentation"""
+    return Response(status_code=418)  # I'm a teapot
+

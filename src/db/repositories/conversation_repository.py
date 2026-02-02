@@ -90,7 +90,14 @@ class ConversationRepository:
                     c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                     i.id as inf_id, i.name, i.display_name, i.avatar_url,
                     i.suggested_messages,
-                    COUNT(m.id) as message_count
+                    COUNT(m.id) as message_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM messages m2
+                        WHERE m2.conversation_id = c.id
+                        AND m2.is_read = 0
+                        AND m2.role = 'assistant'
+                    ) as unread_count
                 FROM conversations c
                 JOIN ai_influencers i ON c.influencer_id = i.id
                 LEFT JOIN messages m ON c.id = m.conversation_id
@@ -115,6 +122,13 @@ class ConversationRepository:
             else:
                 conv.message_count = 0
 
+            # Handle unread count
+            unread_count_val = row.get("unread_count", 0)
+            if isinstance(unread_count_val, int):
+                conv.unread_count = unread_count_val
+            else:
+                conv.unread_count = 0
+            
             conversations.append(conv)
 
         # Batch fetch last messages for all conversations in a single query
@@ -151,7 +165,7 @@ class ConversationRepository:
     async def _get_last_message(self, conversation_id: UUID) -> LastMessageInfo | None:
         """Get last message in conversation"""
         query = """
-            SELECT content, role, created_at
+            SELECT content, role, created_at, status, is_read
             FROM messages
             WHERE conversation_id = $1
             ORDER BY created_at DESC
@@ -171,6 +185,8 @@ class ConversationRepository:
                 content=str(content) if content is not None else None,
                 role=role,
                 created_at=created_at,
+                status=row.get("status", "delivered"),
+                is_read=bool(row.get("is_read", False)),
             )
         return None
 
@@ -189,7 +205,9 @@ class ConversationRepository:
                 m1.conversation_id,
                 m1.content,
                 m1.role,
-                m1.created_at
+                m1.created_at,
+                m1.status,
+                m1.is_read
             FROM messages m1
             INNER JOIN (
                 SELECT conversation_id, MAX(created_at) as max_created
@@ -217,6 +235,8 @@ class ConversationRepository:
                 content=str(content) if content is not None else None,
                 role=role,
                 created_at=created_at,
+                status=row.get("status", "delivered"),
+                is_read=bool(row.get("is_read", False)),
             )
         
         return result
