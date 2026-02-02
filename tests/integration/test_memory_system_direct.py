@@ -60,15 +60,13 @@ async def test_chat_service_memory_background_task_direct(test_influencer_id):
         background_tasks=bg_tasks
     )
     
-    # 7. Check that a task was indeed added
-    assert len(bg_tasks.tasks) == 1
+    # 7. Check that tasks were indeed added
+    # 2 persistence, 1 memory, 1 usage, 1 stats, 1 cache = 6 tasks
+    assert len(bg_tasks.tasks) >= 3
     
-    # 8. MANUALLY execute the background task
-    # This mimics what FastAPI does after sending the response
-    task = bg_tasks.tasks[0]
-    # task.func is self._update_conversation_memories
-    # task.args / task.kwargs are the arguments
-    await task.func(*task.args, **task.kwargs)
+    # 8. MANUALLY execute all background tasks
+    for task in bg_tasks.tasks:
+        await task.func(*task.args, **task.kwargs)
     
     # 9. Verify the database state
     updated_conv = await conversation_repo.get_by_id(conv.id)

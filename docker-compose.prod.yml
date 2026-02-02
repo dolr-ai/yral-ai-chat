@@ -30,6 +30,7 @@ services:
 
       # Database (SQLite)
       - DATABASE_PATH=${DATABASE_PATH:-/app/data/yral_chat.db}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
 
       # JWT Authentication (REQUIRED)
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
@@ -141,6 +142,20 @@ services:
       retries: 3
       start_period: 60s
 
+  redis:
+    image: redis:alpine
+    container_name: yral-ai-chat-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # Beszel Monitoring Agent
   beszel-agent:
     image: henrygd/beszel-agent
@@ -159,4 +174,6 @@ services:
 volumes:
   # Metabase metadata storage (dashboards, queries, settings)
   metabase-data:
+    driver: local
+  redis-data:
     driver: local
