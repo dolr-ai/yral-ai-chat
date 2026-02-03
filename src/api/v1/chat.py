@@ -381,7 +381,7 @@ async def send_message(
     
     Background tasks are used for logging and cache invalidation.
     """
-    user_msg, assistant_msg = await chat_service.send_message(
+    user_msg, assistant_msg, is_duplicate = await chat_service.send_message(
         conversation_id=conversation_id,
         user_id=current_user.user_id,
         content=request.content,
@@ -390,13 +390,14 @@ async def send_message(
         audio_url=request.audio_url,
         audio_duration_seconds=request.audio_duration_seconds,
         background_tasks=background_tasks,
+        client_message_id=request.client_message_id
     )
 
     # Check if we hit the fallback error message
     if assistant_msg.content == ChatService.FALLBACK_ERROR_MESSAGE:
         response.status_code = 503
 
-    if assistant_msg.token_count:
+    if assistant_msg.token_count and not is_duplicate:
         background_tasks.add_task(
             log_ai_usage,
             model="gemini",

@@ -98,6 +98,7 @@ class Message(BaseModel):
     )
     audio_duration_seconds: int | None = None
     token_count: int | None = None
+    client_message_id: str | None = None
     created_at: datetime
     metadata: dict[str, object] = Field(default_factory=dict)
 
