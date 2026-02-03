@@ -1,11 +1,48 @@
+from abc import ABC, abstractmethod
+from typing import Any
+
 import httpx
 from loguru import logger
 
 from src.config import settings
 
 
+class PushNotificationProvider(ABC):
+    """Base class for push notification providers"""
+
+    @abstractmethod
+    async def send_notification(
+        self,
+        user_id: str,
+        title: str,
+        body: str,
+        data: dict[str, Any] | None = None,
+    ) -> bool:
+        """Send a push notification"""
+
+
+class MockPNProvider(PushNotificationProvider):
+    """Mock provider for development and testing"""
+
+    async def send_notification(
+        self,
+        user_id: str,
+        title: str,
+        body: str,
+        data: dict[str, Any] | None = None,
+    ) -> bool:
+        logger.info(
+            f"[MockPN] Sending notification to user {user_id}: "
+            f"title='{title}', body='{body}', data={data}"
+        )
+        return True
+
+
 class NotificationService:
-    """Service to handle sending notifications to Google Chat"""
+    """Service to handle sending notifications (Google Chat & Push)"""
+
+    def __init__(self, pn_provider: PushNotificationProvider | None = None):
+        self.pn_provider = pn_provider or MockPNProvider()
 
     async def send_sentry_notification(self, resource: str, action: str, data: dict):
         """Dispatches notifications to Google Chat (Production only)"""
@@ -70,12 +107,7 @@ class NotificationService:
         data: dict | None = None,
     ):
         """
-        Send push notification to user's device
-        
-        This is a stub implementation. In production, this would integrate with:
-        - Firebase Cloud Messaging (FCM) for Android/iOS
-        - Apple Push Notification Service (APNS) for iOS
-        - Web Push for web clients
+        Send push notification to user's device via configured provider
         
         Args:
             user_id: User to send notification to
@@ -83,20 +115,19 @@ class NotificationService:
             body: Notification body text
             data: Additional data payload (conversation_id, message_id, etc.)
         """
-        logger.info(
-            f"Push notification stub called for user {user_id}: "
-            f"title='{title}', body='{body}', data={data}"
-        )
-        
-        # TODO: Implement actual push notification logic
-        # Example integration points:
-        # 1. Look up user's device tokens from database
-        # 2. Send via FCM/APNS based on device type
-        # 3. Handle failures and retry logic
-        # 4. Track delivery status
-        
-        if settings.environment == "production":
-            logger.warning("Push notifications not yet implemented in production")
+        try:
+            success = await self.pn_provider.send_notification(
+                user_id=user_id,
+                title=title,
+                body=body,
+                data=data
+            )
+            if not success:
+                logger.warning(f"Push notification failed for user {user_id}")
+            return success
+        except Exception as e:
+            logger.error(f"Error sending push notification: {e}")
+            return False
 
 
 notification_service = NotificationService()

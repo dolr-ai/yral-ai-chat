@@ -54,7 +54,7 @@ class MessageResponse(BaseModel):
 class ConversationResponse(BaseModel):
     """Conversation response model"""
 
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
 
     id: str
     user_id: str

@@ -61,7 +61,6 @@ def test_websocket_new_message_event_schema():
                 "is_read": False
             },
             "influencer_id": "inf_555",
-            # New field: influencer details
             "influencer": {
                 "id": "inf_555",
                 "display_name": "Kabir Malhotra",

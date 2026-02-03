@@ -13,7 +13,7 @@ from src.core.background_tasks import (
 )
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
 from src.core.websocket import manager
-from src.models.entities import Message
+from src.models.entities import InfluencerStatus, Message
 from src.models.internal import SendMessageParams
 from src.models.requests import CreateConversationRequest, GenerateImageRequest, SendMessageRequest
 from src.models.responses import (
@@ -152,7 +152,7 @@ async def create_conversation(
             id=conversation.influencer.id,
             display_name=conversation.influencer.display_name,
             avatar_url=conversation.influencer.avatar_url,
-            is_online=True,
+            is_online=conversation.influencer.is_active == InfluencerStatus.ACTIVE,
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
@@ -208,7 +208,7 @@ async def list_conversations(
                     id=conv.influencer.id,
                     display_name=conv.influencer.display_name,
                     avatar_url=conv.influencer.avatar_url,
-                    is_online=True,  # Defaulting to True as requested in schema
+                    is_online=conv.influencer.is_active == InfluencerStatus.ACTIVE,
                 ),
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
