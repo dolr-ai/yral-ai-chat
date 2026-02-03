@@ -11,8 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.models.entities import InfluencerStatus, LastMessageInfo, MessageRole, MessageType  # noqa: TC001
 
 
-class InfluencerBasicInfo(BaseModel):
-    """Basic influencer information"""
+class InfluencerBasicInfoV2(BaseModel):
+    """Basic influencer information (V2)"""
 
     model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
 
@@ -28,6 +28,28 @@ class InfluencerBasicInfo(BaseModel):
     is_online: bool = Field(
         default=True,
         description="Whether the influencer is currently online",
+    )
+
+
+class InfluencerBasicInfo(BaseModel):
+    """Basic influencer information (V1 - Legacy)"""
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
+
+    id: str = Field(
+        ...,
+        description="Unique identifier for the influencer (UUID or IC Principal)",
+        examples=["550e8400-e29b-41d4-a716-446655440000"],
+    )
+    name: str = Field(..., description="Internal name of the influencer", examples=["tech_guru"])
+    display_name: str = Field(..., description="Display name for the influencer", examples=["Tech Guru AI"])
+    avatar_url: str | None = Field(
+        None, description="Profile picture URL", examples=["https://cdn.yral.com/avatars/tech_guru.png"]
+    )
+    suggested_messages: list[str] | None = Field(
+        None,
+        description="List of suggested ice-breaker messages",
+        examples=[["Hello!", "Tell me about tech"]],
     )
 
 
@@ -51,19 +73,33 @@ class MessageResponse(BaseModel):
     is_read: bool = Field(False, description="Whether message has been read")
 
 
-class ConversationResponse(BaseModel):
-    """Conversation response model"""
+class ConversationResponseV2(BaseModel):
+    """Conversation response model (V2 - Strict)"""
 
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     id: str
     user_id: str
     influencer_id: str
-    influencer: InfluencerBasicInfo
+    influencer: InfluencerBasicInfoV2
     created_at: datetime
     updated_at: datetime
     unread_count: int = 0
     last_message: LastMessageInfo | None = None
+
+
+class ConversationResponse(BaseModel):
+    """Conversation response model (V1 - Legacy)"""
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+    id: str
+    user_id: str
+    influencer: InfluencerBasicInfo
+    created_at: datetime
+    updated_at: datetime
+    message_count: int = 0
+    recent_messages: list[MessageResponse] = Field(default_factory=list)
 
 
 class SendMessageResponse(BaseModel):
@@ -75,8 +111,19 @@ class SendMessageResponse(BaseModel):
     assistant_message: MessageResponse
 
 
+class ListConversationsResponseV2(BaseModel):
+    """Response for listing conversations (V2)"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    conversations: list[ConversationResponseV2]
+    total: int
+    limit: int
+    offset: int
+
+
 class ListConversationsResponse(BaseModel):
-    """Response for listing conversations"""
+    """Response for listing conversations (V1)"""
 
     model_config = ConfigDict(from_attributes=True)
 

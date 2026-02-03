@@ -14,7 +14,7 @@ from src.models.internal import AIResponse
 def test_create_conversation(client, test_influencer_id, auth_headers):
     """Test creating a new conversation"""
     response = client.post(
-        "/api/v1/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
+        "/api/v2/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
     )
 
     assert response.status_code == 201
@@ -23,12 +23,15 @@ def test_create_conversation(client, test_influencer_id, auth_headers):
     # Verify response structure
     assert "id" in data
     assert "user_id" in data
+    assert "influencer_id" in data
+    assert "influencer" in data
     assert "created_at" in data
     assert "updated_at" in data
 
     # Verify data types
     UUID(data["id"])
     assert isinstance(data["user_id"], str)
+    assert isinstance(data["influencer_id"], str)
 
     # Verify influencer info
     influencer = data["influencer"]
@@ -36,8 +39,7 @@ def test_create_conversation(client, test_influencer_id, auth_headers):
     assert influencer["id"] == test_influencer_id
     assert "display_name" in influencer
     assert "avatar_url" in influencer
-    assert "name" in influencer
-    assert "suggested_messages" in influencer
+    assert "is_online" in influencer
 
 
 def test_create_conversation_with_initial_greeting_sets_message_count_and_greeting(client, auth_headers):
@@ -50,7 +52,7 @@ def test_create_conversation_with_initial_greeting_sets_message_count_and_greeti
     influencer_id = "qg2pi-g3xl4-uprdd-macwr-64q7r-plotv-xm3bg-iayu3-rnpux-7ikkz-hqe"
 
     # Create a new conversation for that influencer
-    response = client.post("/api/v1/chat/conversations", json={"influencer_id": influencer_id}, headers=auth_headers)
+    response = client.post("/api/v2/chat/conversations", json={"influencer_id": influencer_id}, headers=auth_headers)
 
     assert response.status_code == 201
     data = response.json()
@@ -61,7 +63,7 @@ def test_create_conversation_with_initial_greeting_sets_message_count_and_greeti
     
     # 3) Verify greeting message was created by listing messages
     messages_response = client.get(
-        f"/api/v1/chat/conversations/{conversation_id}/messages",
+        f"/api/v2/chat/conversations/{conversation_id}/messages",
         headers=auth_headers
     )
     assert messages_response.status_code == 200
@@ -87,7 +89,7 @@ def test_initial_greeting_message_appears_in_conversation_history(client, auth_h
 
     # 1) Create a new conversation for that influencer
     create_response = client.post(
-        "/api/v1/chat/conversations", json={"influencer_id": influencer_id}, headers=auth_headers
+        "/api/v2/chat/conversations", json={"influencer_id": influencer_id}, headers=auth_headers
     )
     assert create_response.status_code == 201
     conversation_data = create_response.json()
@@ -98,7 +100,7 @@ def test_initial_greeting_message_appears_in_conversation_history(client, auth_h
     
     # 2) Fetch conversation messages to verify greeting is in history
     messages_response = client.get(
-        f"/api/v1/chat/conversations/{conversation_id}/messages",
+        f"/api/v2/chat/conversations/{conversation_id}/messages",
         params={"limit": 50, "order": "asc"},  # asc to get oldest first (greeting should be first)
         headers=auth_headers,
     )
@@ -137,14 +139,14 @@ def test_create_conversation_returns_existing(client, test_influencer_id, auth_h
     """Test creating a conversation returns existing one if it exists"""
     # Create first conversation
     response1 = client.post(
-        "/api/v1/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
+        "/api/v2/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
     )
     assert response1.status_code == 201
     conv1_id = response1.json()["id"]
 
     # Try to create another with same influencer
     response2 = client.post(
-        "/api/v1/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
+        "/api/v2/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
     )
     assert response2.status_code == 201
     conv2_id = response2.json()["id"]
@@ -155,12 +157,12 @@ def test_create_conversation_returns_existing(client, test_influencer_id, auth_h
 
 def test_list_conversations(client, test_conversation_id, auth_headers):
     """Test listing user's conversations"""
-    response = client.get("/api/v1/chat/conversations", headers=auth_headers)
+    response = client.get("/api/v2/chat/conversations", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
 
-    # Verify response structure (V1 is paginated object)
+    # Verify response structure (V2 is paginated object)
     assert "conversations" in data
     assert "total" in data
     assert isinstance(data["conversations"], list)
@@ -171,7 +173,7 @@ def test_list_conversations_with_pagination(client, auth_headers):
     """Test listing conversations with custom pagination"""
     # Note: limit/offset are still accepted query params, but pagination metadata
     # is no longer returned in the response body.
-    response = client.get("/api/v1/chat/conversations?limit=5&offset=0", headers=auth_headers)
+    response = client.get("/api/v2/chat/conversations?limit=5&offset=0", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
@@ -182,7 +184,7 @@ def test_list_conversations_with_pagination(client, auth_headers):
 
 def test_list_conversations_filtered_by_influencer(client, test_influencer_id, auth_headers):
     """Test listing conversations filtered by influencer_id"""
-    response = client.get(f"/api/v1/chat/conversations?influencer_id={test_influencer_id}", headers=auth_headers)
+    response = client.get(f"/api/v2/chat/conversations?influencer_id={test_influencer_id}", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
@@ -195,7 +197,7 @@ def test_list_conversations_filtered_by_influencer(client, test_influencer_id, a
 
 def test_list_conversations_response_structure(client, test_conversation_id, auth_headers):
     """Test conversation response contains all required fields"""
-    response = client.get("/api/v1/chat/conversations", headers=auth_headers)
+    response = client.get("/api/v2/chat/conversations", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
@@ -207,28 +209,29 @@ def test_list_conversations_response_structure(client, test_conversation_id, aut
     # Verify required fields
     assert "id" in conv
     assert "user_id" in conv
+    assert "influencer_id" in conv
     assert "influencer" in conv
     assert "created_at" in conv
     assert "updated_at" in conv
-    assert "message_count" in conv
-    assert "recent_messages" in conv
+    assert "unread_count" in conv
     
-    # Check removed fields are NOT present (fields from V2)
-    assert "unread_count" not in conv
+    # Check removed fields are NOT present
+    assert "message_count" not in conv
+    assert "recent_messages" not in conv
 
     # Verify data types
     UUID(conv["id"])
     assert isinstance(conv["user_id"], str)
-    assert isinstance(conv["message_count"], int)
-    assert isinstance(conv["recent_messages"], list)
+    assert isinstance(conv["influencer_id"], str)
+    assert isinstance(conv["unread_count"], int)
 
     # Verify influencer structure
     influencer = conv["influencer"]
     assert "id" in influencer
     assert "display_name" in influencer
     assert "avatar_url" in influencer
-    assert "name" in influencer
-    assert "suggested_messages" in influencer
+    assert "is_online" in influencer
+    assert isinstance(influencer["is_online"], bool)
 
     # Verify timestamps
     datetime.fromisoformat(conv["created_at"])
@@ -237,7 +240,7 @@ def test_list_conversations_response_structure(client, test_conversation_id, aut
 
 def test_list_messages(client, test_conversation_id, auth_headers):
     """Test listing messages in a conversation"""
-    response = client.get(f"/api/v1/chat/conversations/{test_conversation_id}/messages", headers=auth_headers)
+    response = client.get(f"/api/v2/chat/conversations/{test_conversation_id}/messages", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
@@ -257,7 +260,7 @@ def test_list_messages(client, test_conversation_id, auth_headers):
 def test_list_messages_with_pagination(client, test_conversation_id, auth_headers):
     """Test listing messages with custom pagination"""
     response = client.get(
-        f"/api/v1/chat/conversations/{test_conversation_id}/messages?limit=10&offset=0", headers=auth_headers
+        f"/api/v2/chat/conversations/{test_conversation_id}/messages?limit=10&offset=0", headers=auth_headers
     )
 
     assert response.status_code == 200
@@ -271,7 +274,7 @@ def test_list_messages_with_pagination(client, test_conversation_id, auth_header
 def test_list_messages_ordering_desc(client, test_conversation_id, auth_headers):
     """Test listing messages with descending order (newest first)"""
     response = client.get(
-        f"/api/v1/chat/conversations/{test_conversation_id}/messages?order=desc&limit=10", headers=auth_headers
+        f"/api/v2/chat/conversations/{test_conversation_id}/messages?order=desc&limit=10", headers=auth_headers
     )
 
     assert response.status_code == 200
@@ -287,7 +290,7 @@ def test_list_messages_ordering_desc(client, test_conversation_id, auth_headers)
 def test_list_messages_ordering_asc(client, test_conversation_id, auth_headers):
     """Test listing messages with ascending order (oldest first)"""
     response = client.get(
-        f"/api/v1/chat/conversations/{test_conversation_id}/messages?order=asc&limit=10", headers=auth_headers
+        f"/api/v2/chat/conversations/{test_conversation_id}/messages?order=asc&limit=10", headers=auth_headers
     )
 
     assert response.status_code == 200
@@ -303,7 +306,7 @@ def test_list_messages_ordering_asc(client, test_conversation_id, auth_headers):
 def test_send_text_message(client, clean_conversation_id, auth_headers):
     """Test sending a text message"""
     response = client.post(
-        f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+        f"/api/v2/chat/conversations/{clean_conversation_id}/messages",
         json={"content": "Hello, this is a test message!", "message_type": "text"},
         headers=auth_headers,
     )
@@ -335,7 +338,7 @@ def test_send_text_message(client, clean_conversation_id, auth_headers):
 def test_send_message_validation_error_missing_content(client, test_conversation_id, auth_headers):
     """Test sending message with missing content for text type"""
     response = client.post(
-        f"/api/v1/chat/conversations/{test_conversation_id}/messages",
+        f"/api/v2/chat/conversations/{test_conversation_id}/messages",
         json={"content": "", "message_type": "text"},
         headers=auth_headers,
     )
@@ -351,7 +354,7 @@ def test_send_message_validation_error_missing_content(client, test_conversation
 def test_send_message_validation_error_invalid_type(client, test_conversation_id, auth_headers):
     """Test sending message with invalid message type"""
     response = client.post(
-        f"/api/v1/chat/conversations/{test_conversation_id}/messages",
+        f"/api/v2/chat/conversations/{test_conversation_id}/messages",
         json={"content": "Test", "message_type": "invalid_type"},
         headers=auth_headers,
     )
@@ -368,7 +371,7 @@ def test_send_message_to_invalid_conversation(client, auth_headers):
     """Test sending message to non-existent conversation"""
     fake_uuid = "00000000-0000-0000-0000-000000000000"
     response = client.post(
-        f"/api/v1/chat/conversations/{fake_uuid}/messages",
+        f"/api/v2/chat/conversations/{fake_uuid}/messages",
         json={"content": "Test message", "message_type": "text"},
         headers=auth_headers,
     )
@@ -384,7 +387,7 @@ def test_send_message_to_invalid_conversation(client, auth_headers):
 def test_send_message_response_structure(client, clean_conversation_id, auth_headers):
     """Test message response contains all required fields"""
     response = client.post(
-        f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+        f"/api/v2/chat/conversations/{clean_conversation_id}/messages",
         json={"content": "Test message structure", "message_type": "text"},
         headers=auth_headers,
     )
@@ -413,7 +416,7 @@ def test_send_message_response_structure(client, clean_conversation_id, auth_hea
 
 def test_delete_conversation(client, clean_conversation_id, auth_headers):
     """Test deleting a conversation"""
-    response = client.delete(f"/api/v1/chat/conversations/{clean_conversation_id}", headers=auth_headers)
+    response = client.delete(f"/api/v2/chat/conversations/{clean_conversation_id}", headers=auth_headers)
 
     assert response.status_code == 200
     data = response.json()
@@ -433,7 +436,7 @@ def test_delete_conversation_deletes_all_messages(client, test_influencer_id, au
     """Test that deleting a conversation also deletes all associated messages"""
     # Create a conversation
     create_response = client.post(
-        "/api/v1/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
+        "/api/v2/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
     )
     assert create_response.status_code == 201
     conversation_id = create_response.json()["id"]
@@ -442,21 +445,21 @@ def test_delete_conversation_deletes_all_messages(client, test_influencer_id, au
     message_count = 3
     for i in range(message_count):
         send_response = client.post(
-            f"/api/v1/chat/conversations/{conversation_id}/messages",
+            f"/api/v2/chat/conversations/{conversation_id}/messages",
             json={"content": f"Test message {i+1}", "message_type": "text"},
             headers=auth_headers,
         )
         assert send_response.status_code == 200
 
     # Verify messages exist
-    messages_response = client.get(f"/api/v1/chat/conversations/{conversation_id}/messages", headers=auth_headers)
+    messages_response = client.get(f"/api/v2/chat/conversations/{conversation_id}/messages", headers=auth_headers)
     assert messages_response.status_code == 200
     messages_data = messages_response.json()
     # Should have greeting (if any) + user messages + assistant responses
     assert messages_data["total"] >= message_count * 2  # Each message gets an assistant response
 
     # Delete the conversation
-    delete_response = client.delete(f"/api/v1/chat/conversations/{conversation_id}", headers=auth_headers)
+    delete_response = client.delete(f"/api/v2/chat/conversations/{conversation_id}", headers=auth_headers)
     assert delete_response.status_code == 200
     delete_data = delete_response.json()
 
@@ -466,14 +469,14 @@ def test_delete_conversation_deletes_all_messages(client, test_influencer_id, au
     assert delete_data["deleted_messages_count"] >= message_count * 2
 
     # Verify conversation is deleted (should return 404)
-    get_response = client.get(f"/api/v1/chat/conversations/{conversation_id}/messages", headers=auth_headers)
+    get_response = client.get(f"/api/v2/chat/conversations/{conversation_id}/messages", headers=auth_headers)
     assert get_response.status_code == 404
 
     # Verify conversation doesn't appear in list
-    list_response = client.get("/api/v1/chat/conversations", headers=auth_headers)
+    list_response = client.get("/api/v2/chat/conversations", headers=auth_headers)
     assert list_response.status_code == 200
-    conversations_data = list_response.json()
-    conversations = conversations_data["conversations"]
+    data = list_response.json()
+    conversations = data["conversations"]
     conversation_ids = [conv["id"] for conv in conversations]
     assert conversation_id not in conversation_ids
 
@@ -481,7 +484,7 @@ def test_delete_conversation_deletes_all_messages(client, test_influencer_id, au
 def test_delete_nonexistent_conversation(client, auth_headers):
     """Test deleting a conversation that doesn't exist"""
     fake_uuid = "00000000-0000-0000-0000-000000000000"
-    response = client.delete(f"/api/v1/chat/conversations/{fake_uuid}", headers=auth_headers)
+    response = client.delete(f"/api/v2/chat/conversations/{fake_uuid}", headers=auth_headers)
 
     # Should return 404 not found
     assert response.status_code == 404
@@ -500,7 +503,7 @@ def test_message_content_not_duplicated(client, clean_conversation_id, auth_head
     test_content = "80"
 
     response = client.post(
-        f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+        f"/api/v2/chat/conversations/{clean_conversation_id}/messages",
         json={"content": test_content, "message_type": "text"},
         headers=auth_headers,
     )
@@ -521,7 +524,7 @@ def test_message_content_not_duplicated(client, clean_conversation_id, auth_head
     # Verify the message was stored correctly by fetching it back
     message_id = user_msg["id"]
     messages_response = client.get(
-        f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+        f"/api/v2/chat/conversations/{clean_conversation_id}/messages",
         params={"limit": 10, "order": "desc"},
         headers=auth_headers,
     )
@@ -564,7 +567,7 @@ def test_short_numeric_message_preserved(client, clean_conversation_id, auth_hea
 
     for test_content in test_cases:
         response = client.post(
-            f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+            f"/api/v2/chat/conversations/{clean_conversation_id}/messages",
             json={"content": test_content, "message_type": "text"},
             headers=auth_headers,
         )
@@ -580,7 +583,7 @@ def test_short_numeric_message_preserved(client, clean_conversation_id, auth_hea
 
         # Verify it's stored correctly by fetching messages and finding the user message
         messages_response = client.get(
-            f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+            f"/api/v2/chat/conversations/{clean_conversation_id}/messages",
             params={"limit": 10, "order": "desc"},
             headers=auth_headers,
         )
@@ -612,7 +615,7 @@ def test_send_message_accepts_uppercase_text_type(client, clean_conversation_id,
 
     for input_type, expected_type in test_cases:
         response = client.post(
-            f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+            f"/api/v2/chat/conversations/{clean_conversation_id}/messages",
             json={"message_type": input_type, "content": "Test message"},
             headers=auth_headers,
         )
@@ -655,7 +658,7 @@ def test_send_message_accepts_uppercase_multimodal_type(client, clean_conversati
         
         for input_type, expected_type, media_url in test_cases:
             response = client.post(
-                f"/api/v1/chat/conversations/{clean_conversation_id}/messages",
+                f"/api/v2/chat/conversations/{clean_conversation_id}/messages",
                 json={
                     "message_type": input_type,
                     "content": "What's in this image?",
@@ -696,7 +699,7 @@ def test_send_message_with_deleted_conversation_fk_constraint(client, auth_heade
 
     # Create a conversation
     create_response = client.post(
-        "/api/v1/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
+        "/api/v2/chat/conversations", json={"influencer_id": test_influencer_id}, headers=auth_headers
     )
     assert create_response.status_code == 201
     conversation_id = create_response.json()["id"]
@@ -707,7 +710,7 @@ def test_send_message_with_deleted_conversation_fk_constraint(client, auth_heade
 
     # Try to send a message to the deleted conversation
     response = client.post(
-        f"/api/v1/chat/conversations/{conversation_id}/messages",
+        f"/api/v2/chat/conversations/{conversation_id}/messages",
         json={"content": "This should fail gracefully", "message_type": "text"},
         headers=auth_headers,
     )

@@ -80,12 +80,12 @@ class TestInfluencerBasicInfo:
         """Test creating valid influencer info"""
         info = InfluencerBasicInfo(
             id="550e8400-e29b-41d4-a716-446655440000",
+            name="tech_guru",
             display_name="Tech Guru AI",
             avatar_url="https://example.com/avatar.jpg",
             is_online=True,
         )
         assert info.display_name == "Tech Guru AI"
-        assert info.is_online is True
 
     def test_optional_avatar(self):
         """Test that avatar_url is optional"""

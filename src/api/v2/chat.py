@@ -1,8 +1,8 @@
 """
-Chat endpoints
+Chat endpoints (V2 - Strict Schema)
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from fastapi.security import HTTPBearer
 
 from src.auth.jwt_auth import CurrentUser, get_current_user
@@ -12,17 +12,14 @@ from src.core.background_tasks import (
     update_conversation_stats,
 )
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
-from src.core.websocket import manager
 from src.models.entities import Message
 from src.models.internal import SendMessageParams
-from src.models.requests import CreateConversationRequest, GenerateImageRequest, SendMessageRequest
+from src.models.requests import CreateConversationRequest, SendMessageRequest
 from src.models.responses import (
-    ConversationResponse,
-    DeleteConversationResponse,
-    InfluencerBasicInfo,
-    ListConversationsResponse,
+    ConversationResponseV2,
+    InfluencerBasicInfoV2,
+    ListConversationsResponseV2,
     ListMessagesResponse,
-    MarkConversationAsReadResponse,
     MessageResponse,
     SendMessageResponse,
 )
@@ -31,7 +28,7 @@ from src.services.chat_service import ChatService
 from src.services.storage_service import StorageService
 
 security = HTTPBearer()
-router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
+router = APIRouter(prefix="/api/v2/chat", tags=["Chat V2"])
 
 
 async def _convert_message_to_response(
@@ -86,10 +83,10 @@ async def _convert_message_to_response(
 
 @router.post(
     "/conversations",
-    response_model=ConversationResponse,
+    response_model=ConversationResponseV2,
     response_model_exclude_none=True,
     status_code=201,
-    operation_id="createConversation",
+    operation_id="createConversationV2",
     summary="Create a new conversation",
     description="""
     Create a new conversation with an AI influencer.
@@ -97,32 +94,11 @@ async def _convert_message_to_response(
     If a conversation already exists between the user and influencer,
     returns the existing conversation instead of creating a new one.
     
-    **Response includes:**
-    - `recent_messages` array containing the last 10 messages (newest first) when message_count >= 1
-    - For new conversations, the greeting message (if any) is included in `recent_messages`
-    
     **Authentication required**: JWT token in Authorization header
     """,
     responses={
         201: {
             "description": "Conversation created successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "id": "550e8400-e29b-41d4-a716-446655440000",
-                        "user_id": "user123",
-                        "influencer": {
-                            "id": "660e8400-e29b-41d4-a716-446655440000",
-                            "name": "tech_guru",
-                            "display_name": "Tech Guru AI",
-                            "avatar_url": "https://example.com/avatar.jpg",
-                        },
-                        "created_at": "2024-01-15T10:30:00Z",
-                        "updated_at": "2024-01-15T10:30:00Z",
-                        "message_count": 0,
-                    }
-                }
-            },
         },
         400: {"description": "Bad request - Invalid influencer_id format"},
         401: {"description": "Unauthorized - Invalid or missing JWT token"},
@@ -145,28 +121,27 @@ async def create_conversation(
         influencer_id=request.influencer_id,
     )
 
-    return ConversationResponse(
+    return ConversationResponseV2(
         id=conversation.id,
         user_id=conversation.user_id,
         influencer_id=conversation.influencer.id,
-        influencer=InfluencerBasicInfo(
+        influencer=InfluencerBasicInfoV2(
             id=conversation.influencer.id,
-            name=conversation.influencer.name,
             display_name=conversation.influencer.display_name,
             avatar_url=conversation.influencer.avatar_url,
-            suggested_messages=conversation.influencer.suggested_messages,
+            is_online=True,
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        message_count=0,
-        recent_messages=[],
+        unread_count=0,
+        last_message=None,
     )
 
 
 @router.get(
     "/conversations",
-    response_model=ListConversationsResponse,
-    operation_id="listConversations",
+    response_model=ListConversationsResponseV2,
+    operation_id="listConversationsV2",
     summary="List user conversations",
     description="Retrieve list of user's conversations, optionally filtered by influencer.",
     responses={
@@ -188,7 +163,7 @@ async def list_conversations(
 ):
     """
     List user's conversations
-
+    
     Optionally filter by influencer_id
     """
     conversations, _total = await chat_service.list_conversations(
@@ -200,59 +175,26 @@ async def list_conversations(
 
     conversation_responses = []
     
-    # Pre-calculate all presigned URLs for all recent messages across all conversations
-    # to avoid N+1 calls inside the loop
-    all_recent_messages = []
     for conv in conversations:
-        if conv.recent_messages:
-            all_recent_messages.extend(conv.recent_messages)
-            
-    # Gather keys for batch processing
-    all_keys = []
-    if storage_service:
-        for msg in all_recent_messages:
-            if msg.media_urls:
-                for url in msg.media_urls:
-                    if url:
-                        all_keys.append(storage_service.extract_key_from_url(url))
-            if msg.audio_url:
-                all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
-
-    # Generate presigned URLs
-    presigned_map = {}
-    if all_keys and storage_service:
-        presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
-
-    for conv in conversations:
-        recent_messages = []
-        if conv.recent_messages:
-            recent_messages = [
-                await _convert_message_to_response(msg, storage_service, presigned_map)
-                for msg in conv.recent_messages
-            ]
-
         conversation_responses.append(
-            ConversationResponse(
+            ConversationResponseV2(
                 id=conv.id,
                 user_id=conv.user_id,
-                influencer=InfluencerBasicInfo(
+                influencer_id=conv.influencer.id,
+                influencer=InfluencerBasicInfoV2(
                     id=conv.influencer.id,
-                    name=conv.influencer.name,
                     display_name=conv.influencer.display_name,
                     avatar_url=conv.influencer.avatar_url,
-                    # Only show suggested messages if conversation is empty or has just 1 message (greeting)
-                    suggested_messages=conv.influencer.suggested_messages
-                    if (conv.message_count or 0) <= 1
-                    else None,
+                    is_online=True,
                 ),
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
-                message_count=conv.message_count or 0,
-                recent_messages=recent_messages,
+                unread_count=conv.unread_count,
+                last_message=conv.last_message,
             )
         )
 
-    return ListConversationsResponse(
+    return ListConversationsResponseV2(
         conversations=conversation_responses,
         total=len(conversation_responses),
         limit=limit,
@@ -263,7 +205,7 @@ async def list_conversations(
 @router.get(
     "/conversations/{conversation_id}/messages",
     response_model=ListMessagesResponse,
-    operation_id="listMessages",
+    operation_id="listMessagesV2",
     summary="Get conversation messages",
     description="Retrieve paginated message history for a conversation",
     responses={
@@ -329,7 +271,7 @@ async def list_messages(
 @router.post(
     "/conversations/{conversation_id}/messages",
     response_model=SendMessageResponse,
-    operation_id="sendMessage",
+    operation_id="sendMessageV2",
     summary="Send a message",
     description="""
     Send a message to an AI influencer and receive a response.
@@ -365,13 +307,13 @@ async def send_message(
 ):
     """
     Send a message to AI influencer
-
+    
     Supports:
     - Text-only messages
     - Image-only messages
     - Text + Image messages (multimodal)
     - Audio/voice messages
-
+    
     Background tasks are used for logging and cache invalidation.
     """
     user_msg, assistant_msg = await chat_service.send_message(
@@ -416,52 +358,10 @@ async def send_message(
     )
 
 
-@router.post(
-    "/conversations/{conversation_id}/images",
-    response_model=MessageResponse,
-    operation_id="generateImage",
-    summary="Generate an image in conversation",
-    description="""
-    Generate an image based on a prompt or conversation context.
-    
-    If 'prompt' is provided, it is used directly.
-    If 'prompt' is omitted, the last few messages are used to generate a relevant image prompt.
-    The generated image is saved to storage and returned as a new message.
-    """,
-    responses={
-        201: {"description": "Image generated successfully"},
-        401: {"description": "Unauthorized"},
-        403: {"description": "Forbidden - Not your conversation"},
-        404: {"description": "Conversation not found"},
-        500: {"description": "Internal server error"},
-        503: {"description": "Image generation service unavailable"},
-    },
-    status_code=201,
-)
-async def generate_image(
-    conversation_id: str,
-    request: GenerateImageRequest,
-    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    storage_service: StorageServiceDep = None,
-):
-    """Generate an image in the conversation"""
-    try:
-        message = await chat_service.generate_image_for_conversation(
-            conversation_id=conversation_id,
-            user_id=current_user.user_id,
-            prompt=request.prompt,
-        )
-        return await _convert_message_to_response(message, storage_service)
-    except NotImplementedError:
-        # 503 if service not configured
-        return Response(status_code=503, content="Image generation service unavailable")
-
-
 @router.delete(
     "/conversations/{conversation_id}",
-    response_model=DeleteConversationResponse,
-    operation_id="deleteConversation",
+    response_model=dict,
+    operation_id="deleteConversationV2",
     summary="Delete a conversation",
     description="Permanently delete a conversation and all its associated messages",
     responses={
@@ -469,7 +369,6 @@ async def generate_image(
         401: {"description": "Unauthorized - Invalid or missing JWT token"},
         403: {"description": "Forbidden - Not authorized to delete this conversation"},
         404: {"description": "Conversation not found"},
-        429: {"description": "Rate limit exceeded"},
         500: {"description": "Internal server error"},
     },
 )
@@ -484,66 +383,12 @@ async def delete_conversation(
         user_id=current_user.user_id,
     )
 
-    return DeleteConversationResponse(
-        success=True,
-        message="Conversation deleted successfully",
-        deleted_conversation_id=conversation_id,
-        deleted_messages_count=deleted_messages,
-    )
-
-
-@router.post(
-    "/conversations/{conversation_id}/read",
-    response_model=MarkConversationAsReadResponse,
-    operation_id="markConversationAsRead",
-    summary="Mark conversation as read",
-    description="Mark all messages in a conversation as read and reset unread count to 0",
-    responses={
-        200: {"description": "Conversation marked as read successfully"},
-        401: {"description": "Unauthorized - Invalid or missing JWT token"},
-        403: {"description": "Forbidden - Not authorized to access this conversation"},
-        404: {"description": "Conversation not found"},
-        429: {"description": "Rate limit exceeded"},
-        500: {"description": "Internal server error"},
-    },
-)
-async def mark_conversation_as_read(
-    conversation_id: str,
-    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-):
-    """Mark all messages in a conversation as read"""
-    result = await chat_service.mark_conversation_as_read(
-        conversation_id=conversation_id,
-        user_id=current_user.user_id,
-    )
-
-    return MarkConversationAsReadResponse(**result)
-
-
-@router.websocket("/ws/inbox/{user_id}")
-async def websocket_inbox_endpoint(
-    websocket: WebSocket,
-    user_id: str,
-):
-    """
-    WebSocket endpoint for real-time inbox updates.
-    
-    ### Connection:
-    `ws://{host}/api/v1/chat/ws/inbox/{user_id}`
-    
-    ### Events:
-    Clients connect to receive real-time events:
-    - `new_message`: When a new message arrives in any conversation
-    - `conversation_read`: When a conversation is marked as read
-    - `typing_status`: When an influencer is typing
-    """
-    await manager.connect(websocket, user_id)
-    try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, user_id)
+    return {
+        "success": True,
+        "message": "Conversation deleted successfully",
+        "deleted_conversation_id": conversation_id,
+        "deleted_messages_count": deleted_messages,
+    }
 
 
 @router.get(
@@ -552,8 +397,8 @@ async def websocket_inbox_endpoint(
     include_in_schema=True,
     summary="WebSocket Event Schemas (Documentation Only)",
     description="This endpoint does not perform any action. It exists solely to expose the Pydantic models for WebSocket events to the OpenAPI (Swagger) documentation.",
-    operation_id="docWebSocketEvents",
-    tags=["Documentation"],
+    operation_id="docWebSocketEventsV2",
+    tags=["Documentation V2"],
 )
 async def doc_websocket_events():
     """Dummy endpoint for WebSocket documentation"""
