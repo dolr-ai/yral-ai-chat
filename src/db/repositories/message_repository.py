@@ -97,8 +97,8 @@ class MessageRepository:
                 media_urls, audio_url, audio_duration_seconds,
                 token_count, client_message_id, created_at, metadata
             FROM messages
-            WHERE conversation_id = $1 
-              AND role = 'assistant' 
+            WHERE conversation_id = $1
+              AND role = 'assistant'
               AND created_at >= $2
               AND id != $3
             ORDER BY created_at ASC

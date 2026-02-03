@@ -2,8 +2,8 @@
 Tests for message idempotency
 """
 import uuid
-import pytest
 from unittest.mock import AsyncMock, patch
+
 
 def test_message_idempotency(client, clean_conversation_id, auth_headers):
     """
@@ -67,7 +67,6 @@ def test_message_idempotency(client, clean_conversation_id, auth_headers):
             headers=auth_headers
         )
         assert messages_response.status_code == 200
-        total_messages = messages_response.json()["total"]
         # Should be 2 (user + assistant) plus whatever was there before (like greeting)
         # clean_conversation_id usually starts empty or with 1 greeting.
         # But we only care that it didn't increase after the second call.
