@@ -18,6 +18,7 @@ from loguru import logger
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from src.api.v1 import chat, health, influencers, media, sentry
+from src.api.v2 import chat as chat_v2
 from src.config import settings
 from src.core.dependencies import (
     get_conversation_repository,
@@ -221,7 +222,7 @@ async def api_exception_handler(request: Request, exc: BaseAPIException):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Catch-all for unhandled exceptions"""
-    logger.error(f"Unhandled exception on {request.url.path}: {exc}", exc_info=True)
+    logger.opt(exception=True).error(f"Unhandled exception on {request.url.path}: {exc}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -236,6 +237,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router)
 app.include_router(influencers.router)
 app.include_router(chat.router)
+app.include_router(chat_v2.router)
 app.include_router(media.router)
 app.include_router(sentry.router, prefix="/v1")
 

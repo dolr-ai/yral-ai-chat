@@ -17,7 +17,7 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
 
         self.current_version = "v1"
-        self.supported_versions = {"v1"}
+        self.supported_versions = {"v1", "v2"}
         self.deprecated_versions = set()
 
         self.deprecation_messages = {}

@@ -5,12 +5,12 @@ Used for both runtime validation (optional) and documentation (OpenAPI)
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
-if TYPE_CHECKING:
-    from src.models.responses import InfluencerBasicInfo, MessageResponse
+from src.models.responses import InfluencerBasicInfo, MessageResponse  # noqa: TC001
+
 
 class NewMessageEventData(BaseModel):
     """Data payload for the new_message event"""
