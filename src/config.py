@@ -132,7 +132,7 @@ class Settings(BaseSettings):
     # Metadata Server (for Push Notifications)
     # ===========================================
     metadata_url: str = Field(default="https://metadata.yral.com", alias="METADATA_URL")
-    metadata_auth_token: str | None = Field(default=None, alias="METADATA_AUTH_TOKEN")
+    metadata_auth_token: str | None = Field(default=None, alias="YRAL_METADATA_NOTIFICATION_API_KEY")
 
     @property
     def sentry_environment(self) -> str:
