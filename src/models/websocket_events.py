@@ -20,6 +20,7 @@ class NewMessageEventData(BaseModel):
     influencer: InfluencerBasicInfo = Field(..., description="Influencer basic details")
     unread_count: int = Field(..., description="Current unread count for the user in this conversation")
 
+
 class NewMessageEvent(BaseModel):
     """Event sent when a new message is created"""
     event: Literal["new_message"] = "new_message"

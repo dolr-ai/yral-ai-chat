@@ -51,6 +51,10 @@ class InfluencerBasicInfo(BaseModel):
         description="List of suggested ice-breaker messages",
         examples=[["Hello!", "Tell me about tech"]],
     )
+    is_online: bool = Field(
+        default=True,
+        description="Whether the influencer is currently online",
+    )
 
 
 class MessageResponse(BaseModel):
@@ -76,7 +80,7 @@ class MessageResponse(BaseModel):
 class ConversationResponseV2(BaseModel):
     """Conversation response model (V2 - Strict)"""
 
-    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True, populate_by_name=True)
 
     id: str
     user_id: str

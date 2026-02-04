@@ -74,7 +74,14 @@ class ConversationRepository:
                     c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                     i.id as inf_id, i.name, i.display_name, i.avatar_url,
                     i.suggested_messages,
-                    COUNT(m.id) as message_count
+                    COUNT(m.id) as message_count,
+                    (
+                        SELECT COUNT(*)
+                        FROM messages m2
+                        WHERE m2.conversation_id = c.id
+                        AND m2.is_read = 0
+                        AND m2.role = 'assistant'
+                    ) as unread_count
                 FROM conversations c
                 JOIN ai_influencers i ON c.influencer_id = i.id
                 LEFT JOIN messages m ON c.id = m.conversation_id

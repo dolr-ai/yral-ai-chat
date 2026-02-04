@@ -338,9 +338,30 @@ class ChatService:
             timings["convert_media_urls"] = time.time() - t0
 
         # 5. AI Generation
+        # Broadcast typing indicator
+        try:
+            await manager.broadcast_typing_status(
+                user_id=params.user_id,
+                conversation_id=params.conversation_id,
+                influencer_id=influencer.id,
+                is_typing=True
+            )
+        except Exception as e:
+            logger.warning(f"Failed to broadcast typing status: {e}")
+
         response_text, token_count = await self._generate_ai_response(
             influencer, ai_input_content, enhanced_instructions, history, media_urls_for_ai, timings
         )
+
+        try:
+            await manager.broadcast_typing_status(
+                user_id=params.user_id,
+                conversation_id=params.conversation_id,
+                influencer_id=influencer.id,
+                is_typing=False
+            )
+        except Exception as e:
+            logger.warning(f"Failed to broadcast typing status: {e}")
 
         # 6. Save Assistant Message
         t0 = time.time()
