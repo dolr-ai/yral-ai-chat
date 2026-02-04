@@ -1,45 +1,47 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.services.notification_service import MockPNProvider, NotificationService, PushNotificationProvider
+from src.services.notification_service import (
+    MetadataPNProvider,
+    NotificationService,
+)
 
 
 @pytest.mark.asyncio
-async def test_mock_pn_provider_send():
-    """Verify MockPNProvider log output and return value"""
-    provider = MockPNProvider()
-    user_id = "user_123"
-    title = "Test Title"
-    body = "Test Body"
-    data = {"key": "value"}
+async def test_metadata_pn_provider_send_success():
+    provider = MetadataPNProvider()
+    user_id = "test_user"
+    title = "Hello"
+    body = "World"
     
-    result = await provider.send_notification(user_id, title, body, data)
-    assert result is True
+    with patch("httpx.AsyncClient.post") as mock_post:
+        mock_post.return_value = MagicMock(status_code=200)
+        result = await provider.send_notification(user_id, title, body)
+        
+        assert result is True
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert user_id in args[0]
+        assert kwargs["json"]["data"]["title"] == title
+
 
 @pytest.mark.asyncio
-async def test_notification_service_uses_provided_provider():
-    """Verify NotificationService uses the provider passed to it"""
-    mock_provider = MagicMock(spec=PushNotificationProvider)
-    mock_provider.send_notification = AsyncMock(return_value=True)
-    
-    service = NotificationService(pn_provider=mock_provider)
-    await service.send_push_notification("user_1", "T", "B", {"d": "1"})
-    
-    mock_provider.send_notification.assert_called_once_with(
-        user_id="user_1",
-        title="T",
-        body="B",
-        data={"d": "1"}
-    )
+async def test_metadata_pn_provider_send_failure():
+    provider = MetadataPNProvider()
+    with patch("httpx.AsyncClient.post") as mock_post:
+        mock_post.return_value = MagicMock(status_code=500, text="Error")
+        result = await provider.send_notification("user", "T", "B")
+        assert result is False
+
 
 @pytest.mark.asyncio
-async def test_notification_service_handles_provider_failure():
-    """Verify NotificationService handles exceptions from provider"""
-    mock_provider = MagicMock(spec=PushNotificationProvider)
-    mock_provider.send_notification = AsyncMock(side_effect=Exception("Failed"))
+async def test_notification_service_integration():
+    mock_provider = MagicMock(spec=MetadataPNProvider)
+    mock_provider.send_notification = pytest.importorskip("unittest.mock").AsyncMock(return_value=True)
     
-    service = NotificationService(pn_provider=mock_provider)
-    result = await service.send_push_notification("user_1", "T", "B")
+    service = NotificationService(provider=mock_provider)
+    success = await service.send_push_notification("user1", "T", "B")
     
-    assert result is False
+    assert success is True
+    mock_provider.send_notification.assert_called_once_with("user1", "T", "B", None)
