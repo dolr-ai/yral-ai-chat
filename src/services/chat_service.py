@@ -14,7 +14,7 @@ from pydantic import validate_call
 from src.core.exceptions import ForbiddenException, NotFoundException
 from src.core.websocket import manager
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
-from src.models.entities import AIInfluencer, Conversation, Message, MessageRole, MessageType
+from src.models.entities import AIInfluencer, Conversation, InfluencerStatus, Message, MessageRole, MessageType
 from src.models.internal import LLMGenerateParams, SendMessageParams
 from src.services.gemini_client import GeminiClient
 from src.services.notification_service import notification_service
@@ -189,6 +189,9 @@ class ChatService:
         influencer = await self.influencer_repo.get_by_id(conversation.influencer_id)
         if not influencer:
             raise NotFoundException("Influencer not found")
+
+        if influencer.is_active == InfluencerStatus.DISCONTINUED:
+            raise ForbiddenException("This bot has been deleted and can no longer receive messages.")
 
         return conversation, influencer
 
@@ -482,6 +485,9 @@ class ChatService:
         influencer = await self.influencer_repo.get_by_id(conversation.influencer_id)
         if not influencer:
             raise NotFoundException("Influencer not found")
+
+        if influencer.is_active == InfluencerStatus.DISCONTINUED:
+            raise ForbiddenException("This bot has been deleted and can no longer generate images.")
 
         # 1. Determine Prompt
         final_prompt = prompt
