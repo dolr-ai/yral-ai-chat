@@ -2,6 +2,7 @@
 Database connection management using aiosqlite (SQLite)
 Configured for use with Litestream for real-time S3 backups
 """
+
 import asyncio
 import os
 import re
@@ -60,26 +61,31 @@ class ConnectionPool:
         )
 
         await conn.execute("PRAGMA foreign_keys = ON")
-        await conn.execute("PRAGMA journal_mode = WAL")
         
-        # Litestream optimization: Prevent WAL from growing too large
-        # Increased to 10000 pages (~40MB) to reduce checkpoint frequency under load
-        await conn.execute("PRAGMA wal_autocheckpoint = 10000")
-        
-        # Increased to 64MB to prevent excessive truncation/checkpoints
-        await conn.execute("PRAGMA journal_size_limit = 67108864")
-        
-        # Timeout handling
-        # We set a high busy_timeout to allow queuing during checkpoints
         actual_timeout = max(busy_timeout_ms, 60000)
-        await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
         
-        # Performance tuning
-        await conn.execute("PRAGMA synchronous = NORMAL")
-        await conn.execute("PRAGMA mmap_size = 268435456")  # 256MB
+        if self.db_path != ":memory:":
+            try:
+                await conn.execute("PRAGMA journal_mode = WAL")
+            except Exception as e:
+                logger.warning(f"Failed to set WAL mode: {e}")
+
+            # Litestream optimization: Prevent WAL from growing too large
+            # Increased to 10000 pages (~40MB) to reduce checkpoint frequency under load
+            await conn.execute("PRAGMA wal_autocheckpoint = 10000")
+            
+            # Increased to 64MB to prevent excessive truncation/checkpoints
+            await conn.execute("PRAGMA journal_size_limit = 67108864")
+            
+            # Timeout handling
+            # We set a high busy_timeout to allow queuing during checkpoints
+            actual_timeout = max(busy_timeout_ms, 60000)
+            await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
+            # Performance tuning
+            await conn.execute("PRAGMA synchronous = NORMAL")
+            await conn.execute("PRAGMA mmap_size = 268435456")  # 256MB
         await conn.execute("PRAGMA cache_size = -64000")    # 64MB (negative value = kb)
         await conn.execute("PRAGMA temp_store = MEMORY")
-
         
         # Verify timeout setting
         async with conn.execute("PRAGMA busy_timeout") as cursor:
@@ -133,12 +139,50 @@ class Database:
         self.db_path: str = self._resolve_db_path(raw_db_path)
         self._pool: ConnectionPool | None = None
 
+    async def _apply_migrations(self, conn: aiosqlite.Connection):
+        """Apply all migrations to the database (used for proper :memory: initialization)"""
+        logger.info("Applying migrations to in-memory database...")
+        project_root = Path(__file__).parent.parent.parent
+        migrations_dir = project_root / "migrations" / "sqlite"
+        
+        await conn.execute("CREATE TABLE IF NOT EXISTS _migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        
+        applied_rows = await conn.execute_fetchall("SELECT filename FROM _migrations")
+        applied = {row[0] for row in applied_rows}
+        
+        # Sort files to ensure order
+        if not migrations_dir.exists():
+             logger.warning(f"Migrations directory not found: {migrations_dir}")
+             return
+
+        migration_files = sorted([f for f in os.listdir(migrations_dir) if f.endswith(".sql")])
+        
+        for filename in migration_files:
+            if filename in applied:
+                continue
+                
+            logger.info(f"Applying migration: {filename}")
+            file_path = migrations_dir / filename
+            with open(file_path, "r") as f:
+                sql_script = f.read()
+                
+            try:
+                await conn.executescript(sql_script)
+                await conn.execute("INSERT INTO _migrations (filename) VALUES (?)", (filename,))
+                await conn.commit()
+            except Exception as e:
+                logger.error(f"Migration failed for {filename}: {e}")
+                raise
+
     @staticmethod
     def _resolve_db_path(db_path: str) -> str:
         """Resolve relative database path to absolute path based on project root"""
+        if db_path == ":memory:":
+            return db_path
+            
         if Path(db_path).is_absolute():
             return db_path
-        
+
         # Use /app in Docker, otherwise resolve relative to project root
         project_root = Path("/app") if Path("/app/migrations").exists() else Path(__file__).parent.parent.parent
         return str((project_root / db_path).resolve())
@@ -149,13 +193,12 @@ class Database:
             raw_db_path = os.getenv("TEST_DATABASE_PATH", settings.database_path)
             self.db_path = self._resolve_db_path(raw_db_path)
             
-            # Ensure the database directory exists
-            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            # Ensure the database directory exists (skip for in-memory)
+            if self.db_path != ":memory:":
+                Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
             self._pool = ConnectionPool(
-                db_path=self.db_path,
-                pool_size=settings.database_pool_size,
-                timeout=settings.database_pool_timeout
+                db_path=self.db_path, pool_size=settings.database_pool_size, timeout=settings.database_pool_timeout
             )
             await self._pool.initialize()
 
@@ -165,8 +208,13 @@ class Database:
             )
             db_connections_active.set(settings.database_pool_size)
 
+
             conn = await self._pool.acquire()
             try:
+                # If using in-memory DB, apply migrations on the first connection
+                if self.db_path == ":memory:":
+                    await self._apply_migrations(conn)
+
                 async with conn.execute("SELECT sqlite_version()") as cursor:
                     row = await cursor.fetchone()
                     if row:
@@ -198,7 +246,7 @@ class Database:
         max_retries = 10
         retry_delay = 0.2
         last_error: Exception | None = None
-        
+
         try:
             for attempt in range(max_retries):
                 start_exec = time.time()
@@ -211,6 +259,8 @@ class Database:
                         exec_duration_ms = int((time.time() - start_exec) * 1000)
                         total_duration_ms = wait_duration_ms + exec_duration_ms
                         
+                        db_query_duration_seconds.labels(operation="execute").observe(exec_duration_ms / 1000.0)
+
                         if total_duration_ms > 100:
                             logger.warning(
                                 f"Slow execute ({total_duration_ms}ms total): "
@@ -262,15 +312,16 @@ class Database:
             async with conn.execute(query, args) as cursor:
                 rows = await cursor.fetchall()
                 duration_ms = int((time.time() - start_time) * 1000)
-                row_list = [dict(row) for row in rows]
-                if duration_ms > 100:
-                    logger.warning(f"Slow query ({duration_ms}ms, {len(row_list)} rows): {query[:200]}")
-                
                 db_query_duration_seconds.labels(operation="fetch").observe(duration_ms / 1000.0)
+                row_list = [dict(row) for row in rows]
 
                 # Commit if it's a mutation (e.g. INSERT ... RETURNING)
                 if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
                     await conn.commit()
+
+                if duration_ms > 100:
+                    logger.warning(f"Slow query ({duration_ms}ms, {len(row_list)} rows): {query[:200]}")
+                
 
                 return row_list
         except Exception as e:
@@ -289,15 +340,16 @@ class Database:
         try:
             async with conn.execute(query, args) as cursor:
                 row = await cursor.fetchone()
-                duration_ms = int((time.time() - start_time) * 1000)
-                if duration_ms > 50:
-                    logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")
-                
+
                 # Commit if it's a mutation (e.g. INSERT ... RETURNING)
                 if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
                     await conn.commit()
 
+                duration_ms = int((time.time() - start_time) * 1000)
                 db_query_duration_seconds.labels(operation="fetchone").observe(duration_ms / 1000.0)
+                if duration_ms > 50:
+                    logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")
+                
                 return dict(row) if row else None
         except Exception as e:
             logger.error(f"Fetchone error: {e}, Query: {query[:100]}")
@@ -314,6 +366,7 @@ class Database:
         start_time = time.time()
         try:
             async with conn.execute(query, args) as cursor:
+                start_time = time.time()
                 row = await cursor.fetchone()
                 duration_ms = int((time.time() - start_time) * 1000)
                 db_query_duration_seconds.labels(operation="fetchval").observe(duration_ms / 1000.0)
@@ -331,7 +384,6 @@ class Database:
         query = re.sub(r"\s+=\s+true\b", " = 1", query, flags=re.IGNORECASE)
         return re.sub(r"\s+=\s+false\b", " = 0", query, flags=re.IGNORECASE)
 
-
     def generate_uuid(self) -> str:
         """Generate a UUID for use as primary key"""
         return str(uuid.uuid4())
@@ -347,7 +399,7 @@ class Database:
                     database="sqlite",
                     path=self.db_path,
                     size_mb=0.0,
-                    pool_size=settings.database_pool_size
+                    pool_size=settings.database_pool_size,
                 )
 
             start = time.time()
@@ -368,7 +420,7 @@ class Database:
                 database="sqlite",
                 path=self.db_path,
                 size_mb=0.0,
-                pool_size=settings.database_pool_size
+                pool_size=settings.database_pool_size,
             )
         else:
             return DatabaseHealth(
@@ -378,8 +430,9 @@ class Database:
                 path=self.db_path,
                 size_mb=db_size_mb,
                 pool_size=settings.database_pool_size,
-                error=None
+                error=None,
             )
+
 
 db = Database()
 

@@ -1,6 +1,7 @@
 """
 Yral AI Chat API - Main Application
 """
+
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -17,6 +18,7 @@ from loguru import logger
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 from src.api.v1 import chat, health, influencers, media, sentry
+from src.api.v2 import chat as chat_v2
 from src.config import settings
 from src.core.dependencies import (
     get_conversation_repository,
@@ -93,19 +95,37 @@ async def lifespan(app: FastAPI):
 
 # --- App Initialization ---
 
+tags_metadata = [
+    {
+        "name": "Chat",
+        "description": "Operations with chat. Includes **WebSocket** support at `/api/v1/chat/ws/inbox/{user_id}`.",
+    },
+    {
+        "name": "Documentation",
+        "description": "Schemas and documentation for asynchronous event-driven features like WebSockets.",
+    },
+]
 root_path = "/staging" if settings.environment == "staging" else None
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="AI Chat API for Yral",
+    description="""
+AI Chat API for Yral.
+
+### WebSocket Connection
+Clients should connect to listen for real-time inbox updates:
+- **URL**: `ws://{host}/api/v1/chat/ws/inbox/{user_id}`
+- **Events**: See schemas in the **Documentation** section below.
+""",
     lifespan=lifespan,
     root_path=root_path,
+    openapi_tags=tags_metadata,
     docs_url="/docs",
     redoc_url="/redoc",
     swagger_ui_parameters={"persistAuthorization": True},
     redoc_js_url="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js",
-    redoc_favicon_url="https://fastapi.tiangolo.com/img/favicon.png"
+    redoc_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
 )
 
 # Customize OpenAPI Schema
@@ -119,7 +139,7 @@ def custom_openapi():
         description=app.description,
         routes=app.routes,
     )
-    
+
     if settings.environment == "staging":
         schema["servers"] = [{"url": "/staging", "description": "Staging environment"}]
     
@@ -128,7 +148,7 @@ def custom_openapi():
             "type": "http",
             "scheme": "bearer",
             "bearerFormat": "JWT",
-            "description": "Enter JWT token"
+            "description": "Enter your JWT token (without 'Bearer' prefix)",
         }
     }
     app.openapi_schema = schema
@@ -156,6 +176,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 # --- Exception Handlers ---
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -200,7 +221,7 @@ async def api_exception_handler(request: Request, exc: BaseAPIException):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Catch-all for unhandled exceptions"""
-    logger.error(f"Unhandled exception on {request.url.path}: {exc}", exc_info=True)
+    logger.opt(exception=True).error(f"Unhandled exception on {request.url.path}: {exc}")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -215,13 +236,16 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router)
 app.include_router(influencers.router)
 app.include_router(chat.router)
+app.include_router(chat_v2.router)
 app.include_router(media.router)
 app.include_router(sentry.router, prefix="/v1")
+
 
 @app.get("/metrics", tags=["Monitoring"])
 async def get_metrics():
     """Prometheus metrics endpoint"""
     return await metrics_endpoint()
+
 
 @app.get("/", tags=["Root"])
 async def root():
@@ -232,7 +256,7 @@ async def root():
         "status": "running",
         "docs": "/docs",
         "health": "/health",
-        "metrics": "/metrics"
+        "metrics": "/metrics",
     }
 
 

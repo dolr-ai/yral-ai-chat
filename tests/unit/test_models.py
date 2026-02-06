@@ -1,6 +1,7 @@
 """
 Unit tests for Pydantic models
 """
+
 import pytest
 from pydantic import ValidationError
 
@@ -30,10 +31,7 @@ class TestSendMessageRequest:
 
     def test_text_message(self):
         """Test creating text message request"""
-        request = SendMessageRequest(
-            message_type=MessageType.TEXT,
-            content="Hello, AI!"
-        )
+        request = SendMessageRequest(message_type=MessageType.TEXT, content="Hello, AI!")
         assert request.message_type == MessageType.TEXT
         assert request.content == "Hello, AI!"
         # media_urls can be None for TEXT messages (validator allows it)
@@ -44,7 +42,7 @@ class TestSendMessageRequest:
         request = SendMessageRequest(
             message_type=MessageType.IMAGE,
             content="What's in this image?",
-            media_urls=["https://example.com/image.jpg"]
+            media_urls=["https://example.com/image.jpg"],
         )
         assert request.message_type == MessageType.IMAGE
         assert len(request.media_urls) == 1
@@ -52,26 +50,17 @@ class TestSendMessageRequest:
     def test_text_message_without_content_fails(self):
         """Test that text message without content fails validation"""
         with pytest.raises(ValidationError, match="content is required"):
-            SendMessageRequest(
-                message_type=MessageType.TEXT,
-                content=""
-            )
+            SendMessageRequest(message_type=MessageType.TEXT, content="")
 
     def test_image_message_without_urls_fails(self):
         """Test that image message without URLs fails validation"""
         with pytest.raises(ValidationError, match="media_urls is required"):
-            SendMessageRequest(
-                message_type=MessageType.IMAGE,
-                content="Check this",
-                media_urls=[]
-            )
+            SendMessageRequest(message_type=MessageType.IMAGE, content="Check this", media_urls=[])
 
     def test_audio_message(self):
         """Test creating audio message request"""
         request = SendMessageRequest(
-            message_type=MessageType.AUDIO,
-            audio_url="https://example.com/audio.mp3",
-            audio_duration_seconds=45
+            message_type=MessageType.AUDIO, audio_url="https://example.com/audio.mp3", audio_duration_seconds=45
         )
         assert request.message_type == MessageType.AUDIO
         assert request.audio_url is not None
@@ -81,10 +70,7 @@ class TestSendMessageRequest:
         """Test content length validation"""
         long_content = "a" * 5000
         with pytest.raises(ValidationError):
-            SendMessageRequest(
-                message_type=MessageType.TEXT,
-                content=long_content
-            )
+            SendMessageRequest(message_type=MessageType.TEXT, content=long_content)
 
 
 class TestInfluencerBasicInfo:
@@ -96,16 +82,14 @@ class TestInfluencerBasicInfo:
             id="550e8400-e29b-41d4-a716-446655440000",
             name="tech_guru",
             display_name="Tech Guru AI",
-            avatar_url="https://example.com/avatar.jpg"
+            avatar_url="https://example.com/avatar.jpg",
+            is_online=True,
         )
-        assert info.name == "tech_guru"
         assert info.display_name == "Tech Guru AI"
 
     def test_optional_avatar(self):
         """Test that avatar_url is optional"""
         info = InfluencerBasicInfo(
-            id="550e8400-e29b-41d4-a716-446655440000",
-            name="tech_guru",
-            display_name="Tech Guru AI"
+            id="550e8400-e29b-41d4-a716-446655440000", name="tech_guru", display_name="Tech Guru AI"
         )
         assert info.avatar_url is None

@@ -3,6 +3,7 @@
 Database migration runner for SQLite.
 Ensures safe schema updates across different environments.
 """
+
 import os
 import re
 import shutil
@@ -60,7 +61,7 @@ def _split_sql(sql: str) -> list[str]:
 def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
     """Step 2: Execute migration with atomic transaction and conflict recovery."""
     sql_text = migration_file.read_text(encoding="utf-8")
-    
+
     try:
         # Strategy A: Run as single script (Atomic)
         conn.executescript(sql_text)
@@ -75,7 +76,6 @@ def _execute_migration(conn: sqlite3.Connection, migration_file: Path) -> None:
             except sqlite3.OperationalError:
                 pass
 
-            
             for cmd in _split_sql(sql_text):
                 try:
                     conn.execute(cmd)

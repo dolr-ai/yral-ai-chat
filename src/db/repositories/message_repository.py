@@ -1,6 +1,7 @@
 """
 Repository for Message operations
 """
+
 import json
 import uuid
 from uuid import UUID
@@ -22,7 +23,9 @@ class MessageRepository:
         audio_url: str | None = None,
         audio_duration_seconds: int | None = None,
         token_count: int | None = None,
-        client_message_id: str | None = None
+        client_message_id: str | None = None,
+        status: str = "delivered",
+        is_read: bool = False,
     ) -> Message:
         """Create a new message"""
         message_id = str(uuid.uuid4())
@@ -32,9 +35,9 @@ class MessageRepository:
             INSERT INTO messages (
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds, token_count,
-                client_message_id
+                client_message_id, status, is_read
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         """
 
         await db.execute(
@@ -48,7 +51,9 @@ class MessageRepository:
             audio_url,
             audio_duration_seconds,
             token_count,
-            client_message_id
+            client_message_id,
+            status,
+            is_read,
         )
 
         return await self.get_by_id(UUID(message_id))
@@ -59,7 +64,7 @@ class MessageRepository:
             SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
-                token_count, client_message_id, created_at, metadata
+                token_count, client_message_id, created_at, metadata, status, is_read
             FROM messages
             WHERE id = $1
         """
@@ -109,11 +114,7 @@ class MessageRepository:
         return self._row_to_message(row) if row else None
 
     async def list_by_conversation(
-        self,
-        conversation_id: UUID,
-        limit: int = 50,
-        offset: int = 0,
-        order: str = "desc"
+        self, conversation_id: UUID, limit: int = 50, offset: int = 0, order: str = "desc"
     ) -> list[Message]:
         """List messages in a conversation"""
         order_clause = "DESC" if order.lower() == "desc" else "ASC"
@@ -122,7 +123,7 @@ class MessageRepository:
             "SELECT "
             "id, conversation_id, role, content, message_type, "
             "media_urls, audio_url, audio_duration_seconds, "
-            "token_count, client_message_id, created_at, metadata "
+            "token_count, client_message_id, created_at, metadata, status, is_read "
             "FROM messages "
             "WHERE conversation_id = $1 "
             "ORDER BY created_at " + order_clause + " "
@@ -132,17 +133,13 @@ class MessageRepository:
         rows = await db.fetch(query, str(conversation_id), limit, offset)
         return [self._row_to_message(row) for row in rows]
 
-    async def get_recent_for_context(
-        self,
-        conversation_id: UUID,
-        limit: int = 10
-    ) -> list[Message]:
+    async def get_recent_for_context(self, conversation_id: UUID, limit: int = 10) -> list[Message]:
         """Get recent messages for AI context (ordered oldest to newest)"""
         query = """
             SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
-                token_count, client_message_id, created_at, metadata
+                token_count, client_message_id, created_at, metadata, status, is_read
             FROM messages
             WHERE conversation_id = $1
             ORDER BY created_at DESC
@@ -153,27 +150,27 @@ class MessageRepository:
         return [self._row_to_message(row) for row in reversed(rows)]
 
     async def get_recent_for_conversations_batch(
-        self,
-        conversation_ids: list[UUID],
-        limit_per_conv: int = 10
+        self, conversation_ids: list[UUID], limit_per_conv: int = 10
     ) -> dict[str, list[Message]]:
         """
-        Get recent messages for multiple conversations in a single query.
-        Returns a dictionary mapping conversation_id (str) to list of Messages (ordered oldest to newest).
+        Get recent messages for multiple conversations efficiently.
+        Returns a dictionary mapping conversation_id to list of messages (ordered oldest to newest).
         """
         if not conversation_ids:
             return {}
 
-        id_strings = [str(cid) for cid in conversation_ids]
-        placeholders = ", ".join([f"${i+1}" for i in range(len(id_strings))])
+        # Dynamically build placeholders for the IN clause
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(conversation_ids)))
         
-        # Use ROW_NUMBER() window function to limit messages per conversation
+        # We need the limit as the last parameter
+        limit_param_index = len(conversation_ids) + 1
+
         query = f"""
-            WITH RankedsMessages AS (
+            WITH RankedMessages AS (
                 SELECT
                     id, conversation_id, role, content, message_type,
                     media_urls, audio_url, audio_duration_seconds,
-                    token_count, client_message_id, created_at, metadata,
+                    token_count, client_message_id, created_at, metadata, status, is_read,
                     ROW_NUMBER() OVER (
                         PARTITION BY conversation_id
                         ORDER BY created_at DESC
@@ -182,27 +179,34 @@ class MessageRepository:
                 WHERE conversation_id IN ({placeholders})
             )
             SELECT *
-            FROM RankedsMessages
-            WHERE rn <= ${len(id_strings) + 1}
+            FROM RankedMessages
+            WHERE rn <= ${limit_param_index}
             ORDER BY conversation_id, created_at ASC
-        """  # noqa: S608
-
-        # Execute query with all conversation IDs + the limit parameter
-        rows = await db.fetch(query, *id_strings, limit_per_conv)
+        """
+        
+        # Combine arguments: conversation IDs + limit
+        args = [str(cid) for cid in conversation_ids] + [limit_per_conv]
+        
+        rows = await db.fetch(query, *args)
         
         # Group by conversation_id
         result: dict[str, list[Message]] = {str(cid): [] for cid in conversation_ids}
         
         for row in rows:
-            # Note: _row_to_message might need handling if "rn" is not expected,
-            # but since it selects specific columns in _row_to_message it should be fine
-            # OR we need to be careful. Checked code: _row_to_message only accesses keys it needs.
             msg = self._row_to_message(row)
             if msg.conversation_id in result:
                 result[msg.conversation_id].append(msg)
                 
         return result
 
+    async def mark_as_read(self, conversation_id: UUID) -> None:
+        """Mark all messages in a conversation as read"""
+        query = """
+            UPDATE messages
+            SET is_read = 1, status = 'read'
+            WHERE conversation_id = $1 AND is_read = 0 AND role = 'assistant'
+        """
+        await db.execute(query, str(conversation_id))
     async def count_by_conversation(self, conversation_id: UUID) -> int:
         """Count messages in a conversation"""
         query = "SELECT COUNT(*) FROM messages WHERE conversation_id = $1"
@@ -249,7 +253,7 @@ class MessageRepository:
             token_count=row["token_count"],
             client_message_id=row.get("client_message_id"),
             created_at=row["created_at"],
-            metadata=metadata
+            status=row.get("status", "delivered"),
+            is_read=bool(row.get("is_read", False)),
+            metadata=metadata,
         )
-
-
