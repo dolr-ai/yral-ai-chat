@@ -163,7 +163,7 @@ class Database:
                 
             logger.info(f"Applying migration: {filename}")
             file_path = migrations_dir / filename
-            with open(file_path, "r") as f:
+            with file_path.open() as f:
                 sql_script = f.read()
                 
             try:
