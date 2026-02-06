@@ -279,7 +279,6 @@ class TestChatService:
         mock_background = MagicMock()
 
         # Step 3: Run the service
-        # Step 3: Run the service
         user_msg, assistant_msg, is_duplicate = await service.send_message(
             SendMessageParams(
                 conversation_id=sample_conversation.id,
