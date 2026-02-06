@@ -3,7 +3,9 @@ Tests for message idempotency
 """
 import uuid
 from unittest.mock import AsyncMock, patch
+
 from src.models.internal import AIResponse  # Import AIResponse here for use in mocks
+
 
 def test_message_idempotency(client, clean_conversation_id, auth_headers):
     """

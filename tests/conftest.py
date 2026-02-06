@@ -14,11 +14,7 @@ Note: Make sure src/config.py has media_upload_dir and media_base_url fields.
 import base64
 import json
 import os
-import subprocess
-import sys
-import tempfile
 import time
-from pathlib import Path
 
 import pytest
 import requests

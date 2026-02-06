@@ -5,7 +5,6 @@ Chat service - Business logic for conversations and messages
 import sqlite3
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
@@ -288,7 +287,7 @@ class ChatService:
                 f"{len(response_text)} chars, {token_count} tokens"
             )
             return response_text, token_count
-        except Exception as e:
+        except Exception:
             return self.FALLBACK_ERROR_MESSAGE, 0
 
     @validate_call(config={"arbitrary_types_allowed": True})
@@ -683,7 +682,7 @@ class ChatService:
                 raise NotFoundException("Conversation no longer exists") from e
             if "unique" in msg and "client_message_id" in msg:
                 logger.warning(f"Deduplication triggered at DB level for client_message_id: {kwargs.get('client_message_id')}")
-                # This could happen in rare race condition. 
+                # This could happen in rare race condition.
                 # Ideally, get_by_client_id should have caught it, but we handle it here too.
                 # However, repo's create doesn't catch it and return existing, it raises.
                 # Since return type is Message, we'd need to fetch the existing one.
