@@ -199,7 +199,7 @@ async def list_conversations(
         offset=offset,
     )
 
-    conversation_responses = []
+    conversation_responses: list[ConversationResponse] = []
     
     # Pre-calculate all presigned URLs for all recent messages across all conversations
     # to avoid N+1 calls inside the loop
@@ -210,6 +210,7 @@ async def list_conversations(
             
     # Gather keys for batch processing
     all_keys = []
+    presigned_map = {}
     if storage_service:
         for msg in all_recent_messages:
             if msg.media_urls:
@@ -218,14 +219,11 @@ async def list_conversations(
                         all_keys.append(storage_service.extract_key_from_url(url))
             if msg.audio_url:
                 all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
-
-    # Generate presigned URLs
-    presigned_map = {}
-    if all_keys and storage_service:
-        presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
+        if all_keys:
+            presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
 
     for conv in conversations:
-        recent_messages = []
+        recent_messages: list[MessageResponse] = []
         if conv.recent_messages:
             recent_messages = [
                 await _convert_message_to_response(msg, storage_service, presigned_map)
@@ -376,7 +374,7 @@ async def send_message(
 
     Background tasks are used for logging and cache invalidation.
     """
-    user_msg, assistant_msg = await chat_service.send_message(
+    user_msg, assistant_msg, is_duplicate = await chat_service.send_message(
         SendMessageParams(
             conversation_id=conversation_id,
             user_id=current_user.user_id,
@@ -386,6 +384,7 @@ async def send_message(
             audio_url=request.audio_url,
             audio_duration_seconds=request.audio_duration_seconds,
             background_tasks=background_tasks,
+            client_message_id=request.client_message_id,
         )
     )
 
@@ -393,7 +392,7 @@ async def send_message(
     if assistant_msg.content == ChatService.FALLBACK_ERROR_MESSAGE:
         response.status_code = 503
 
-    if assistant_msg.token_count:
+    if assistant_msg.token_count and not is_duplicate:
         background_tasks.add_task(
             log_ai_usage,
             model="gemini",

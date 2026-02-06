@@ -196,7 +196,6 @@ class GeminiClient(BaseAIClient):
                     parts.append(self._get_media_part(url))
         return parts
 
-
     @_gemini_retry_decorator
     async def _generate_content(
         self,

@@ -122,3 +122,4 @@ class SendMessageParams(BaseModel):
     audio_url: str | None = None
     audio_duration_seconds: int | None = None
     background_tasks: object | None = None
+    client_message_id: str | None = None

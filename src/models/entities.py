@@ -105,6 +105,7 @@ class Message(BaseModel):
     audio_url: str | None = Field(None, description="Storage key for audio file")
     audio_duration_seconds: int | None = None
     token_count: int | None = None
+    client_message_id: str | None = None
     created_at: datetime
     status: str = "delivered"
     is_read: bool = False

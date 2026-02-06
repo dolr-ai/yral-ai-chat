@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, ge=1, le=65535, alias="PORT")
 
     database_path: str = Field(default="data/yral_chat.db", alias="DATABASE_PATH")
-    database_pool_size: int = Field(default=20, ge=1, le=50, alias="DATABASE_POOL_SIZE")
+    database_pool_size: int = Field(default=10, ge=1, le=50, alias="DATABASE_POOL_SIZE")
     database_pool_timeout: float = Field(default=60.0, gt=0, alias="DATABASE_POOL_TIMEOUT")
 
     jwt_secret_key: str = Field(..., alias="JWT_SECRET_KEY")
@@ -45,7 +45,6 @@ class Settings(BaseSettings):
     max_audio_size_mb: int = Field(default=20, ge=1, le=200, alias="MAX_AUDIO_SIZE_MB")
     max_audio_duration_seconds: int = Field(default=300, ge=1, le=600, alias="MAX_AUDIO_DURATION_SECONDS")
     media_download_timeout: float = Field(default=15.0, gt=0, alias="MEDIA_DOWNLOAD_TIMEOUT")
-
     # ===========================================
     # Replicate API (for Image Generation)
     # ===========================================

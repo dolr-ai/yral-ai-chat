@@ -316,7 +316,7 @@ async def send_message(
     
     Background tasks are used for logging and cache invalidation.
     """
-    user_msg, assistant_msg = await chat_service.send_message(
+    user_msg, assistant_msg, _is_duplicate = await chat_service.send_message(
         SendMessageParams(
             conversation_id=conversation_id,
             user_id=current_user.user_id,

@@ -14,11 +14,7 @@ Note: Make sure src/config.py has media_upload_dir and media_base_url fields.
 import base64
 import json
 import os
-import subprocess
-import sys
-import tempfile
 import time
-from pathlib import Path
 
 import pytest
 import requests
@@ -32,6 +28,13 @@ load_dotenv()
 # caused by file locking contention when running multiple workers
 os.environ["DATABASE_POOL_SIZE"] = "1"
 os.environ["DATABASE_POOL_TIMEOUT"] = "10.0"  # Fail fast in tests
+
+# Ensure DATABASE_PATH is always set to a test-specific path to avoid
+# conflicts with production data/locking issues with Docker
+if not os.getenv("TEST_API_URL"):
+    os.environ["DATABASE_PATH"] = ":memory:"
+    # Also set TEST_DATABASE_PATH for consistency with internal logic
+    os.environ["TEST_DATABASE_PATH"] = ":memory:"
 
 
 @pytest.fixture(autouse=True)
@@ -118,73 +121,6 @@ class RemoteClient:
     def patch(self, path: str, **kwargs):
         """PATCH request - returns requests.Response (compatible with TestClient)"""
         return self.session.patch(f"{self.base_url}{path}", **kwargs)
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _setup_test_database():
-    """
-    Setup test database environment.
-    
-    CRITICAL: This fixture runs ONCE per test session.
-    It ensures we have a clean, isolated database for testing.
-    
-    Safety features:
-    1. Uses a unique temporary file per worker (via xdist)
-    2. Wipes any existing file to prevent stale data usage
-    3. Runs migrations to ensure schema matches production
-    4. Fails HARD if setup encounters any error
-    """
-    # 1. Determine unique database path for this worker
-    # 'gw0', 'gw1' etc for parallel runs, or 'master' for sequential
-    worker_id = os.getenv("PYTEST_XDIST_WORKER", "master")
-    temp_dir = Path(tempfile.gettempdir())
-    test_db_path = str(temp_dir / f"yral_chat_test_{worker_id}.db")
-    
-    # 2. Set environment variable so app uses this DB
-    os.environ["TEST_DATABASE_PATH"] = test_db_path
-    
-    # 3. Initialize Database (Skip if running against remote API)
-    if not os.getenv("TEST_API_URL"):
-        try:
-            # SAFETY: Always start fresh. Remove old/stale DB files.
-            if Path(test_db_path).exists():
-                try:
-                    Path(test_db_path).unlink()
-                except OSError:
-                    # Best effort cleanup - file might be locked by zombie process
-                    pass
-            
-            # Execute migration script
-            # We use subprocess to run it in a separate process for isolation
-            migration_script = Path(__file__).parent.parent / "scripts" / "run_migrations.py"
-            
-            result = subprocess.run(  # noqa: S603
-                [sys.executable, str(migration_script)],
-                env={**os.environ, "DATABASE_PATH": test_db_path},
-                capture_output=True,
-                text=True,
-                check=False
-            )
-            
-            # CRITICAL: Fail setup if migrations fail.
-            # Do NOT proceed with an empty or broken database.
-            if result.returncode != 0:
-                print(f"❌ Test Database Setup Failed!\nCMD: {result.args}\nERROR: {result.stderr}")  # noqa: T201
-                raise RuntimeError("Database migration failed")  # noqa: TRY301
-
-        except Exception as e:
-            # Catch-all to ensure we don't silently skip setup failures
-            print(f"❌ Fatal error in test setup: {e}")  # noqa: T201
-            raise
-
-    yield
-    
-    # 4. Cleanup after tests finish
-    if test_db_path != ":memory:" and Path(test_db_path).exists():
-        try:
-            Path(test_db_path).unlink()
-        except Exception:
-            pass
 
 
 @pytest.fixture(scope="module")

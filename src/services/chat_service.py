@@ -205,6 +205,7 @@ class ChatService:
         media_urls: list[str] | None,
         timings: dict[str, float],
         is_nsfw: bool = False,
+        client_message_id: str | None = None
     ) -> tuple[Message, str]:
         """Transcribe (if needed) and save user message"""
         transcribed_content = content
@@ -222,6 +223,7 @@ class ChatService:
             media_urls=media_urls or [],
             audio_url=audio_url,
             audio_duration_seconds=audio_duration_seconds,
+            client_message_id=client_message_id
         )
         timings["save_user_message"] = time.time() - t0
         return user_message, transcribed_content or ""
@@ -288,14 +290,11 @@ class ChatService:
                 f"{len(response_text)} chars, {token_count} tokens"
             )
             return response_text, token_count
-        except Exception as e:
-            if "t0" in locals():
-                timings["ai_generate_response"] = time.time() - t0
-            logger.error("AI response generation failed for influencer {}: {}", influencer.id, str(e), exc_info=True)
+        except Exception:
             return self.FALLBACK_ERROR_MESSAGE, 0
 
     @validate_call(config={"arbitrary_types_allowed": True})
-    async def send_message(self, params: SendMessageParams) -> tuple[Message, Message]:
+    async def send_message(self, params: SendMessageParams) -> tuple[Message, Message, bool]:
         """
         Send a message and get AI response
 
@@ -303,7 +302,7 @@ class ChatService:
             params: Message sending parameters
 
         Returns:
-            Tuple of (user_message, assistant_message)
+            Tuple of (user_message, assistant_message, is_duplicate)
         """
         timings: dict[str, float] = {}
         total_start = time.time()
@@ -314,6 +313,18 @@ class ChatService:
         timings["get_context"] = time.time() - t0
         memories = conversation.metadata.get("memories", {})
 
+        # 1.1 Deduplication Check
+        if params.client_message_id:
+            existing_user_msg = await self.message_repo.get_by_client_id(
+                UUID(params.conversation_id), params.client_message_id
+            )
+            if existing_user_msg:
+                logger.info(f"Duplicate message detected: client_message_id={params.client_message_id}")
+                assistant_reply = await self.message_repo.get_assistant_reply(existing_user_msg.id)
+                if assistant_reply:
+                    return existing_user_msg, assistant_reply, True
+                logger.warning(f"User message exists for {params.client_message_id} but assistant reply not found. Proceeding with generation.")
+
         # 2. User Message
         user_message, transcribed_payload = await self._prepare_user_message(
             params.conversation_id,
@@ -323,7 +334,8 @@ class ChatService:
             params.audio_duration_seconds,
             params.media_urls,
             timings,
-            is_nsfw=influencer.is_nsfw
+            is_nsfw=influencer.is_nsfw,
+            client_message_id=params.client_message_id
         )
         logger.info(f"User message saved: {user_message.id}")
 
@@ -351,7 +363,6 @@ class ChatService:
             )
         except Exception as e:
             logger.warning(f"Failed to broadcast typing status: {e}")
-
         response_text, token_count = await self._generate_ai_response(
             influencer, ai_input_content, enhanced_instructions, history, media_urls_for_ai, timings
         )
@@ -365,7 +376,6 @@ class ChatService:
             )
         except Exception as e:
             logger.warning(f"Failed to broadcast typing status: {e}")
-
         # 6. Save Assistant Message
         t0 = time.time()
         assistant_message = await self._save_message(
@@ -407,7 +417,7 @@ class ChatService:
             influencer=influencer,
         )
 
-        return user_message, assistant_message
+        return user_message, assistant_message, False
 
     async def _handle_message_notifications(
         self,
@@ -579,6 +589,18 @@ class ChatService:
             user_id=user_id,
             influencer_id=influencer_id
         )
+        
+        # Batch fetch recent messages for all conversations to avoid N+1 queries
+        if conversations:
+            conversation_ids = [UUID(conv.id) for conv in conversations]
+            recent_messages_map = await self.message_repo.get_recent_for_conversations_batch(
+                conversation_ids=conversation_ids,
+                limit_per_conv=10
+            )
+            
+            # Map back to conversations
+            for conv in conversations:
+                conv.recent_messages = recent_messages_map.get(conv.id, [])
 
         # Batch fetch recent messages for all conversations to avoid N+1 queries
         if conversations:
@@ -660,8 +682,20 @@ class ChatService:
         try:
             return await self.message_repo.create(**kwargs)
         except sqlite3.IntegrityError as e:
-            if "foreign key" in str(e).lower():
+            msg = str(e).lower()
+            if "foreign key" in msg:
                 logger.warning(f"Failed to save message: Conversation {conv_id} was deleted during processing.")
                 raise NotFoundException("Conversation no longer exists") from e
+            if "unique" in msg and "client_message_id" in msg:
+                logger.warning(f"Deduplication triggered at DB level for client_message_id: {kwargs.get('client_message_id')}")
+                # This could happen in rare race condition.
+                # Ideally, get_by_client_id should have caught it, but we handle it here too.
+                # However, repo's create doesn't catch it and return existing, it raises.
+                # Since return type is Message, we'd need to fetch the existing one.
+                existing = await self.message_repo.get_by_client_id(
+                    kwargs["conversation_id"], kwargs["client_message_id"]
+                )
+                if existing:
+                    return existing
             raise
 

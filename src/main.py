@@ -105,7 +105,6 @@ tags_metadata = [
         "description": "Schemas and documentation for asynchronous event-driven features like WebSockets.",
     },
 ]
-
 root_path = "/staging" if settings.environment == "staging" else None
 
 app = FastAPI(
