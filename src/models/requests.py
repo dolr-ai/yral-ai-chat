@@ -217,3 +217,11 @@ class GenerateImageRequest(BaseModel):
         description="Optional prompt for image generation. If not provided, one will be generated from conversation history.",
         examples=["A futuristic city skyline"],
     )
+
+
+class UpdateSystemPromptRequest(BaseModel):
+    """Request to update an influencer's system prompt"""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    system_instructions: str = Field(..., min_length=1, description="New system instructions for the AI")
