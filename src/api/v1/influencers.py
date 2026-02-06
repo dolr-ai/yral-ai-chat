@@ -24,6 +24,19 @@ from src.models.responses import (
 router = APIRouter(prefix="/api/v1/influencers", tags=["Influencers"])
 
 
+def _get_user_system_prompt(full_instructions: str | None) -> str | None:
+    """Strip STYLE_PROMPT and MODERATION_PROMPT from instructions"""
+    if not full_instructions:
+        return full_instructions
+    
+    # The order of appending was: user_prompt + \n + STYLE + \n + MODERATION
+    suffix = f"\n{STYLE_PROMPT}\n{MODERATION_PROMPT}"
+    if full_instructions.endswith(suffix):
+        return full_instructions[: -len(suffix)]
+    
+    return full_instructions
+
+
 @router.get(
     "",
     response_model=ListInfluencersResponse,
@@ -69,6 +82,7 @@ async def list_influencers(
             is_active=inf.is_active,
             parent_principal_id=inf.parent_principal_id,
             source=inf.source,
+            system_prompt=_get_user_system_prompt(inf.system_instructions),
             created_at=inf.created_at,
         )
         for inf in influencers
@@ -121,6 +135,7 @@ async def get_influencer(
         is_active=influencer.is_active,
         parent_principal_id=influencer.parent_principal_id,
         source=influencer.source,
+        system_prompt=_get_user_system_prompt(influencer.system_instructions),
         created_at=influencer.created_at,
     )
 
@@ -259,6 +274,7 @@ async def update_system_prompt(
         is_active=updated.is_active,
         parent_principal_id=updated.parent_principal_id,
         source=updated.source,
+        system_prompt=_get_user_system_prompt(updated.system_instructions),
         created_at=updated.created_at,
     )
 
@@ -306,6 +322,7 @@ async def delete_influencer(
         is_active=deleted.is_active,
         parent_principal_id=deleted.parent_principal_id,
         source=deleted.source,
+        system_prompt=_get_user_system_prompt(deleted.system_instructions),
         created_at=deleted.created_at,
     )
 
