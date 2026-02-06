@@ -4,8 +4,6 @@ Tests for influencer endpoints
 
 from datetime import datetime
 
-import pytest
-
 
 def test_list_influencers_default_pagination(client):
     """Test listing influencers with default pagination"""
