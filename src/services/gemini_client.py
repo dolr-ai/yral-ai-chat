@@ -89,7 +89,6 @@ class GeminiClient(BaseAIClient):
         Generate AI response
 
         Args:
-        Args:
             params: LLM generation parameters
         """
         try:
