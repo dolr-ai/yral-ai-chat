@@ -74,3 +74,33 @@ class InfluencerService:
         if created.is_nsfw:
             self.list_nsfw_influencers.invalidate_all()
         return created
+
+    @validate_call
+    async def update_system_prompt(self, influencer_id: str, system_instructions: str) -> AIInfluencer:
+        """Update influencer system prompt and clear caches"""
+        updated = await self.influencer_repo.update_system_prompt(influencer_id, system_instructions)
+        if not updated:
+            raise NotFoundException("Influencer not found")
+        
+        # Clear caches
+        self.get_influencer.invalidate_all()
+        self.list_influencers.invalidate_all()
+        if updated.is_nsfw:
+            self.list_nsfw_influencers.invalidate_all()
+        
+        return updated
+
+    @validate_call
+    async def soft_delete_influencer(self, influencer_id: str) -> AIInfluencer:
+        """Soft delete influencer (mark as discontinued, rename to 'Deleted Bot') and clear caches"""
+        deleted = await self.influencer_repo.soft_delete(influencer_id)
+        if not deleted:
+            raise NotFoundException("Influencer not found")
+        
+        # Clear caches
+        self.get_influencer.invalidate_all()
+        self.list_influencers.invalidate_all()
+        if deleted.is_nsfw:
+            self.list_nsfw_influencers.invalidate_all()
+        
+        return deleted

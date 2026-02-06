@@ -1,14 +1,16 @@
 """AI Influencer endpoints"""
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
+from src.auth.jwt_auth import CurrentUser, get_current_user
 from src.core.dependencies import CharacterGeneratorServiceDep, InfluencerServiceDep
 from src.core.moderation import MODERATION_PROMPT, STYLE_PROMPT
 from src.models.entities import AIInfluencer, InfluencerStatus
 from src.models.requests import (
     CreateInfluencerRequest,
     GeneratePromptRequest,
+    UpdateSystemPromptRequest,
     ValidateMetadataRequest,
 )
 from src.models.responses import (
@@ -207,3 +209,104 @@ async def create_influencer(
         starter_video_prompt=starter_video_prompt,
         created_at=created.created_at,
     )
+
+
+@router.patch(
+    "/{influencer_id}/system-prompt",
+    response_model=InfluencerResponse,
+    operation_id="updateSystemPrompt",
+    summary="Update influencer system prompt",
+    description="Update the system prompt for an AI influencer. Only the bot owner (user whose parent_principal_id matches) can perform this action.",
+    responses={
+        200: {"description": "System prompt updated successfully"},
+        401: {"description": "Unauthorized - Missing or invalid authentication"},
+        403: {"description": "Forbidden - User is not the bot owner"},
+        404: {"description": "Influencer not found"},
+        422: {"description": "Validation error - Invalid request data"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def update_system_prompt(
+    influencer_id: str,
+    request: UpdateSystemPromptRequest,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
+    influencer_service: InfluencerServiceDep = None,
+):
+    """Update an influencer's system prompt (bot owner only)"""
+    # Get the influencer to check ownership
+    influencer = await influencer_service.get_influencer(influencer_id)
+    
+    # Verify the current user is the bot owner
+    if influencer.parent_principal_id != current_user.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the bot owner can update the system prompt",
+        )
+    
+    # Append style and moderation prompts (same as create endpoint)
+    full_system_instructions = f"{request.system_instructions}\n{STYLE_PROMPT}\n{MODERATION_PROMPT}"
+    
+    # Update the system prompt
+    updated = await influencer_service.update_system_prompt(influencer_id, full_system_instructions)
+    
+    return InfluencerResponse(
+        id=updated.id,
+        name=updated.name,
+        display_name=updated.display_name,
+        avatar_url=updated.avatar_url,
+        description=updated.description,
+        category=updated.category,
+        is_active=updated.is_active,
+        parent_principal_id=updated.parent_principal_id,
+        source=updated.source,
+        created_at=updated.created_at,
+    )
+
+
+@router.delete(
+    "/{influencer_id}",
+    response_model=InfluencerResponse,
+    operation_id="deleteInfluencer",
+    summary="Soft delete influencer",
+    description="Soft delete an AI influencer by marking it as discontinued and renaming to 'Deleted Bot'. Only the bot owner (user whose parent_principal_id matches) can perform this action. Chat history is preserved.",
+    responses={
+        200: {"description": "Influencer soft deleted successfully"},
+        401: {"description": "Unauthorized - Missing or invalid authentication"},
+        403: {"description": "Forbidden - User is not the bot owner"},
+        404: {"description": "Influencer not found"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def delete_influencer(
+    influencer_id: str,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
+    influencer_service: InfluencerServiceDep = None,
+):
+    """Soft delete an influencer (bot owner only)"""
+    # Get the influencer to check ownership
+    influencer = await influencer_service.get_influencer(influencer_id)
+    
+    # Verify the current user is the bot owner
+    if influencer.parent_principal_id != current_user.user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the bot owner can delete the influencer",
+        )
+    
+    # Soft delete the influencer
+    deleted = await influencer_service.soft_delete_influencer(influencer_id)
+    
+    return InfluencerResponse(
+        id=deleted.id,
+        name=deleted.name,
+        display_name=deleted.display_name,
+        avatar_url=deleted.avatar_url,
+        description=deleted.description,
+        category=deleted.category,
+        is_active=deleted.is_active,
+        parent_principal_id=deleted.parent_principal_id,
+        source=deleted.source,
+        created_at=deleted.created_at,
+    )
+
+

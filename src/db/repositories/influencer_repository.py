@@ -249,6 +249,66 @@ class InfluencerRepository:
 
         return self._row_to_influencer(row)
 
+    async def update_system_prompt(self, influencer_id: str, system_instructions: str) -> AIInfluencer | None:
+        """Update an influencer's system instructions"""
+        from datetime import UTC, datetime
+
+        query = """
+            UPDATE ai_influencers
+            SET system_instructions = $1,
+                updated_at = $2
+            WHERE id = $3
+            RETURNING
+                id, name, display_name, avatar_url, description,
+                category, system_instructions, personality_traits,
+                initial_greeting, suggested_messages,
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
+        """
+
+        row = await db.fetchone(
+            query,
+            system_instructions,
+            datetime.now(UTC),
+            influencer_id,
+        )
+
+        if not row:
+            return None
+
+        return self._row_to_influencer(row)
+
+    async def soft_delete(self, influencer_id: str) -> AIInfluencer | None:
+        """Soft delete an influencer by marking as discontinued and renaming to 'Deleted Bot'"""
+        from datetime import UTC, datetime
+
+        query = """
+            UPDATE ai_influencers
+            SET is_active = $1,
+                display_name = $2,
+                updated_at = $3
+            WHERE id = $4
+            RETURNING
+                id, name, display_name, avatar_url, description,
+                category, system_instructions, personality_traits,
+                initial_greeting, suggested_messages,
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
+        """
+
+        row = await db.fetchone(
+            query,
+            "discontinued",
+            "Deleted Bot",
+            datetime.now(UTC),
+            influencer_id,
+        )
+
+        if not row:
+            return None
+
+        return self._row_to_influencer(row)
+
     def _row_to_influencer_summary(self, row) -> AIInfluencer:
         """Convert distinct summary row to AIInfluencer (lightweight)"""
         return AIInfluencer(
