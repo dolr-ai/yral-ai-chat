@@ -21,6 +21,7 @@ class InfluencerRepository:
                 is_active, is_nsfw, parent_principal_id,
                 source, created_at, updated_at, metadata
             FROM ai_influencers
+            WHERE is_active != 'discontinued'
             ORDER BY CASE is_active
                 WHEN 'active' THEN 1
                 WHEN 'coming_soon' THEN 2
@@ -61,7 +62,7 @@ class InfluencerRepository:
                 is_active, is_nsfw, parent_principal_id,
                 source, created_at, updated_at, metadata
             FROM ai_influencers
-            WHERE id = $1 AND is_active = 'active'
+            WHERE id = $1
         """
 
         row = await db.fetchone(query, influencer_id)
@@ -77,15 +78,15 @@ class InfluencerRepository:
                 is_active, is_nsfw, parent_principal_id,
                 source, created_at, updated_at, metadata
             FROM ai_influencers
-            WHERE name = $1 AND is_active = 'active'
+            WHERE name = $1 AND is_active != 'discontinued'
         """
 
         row = await db.fetchone(query, name)
         return self._row_to_influencer(row) if row else None
 
     async def count_all(self) -> int:
-        """Count all influencers (both active and inactive)"""
-        query = "SELECT COUNT(*) FROM ai_influencers"
+        """Count all influencers (excluding discontinued ones)"""
+        query = "SELECT COUNT(*) FROM ai_influencers WHERE is_active != 'discontinued'"
         result = await db.fetchval(query)
         return int(result) if result is not None else 0
 
@@ -101,7 +102,7 @@ class InfluencerRepository:
                 COUNT(c.id) as conversation_count
             FROM ai_influencers i
             LEFT JOIN conversations c ON i.id = c.influencer_id
-            WHERE i.id = $1 AND i.is_active = 'active'
+            WHERE i.id = $1 AND i.is_active != 'discontinued'
             GROUP BY i.id
         """
 
