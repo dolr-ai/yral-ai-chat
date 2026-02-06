@@ -3,7 +3,7 @@ Tests for message idempotency
 """
 import uuid
 from unittest.mock import AsyncMock, patch
-
+from src.models.internal import AIResponse  # Import AIResponse here for use in mocks
 
 def test_message_idempotency(client, clean_conversation_id, auth_headers):
     """
@@ -15,7 +15,7 @@ def test_message_idempotency(client, clean_conversation_id, auth_headers):
     
     # Mock AI response to ensure it's predictable
     with patch("src.services.gemini_client.GeminiClient.generate_response", new_callable=AsyncMock) as mock_gen_response:
-        mock_gen_response.return_value = ("I received your idempotent message.", 15)
+        mock_gen_response.return_value = AIResponse(text="I received your idempotent message.", token_count=15)
         
         # 1. Send first request
         response1 = client.post(
@@ -94,7 +94,7 @@ def test_idempotency_without_client_id(client, clean_conversation_id, auth_heade
     message_content = "Same content but no client_id"
     
     with patch("src.services.gemini_client.GeminiClient.generate_response", new_callable=AsyncMock) as mock_gen_response:
-        mock_gen_response.return_value = ("Copy that.", 5)
+        mock_gen_response.return_value = AIResponse(text="Copy that.", token_count=5)
         
         # First send
         response1 = client.post(
