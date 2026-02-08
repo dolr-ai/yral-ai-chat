@@ -164,6 +164,41 @@ class CharacterGeneratorService:
             raise AIServiceException(f"Failed to process character metadata: {e!s}") from e
 
     @validate_call
+    async def generate_initial_greeting(
+        self,
+        display_name: str,
+        system_instructions: str,
+    ) -> tuple[str, list[str]]:
+        """
+        Generate an initial greeting and suggested messages for the character.
+
+        Returns:
+            A tuple of (initial_greeting, suggested_messages)
+        """
+        prompt = (
+            f"Based on the following character description, create an initial greeting and "
+            f"3-4 suggested starter messages for the user. The greeting should be in the character's voice. "
+            f"The output MUST be in JSON format with 'initial_greeting' (string) and 'suggested_messages' (list of strings) keys.\n\n"
+            f"Character: {display_name}\n\n"
+            f"Description:\n{system_instructions}\n\n"
+            f"Respond only with raw JSON."
+        )
+
+        try:
+            params = LLMGenerateParams(
+                user_message=prompt,
+                system_instructions="You are a creative character writer. Focus on Hinglish for the tone.",
+                response_mime_type="application/json",
+            )
+            response = await self.gemini_client.generate_response(params)
+            import json
+            data = json.loads(response.text)
+            return data.get("initial_greeting", f"Hi! I'm {display_name}. Nice to meet you!"), data.get("suggested_messages", [])
+        except Exception as e:
+            logger.error(f"Failed to generate initial greeting: {e}")
+            return f"Hi! I'm {display_name}. How can I help you today?", []
+
+    @validate_call
     async def generate_starter_video_prompt(
         self,
         display_name: str,

@@ -182,7 +182,16 @@ async def create_influencer(
     influencer_service: InfluencerServiceDep,
     character_generator_service: CharacterGeneratorServiceDep,
 ):
-    """Create a new AI influencer"""
+    # Generate starting content if missing
+    initial_greeting = request.initial_greeting
+    suggested_messages = request.suggested_messages
+    if not initial_greeting or not suggested_messages:
+        gen_greeting, gen_suggestions = await character_generator_service.generate_initial_greeting(
+            request.display_name, request.system_instructions
+        )
+        initial_greeting = initial_greeting or gen_greeting
+        suggested_messages = suggested_messages or gen_suggestions
+
     influencer = AIInfluencer(
         id=request.bot_principal_id,
         name=request.name,
@@ -192,8 +201,8 @@ async def create_influencer(
         category=request.category,
         system_instructions=f"{request.system_instructions}\n{STYLE_PROMPT}\n{MODERATION_PROMPT}",
         personality_traits=request.personality_traits,
-        initial_greeting=request.initial_greeting,
-        suggested_messages=request.suggested_messages,
+        initial_greeting=initial_greeting,
+        suggested_messages=suggested_messages,
         is_active=InfluencerStatus.ACTIVE,
         is_nsfw=False,  # Enforce non-NSFW for all new characters
         parent_principal_id=request.parent_principal_id,
@@ -221,6 +230,7 @@ async def create_influencer(
         is_active=created.is_active,
         parent_principal_id=created.parent_principal_id,
         source=created.source,
+        system_prompt=_get_user_system_prompt(created.system_instructions),
         starter_video_prompt=starter_video_prompt,
         created_at=created.created_at,
     )
