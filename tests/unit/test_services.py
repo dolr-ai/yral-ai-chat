@@ -234,7 +234,7 @@ class TestChatService:
 
     @pytest.mark.asyncio
     async def test_create_conversation_works_for_new_users(
-        self, service, mock_repos, sample_influencer, sample_conversation
+        self, service, mock_repos, sample_influencer, sample_conversation, sample_message
     ):
         """
         GIVEN a user who hasn't talked to an influencer yet
@@ -245,7 +245,7 @@ class TestChatService:
         mock_repos["influencer"].get_by_id = AsyncMock(return_value=sample_influencer)
         mock_repos["conversation"].get_existing = AsyncMock(return_value=None)  # No existing
         mock_repos["conversation"].create = AsyncMock(return_value=sample_conversation)
-        mock_repos["message"].create = AsyncMock() # Required for initial greeting
+        mock_repos["message"].create = AsyncMock(return_value=sample_message)
 
         # Step 2: Run the service logic
         conv, is_new = await service.create_conversation("user-456", sample_influencer.id)
