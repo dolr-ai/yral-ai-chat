@@ -51,7 +51,7 @@ async def test_validate_metadata_success_valid(character_service, mock_gemini_cl
     mock_response_json = """
     {
         "is_valid": true,
-        "name": "pirate_bob",
+        "name": "piratebob",
         "display_name": "Pirate Bob",
         "image_prompt": "A cool pirate"
     }
@@ -64,7 +64,7 @@ async def test_validate_metadata_success_valid(character_service, mock_gemini_cl
 
     # Assert
     assert result.is_valid is True
-    assert result.name == "pirate_bob"
+    assert result.name == "piratebob"
     assert result.avatar_url == "https://example.com/avatar.jpg"
     mock_replicate_client.generate_image.assert_called_once()
 

@@ -41,7 +41,7 @@ async def test_validate_metadata_detects_refusal_in_json_field(character_service
     refusal_json = """
     {
         "is_valid": true,
-        "name": "invalid_char",
+        "name": "invalidchar",
         "display_name": "Invalid Character",
         "description": "I cannot create this character as it exploits children."
     }
@@ -61,7 +61,7 @@ async def test_validate_metadata_returns_no_sys_prompt(character_service, mock_g
     valid_json = """
     {
         "is_valid": true,
-        "name": "tech_hero",
+        "name": "techhero",
         "display_name": "Tech Hero",
         "description": "A refined tech expert bio"
     }
