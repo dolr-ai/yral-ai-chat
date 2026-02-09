@@ -14,7 +14,7 @@ async def test_system_prompt_exposure_and_stripping(client, auth_headers):
     create_payload = {
         "bot_principal_id": bot_id,
         "parent_principal_id": "test_user_default",
-        "name": f"prompt_bot_{UUID(int=100)}",
+        "name": f"pbot{UUID(int=100)}",
         "display_name": "Prompt Bot",
         "description": "Test prompt exposure",
         "system_instructions": user_prompt,
@@ -45,7 +45,7 @@ async def test_update_system_prompt_exposure(client, auth_headers):
     create_payload = {
         "bot_principal_id": bot_id,
         "parent_principal_id": "test_user_default",
-        "name": f"update_bot_{UUID(int=101)}",
+        "name": f"ubot{UUID(int=101)}",
         "display_name": "Update Bot",
         "description": "Test update prompt exposure",
         "system_instructions": "Initial prompt",

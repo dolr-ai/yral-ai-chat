@@ -197,7 +197,7 @@ class CreateInfluencerRequest(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    name: str = Field(..., min_length=1, max_length=50, description="Internal name (slug)")
+    name: str = Field(..., min_length=3, max_length=12, description="Internal name (slug) - 3-12 alphanumeric characters")
     display_name: str = Field(..., min_length=1, max_length=100, description="Display name")
     description: str | None = Field(None, max_length=500, description="Short bio")
     system_instructions: str = Field(..., description="System prompts for the AI")
@@ -209,6 +209,14 @@ class CreateInfluencerRequest(BaseModel):
     is_nsfw: bool = Field(default=False, description="Whether the character is NSFW (Ignored: Enforced to False)")
     bot_principal_id: str = Field(..., description="ID of the bot principal (used as primary ID)")
     parent_principal_id: str | None = Field(None, description="ID of the parent principal (user who created it)")
+
+    @field_validator("name")
+    @classmethod
+    def validate_name_alphanumeric(cls, v: str) -> str:
+        """Validate that name is alphanumeric only (3-12 characters)"""
+        if not v.isalnum():
+            raise ValueError("name must contain only alphanumeric characters (letters and numbers)")
+        return v
 
 
 class GenerateImageRequest(BaseModel):

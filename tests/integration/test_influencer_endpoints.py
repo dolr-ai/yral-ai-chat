@@ -173,7 +173,7 @@ def test_update_system_prompt_success(client):
         json={
             "bot_principal_id": "test-bot-123",
             "parent_principal_id": owner_user_id,
-            "name": "test_bot",
+            "name": "testbot1",
             "display_name": "Test Bot",
             "description": "A test bot for system prompt updates",
             "system_instructions": "You are a helpful assistant.",
@@ -195,7 +195,7 @@ def test_update_system_prompt_success(client):
             json={
                 "bot_principal_id": unique_id,
                 "parent_principal_id": owner_user_id,
-                "name": f"test_bot_{int(time.time())}",
+                "name": f"bot{int(time.time()) % 1000000}",
                 "display_name": "Test Bot",
                 "description": "A test bot for system prompt updates",
                 "system_instructions": "You are a helpful assistant.",
@@ -259,7 +259,7 @@ def test_update_system_prompt_forbidden(client):
         json={
             "bot_principal_id": unique_id,
             "parent_principal_id": owner_user_id,
-            "name": f"test_bot_forbidden_{int(time.time())}",
+            "name": f"bot{int(time.time()) % 100000000}",
             "display_name": "Test Bot for Forbidden",
             "description": "A test bot for forbidden access",
             "system_instructions": "You are a helpful assistant.",
@@ -344,7 +344,7 @@ def test_delete_influencer_success(client):
         json={
             "bot_principal_id": unique_id,
             "parent_principal_id": owner_user_id,
-            "name": f"test_bot_delete_{int(time.time())}",
+            "name": f"del{int(time.time()) % 1000000000}",
             "display_name": "Test Bot to Delete",
             "description": "A test bot for deletion",
             "system_instructions": "You are a helpful assistant.",
@@ -402,7 +402,7 @@ def test_delete_influencer_forbidden(client):
         json={
             "bot_principal_id": unique_id,
             "parent_principal_id": owner_user_id,
-            "name": f"test_bot_delete_forbidden_{int(time.time())}",
+            "name": f"delf{int(time.time()) % 100000000}",
             "display_name": "Test Bot for Forbidden Delete",
             "description": "A test bot for forbidden deletion",
             "system_instructions": "You are a helpful assistant.",

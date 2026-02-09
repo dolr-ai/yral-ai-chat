@@ -53,7 +53,7 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     # --- Step 2: Validate & Generate Metadata ---
     mock_metadata = {
         "is_valid": True,
-        "name": "neo_hacker",
+        "name": "neohacker",
         "display_name": "Neo",
         "description": "The One",
         "initial_greeting": "Wake up, Neo.",
@@ -71,7 +71,7 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     assert response.status_code == 200
     data = response.json()
     assert data["is_valid"] is True
-    assert data["name"] == "neo_hacker"
+    assert data["name"] == "neohacker"
     assert data["avatar_url"] == "https://example.com/neo.jpg"
     assert "system_instructions" not in data
 
@@ -94,7 +94,7 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     response = client.post("/api/v1/influencers/create", json=create_req)
     assert response.status_code == 200
     created_data = response.json()
-    assert created_data["name"] == "neo_hacker"
+    assert created_data["name"] == "neohacker"
     assert "starter_video_prompt" in created_data
     assert isinstance(created_data["starter_video_prompt"], str)
     influencer_id = created_data["id"]
