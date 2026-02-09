@@ -14,7 +14,15 @@ from pydantic import validate_call
 from src.core.exceptions import ForbiddenException, NotFoundException
 from src.core.websocket import manager
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
-from src.models.entities import AIInfluencer, Conversation, InfluencerStatus, Message, MessageRole, MessageType
+from src.models.entities import (
+    AIInfluencer,
+    Conversation,
+    InfluencerStatus,
+    LastMessageInfo,
+    Message,
+    MessageRole,
+    MessageType,
+)
 from src.models.internal import LLMGenerateParams, SendMessageParams
 from src.services.gemini_client import GeminiClient
 from src.services.notification_service import notification_service
@@ -65,6 +73,16 @@ class ChatService:
         if existing:
             logger.info(f"Returning existing conversation: {existing.id}")
             existing.influencer = influencer
+            
+            # Populate history and last message for existing conversation
+            # This ensures the frontend gets history immediately when "re-opening" a chat
+            existing.recent_messages = await self.message_repo.get_recent_for_context(
+                conversation_id=UUID(existing.id),
+                limit=10
+            )
+            existing.last_message = await self.conversation_repo._get_last_message(UUID(existing.id))
+            existing.message_count = await self.message_repo.count_by_conversation(UUID(existing.id))
+            
             return existing, False
 
         try:
@@ -77,13 +95,21 @@ class ChatService:
             existing = await self.conversation_repo.get_existing(user_id, influencer_id)
             if existing:
                 existing.influencer = influencer
+                # Populate history for race condition case too
+                existing.recent_messages = await self.message_repo.get_recent_for_context(
+                    conversation_id=UUID(existing.id),
+                    limit=10
+                )
+                existing.last_message = await self.conversation_repo._get_last_message(UUID(existing.id))
+                existing.message_count = await self.message_repo.count_by_conversation(UUID(existing.id))
                 return existing, False
             raise
         logger.info(f"Created new conversation: {conversation.id}")
 
+        greeting_msg = None
         if influencer.initial_greeting:
             logger.info(f"Creating initial greeting for conversation {conversation.id}")
-            await self._save_message(
+            greeting_msg = await self._save_message(
                 conversation_id=conversation.id,
                 role=MessageRole.ASSISTANT,
                 content=influencer.initial_greeting,
@@ -93,6 +119,16 @@ class ChatService:
             logger.info(f"No initial_greeting configured for influencer {influencer.id} ({influencer.display_name})")
 
         conversation.influencer = influencer
+        conversation.recent_messages = [greeting_msg] if greeting_msg else []
+        conversation.message_count = 1 if greeting_msg else 0
+        if greeting_msg:
+            conversation.last_message = LastMessageInfo(
+                content=greeting_msg.content,
+                role=greeting_msg.role,
+                created_at=greeting_msg.created_at,
+                status=greeting_msg.status,
+                is_read=greeting_msg.is_read
+            )
         return conversation, True
 
     async def _transcribe_audio(self, audio_url: str, is_nsfw: bool = False) -> str:
@@ -598,18 +634,6 @@ class ChatService:
                 limit_per_conv=10
             )
             
-            # Map back to conversations
-            for conv in conversations:
-                conv.recent_messages = recent_messages_map.get(conv.id, [])
-
-        # Batch fetch recent messages for all conversations to avoid N+1 queries
-        if conversations:
-            conversation_ids = [UUID(conv.id) for conv in conversations]
-            recent_messages_map = await self.message_repo.get_recent_for_conversations_batch(
-                conversation_ids=conversation_ids,
-                limit_per_conv=10
-            )
-
             # Map back to conversations
             for conv in conversations:
                 conv.recent_messages = recent_messages_map.get(conv.id, [])

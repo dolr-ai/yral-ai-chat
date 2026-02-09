@@ -145,6 +145,35 @@ async def create_conversation(
         influencer_id=request.influencer_id,
     )
 
+    # Batch generate presigned URLs for recent messages
+    recent_messages = []
+    if conversation.recent_messages:
+        all_keys = []
+        if storage_service:
+            for msg in conversation.recent_messages:
+                if msg.media_urls:
+                    for url in msg.media_urls:
+                        if url:
+                            all_keys.append(storage_service.extract_key_from_url(url))
+                if msg.audio_url:
+                    all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
+            
+            presigned_map = {}
+            if all_keys:
+                presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
+            
+            # Sort newest first for UI
+            sorted_messages = sorted(
+                conversation.recent_messages,
+                key=lambda m: m.created_at,
+                reverse=True
+            )
+            
+            recent_messages = [
+                await _convert_message_to_response(msg, storage_service, presigned_map)
+                for msg in sorted_messages
+            ]
+
     return ConversationResponse(
         id=conversation.id,
         user_id=conversation.user_id,
@@ -159,8 +188,8 @@ async def create_conversation(
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        message_count=0,
-        recent_messages=[],
+        message_count=conversation.message_count or 0,
+        recent_messages=recent_messages,
     )
 
 
