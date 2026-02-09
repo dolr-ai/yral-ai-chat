@@ -50,7 +50,7 @@ def test_create_influencer_generates_starting_message(client, mock_gemini, mock_
     )
 
     create_req = {
-        "name": "ai_guru",
+        "name": "aiguru",
         "display_name": "AI Guru",
         "description": "Spiritual guide",
         "system_instructions": "You are a spiritual guide.",
