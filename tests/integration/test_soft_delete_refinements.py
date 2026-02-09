@@ -11,7 +11,7 @@ async def test_discontinued_bot_hidden_from_list(client, auth_headers):
     create_payload = {
         "bot_principal_id": bot_id,
         "parent_principal_id": "test_user_default",
-        "name": f"hbot{UUID(int=1)}",
+        "name": f"hb{UUID(int=1).hex[:8]}",
         "display_name": "Hide Bot",
         "description": "Test hiding",
         "system_instructions": "Test",
@@ -38,7 +38,7 @@ async def test_block_message_to_discontinued_bot(client, auth_headers):
     create_payload = {
         "bot_principal_id": bot_id,
         "parent_principal_id": "test_user_default",
-        "name": f"bbot{UUID(int=1)}",
+        "name": f"bb{UUID(int=1).hex[:8]}",
         "display_name": "Block Bot",
         "description": "Test blocking",
         "system_instructions": "Test",
@@ -72,7 +72,7 @@ async def test_block_image_generation_for_discontinued_bot(client, auth_headers)
     create_payload = {
         "bot_principal_id": bot_id,
         "parent_principal_id": "test_user_default",
-        "name": f"ibot{UUID(int=1)}",
+        "name": f"ib{UUID(int=1).hex[:8]}",
         "display_name": "Img Bot",
         "description": "Test img blocking",
         "system_instructions": "Test",
