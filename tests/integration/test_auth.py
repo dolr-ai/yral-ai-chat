@@ -77,6 +77,28 @@ def test_create_conversation_without_token(client, test_influencer_id):
     assert "Missing authorization header" in data["detail"]
 
 
+def test_create_conversation_with_new_issuer(client, test_influencer_id):
+    """Test creating a conversation with a token from the new expected issuer 'auth.dolr.ai'"""
+    now = int(time.time())
+    payload = {
+        "sub": "test_user_new_issuer",
+        "iss": "https://auth.dolr.ai",
+        "iat": now,
+        "exp": now + 3600,
+    }
+    token = _encode_jwt(payload)
+
+    response = client.post(
+        "/api/v1/chat/conversations",
+        json={"influencer_id": test_influencer_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["user_id"] == "test_user_new_issuer"
+
+
 def test_create_conversation_with_invalid_token_format(client, test_influencer_id):
     """Test creating a conversation with invalid token format"""
     # Missing "Bearer " prefix

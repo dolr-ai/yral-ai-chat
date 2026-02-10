@@ -66,8 +66,8 @@ def decode_jwt(token: str) -> JWTPayload:
         logger.debug(f"Decoded JWT header: {header}")
 
         issuer = payload.get("iss")
-        expected_issuer = "https://auth.yral.com"
-        if issuer != expected_issuer:
+        expected_issuers = ["https://auth.yral.com", "https://auth.dolr.ai"]
+        if issuer not in expected_issuers:
             logger.warning(f"JWT token has invalid issuer: {issuer}")
             _raise_auth_error("Invalid token issuer")
 
