@@ -241,7 +241,7 @@ class TestChatService:
         mock_background = MagicMock()
         
         # Step 3: Run the service
-        await service.send_message(
+        user_msg, assistant_msg, is_duplicate = await service.send_message(
             conversation_id=sample_conversation.id,
             user_id=sample_conversation.user_id,
             content="Hello",
@@ -249,6 +249,7 @@ class TestChatService:
         )
         
         # Step 4: Verify the interaction
+        assert is_duplicate is False
         # We expect the AI to have been called
         service.gemini_client.generate_response.assert_called_once()
         
@@ -256,3 +257,40 @@ class TestChatService:
         mock_background.add_task.assert_called_once()
         # Verify it's calling the memory update internal function
         assert mock_background.add_task.call_args[0][0] == service._update_conversation_memories
+
+    @pytest.mark.asyncio
+    async def test_send_message_deduplicates_by_client_id(self, service, mock_repos, sample_influencer, sample_conversation, sample_message):
+        """
+        GIVEN a client_message_id that already exists in the database
+        WHEN a user sends a message with the same ID
+        THEN the service should return the existing message and reply, and NOT call AI
+        """
+        # Step 1: Mock the repo to find existing message
+        mock_repos["conversation"].get_by_id = AsyncMock(return_value=sample_conversation)
+        mock_repos["influencer"].get_by_id = AsyncMock(return_value=sample_influencer)
+        
+        client_id = "already-sent-123"
+        existing_user_msg = sample_message
+        assistant_reply = MagicMock(spec=sample_message)
+        
+        mock_repos["message"].get_by_client_id = AsyncMock(return_value=existing_user_msg)
+        mock_repos["message"].get_assistant_reply = AsyncMock(return_value=assistant_reply)
+        
+        # Step 2: Ensure AI is NOT called
+        service.gemini_client.generate_response = AsyncMock()
+        
+        # Step 3: Run the service
+        user_msg, assistant_msg, is_duplicate = await service.send_message(
+            conversation_id=sample_conversation.id,
+            user_id=sample_conversation.user_id,
+            content="Hello again",
+            client_message_id=client_id
+        )
+        
+        # Step 4: Verify result
+        assert is_duplicate is True
+        assert user_msg == existing_user_msg
+        assert assistant_msg == assistant_reply
+        service.gemini_client.generate_response.assert_not_called()
+        # Should not save new message
+        assert mock_repos["message"].create.call_count == 0

@@ -198,7 +198,8 @@ class ChatService:
         audio_url: str | None,
         audio_duration_seconds: int | None,
         media_urls: list[str] | None,
-        timings: dict[str, float]
+        timings: dict[str, float],
+        client_message_id: str | None = None
     ) -> tuple[Message, str]:
         """Transcribe (if needed) and save user message"""
         transcribed_content = content
@@ -215,7 +216,8 @@ class ChatService:
             message_type=message_type,
             media_urls=media_urls or [],
             audio_url=audio_url,
-            audio_duration_seconds=audio_duration_seconds
+            audio_duration_seconds=audio_duration_seconds,
+            client_message_id=client_message_id
         )
         timings["save_user_message"] = time.time() - t0
         return user_message, transcribed_content or ""
@@ -299,8 +301,9 @@ class ChatService:
         media_urls: list[str] | None = None,
         audio_url: str | None = None,
         audio_duration_seconds: int | None = None,
-        background_tasks: "BackgroundTasks | None" = None
-    ) -> tuple[Message, Message]:
+        background_tasks: "BackgroundTasks | None" = None,
+        client_message_id: str | None = None
+    ) -> tuple[Message, Message, bool]:
         """Send a message and get AI response"""
         timings: dict[str, float] = {}
         total_start = time.time()
@@ -311,9 +314,21 @@ class ChatService:
         timings["get_context"] = time.time() - t0
         memories = conversation.metadata.get("memories", {})
 
+        # 1.1 Deduplication Check
+        if client_message_id:
+            existing_user_msg = await self.message_repo.get_by_client_id(
+                UUID(conversation_id), client_message_id
+            )
+            if existing_user_msg:
+                logger.info(f"Duplicate message detected: client_message_id={client_message_id}")
+                assistant_reply = await self.message_repo.get_assistant_reply(existing_user_msg.id)
+                if assistant_reply:
+                    return existing_user_msg, assistant_reply, True
+                logger.warning(f"User message exists for {client_message_id} but assistant reply not found. Proceeding with generation.")
+
         # 2. User Message
         user_message, transcribed_payload = await self._prepare_user_message(
-            conversation_id, content, message_type, audio_url, audio_duration_seconds, media_urls, timings
+            conversation_id, content, message_type, audio_url, audio_duration_seconds, media_urls, timings, client_message_id
         )
         logger.info(f"User message saved: {user_message.id}")
 
@@ -359,7 +374,7 @@ class ChatService:
         else:
             await self._update_conversation_memories(*update_args, is_nsfw=influencer.is_nsfw)
 
-        return user_message, assistant_message
+        return user_message, assistant_message, False
 
     async def get_conversation(
         self,
@@ -462,8 +477,20 @@ class ChatService:
         try:
             return await self.message_repo.create(**kwargs)
         except sqlite3.IntegrityError as e:
-            if "foreign key" in str(e).lower():
+            msg = str(e).lower()
+            if "foreign key" in msg:
                 logger.warning(f"Failed to save message: Conversation {conv_id} was deleted during processing.")
                 raise NotFoundException("Conversation no longer exists") from e
+            if "unique" in msg and "client_message_id" in msg:
+                logger.warning(f"Deduplication triggered at DB level for client_message_id: {kwargs.get('client_message_id')}")
+                # This could happen in rare race condition. 
+                # Ideally, get_by_client_id should have caught it, but we handle it here too.
+                # However, repo's create doesn't catch it and return existing, it raises.
+                # Since return type is Message, we'd need to fetch the existing one.
+                existing = await self.message_repo.get_by_client_id(
+                    kwargs["conversation_id"], kwargs["client_message_id"]
+                )
+                if existing:
+                    return existing
             raise
 

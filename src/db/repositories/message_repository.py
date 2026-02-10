@@ -21,7 +21,8 @@ class MessageRepository:
         media_urls: list[str] = None,
         audio_url: str | None = None,
         audio_duration_seconds: int | None = None,
-        token_count: int | None = None
+        token_count: int | None = None,
+        client_message_id: str | None = None
     ) -> Message:
         """Create a new message"""
         message_id = str(uuid.uuid4())
@@ -30,9 +31,10 @@ class MessageRepository:
         query = """
             INSERT INTO messages (
                 id, conversation_id, role, content, message_type,
-                media_urls, audio_url, audio_duration_seconds, token_count
+                media_urls, audio_url, audio_duration_seconds, token_count,
+                client_message_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         """
 
         await db.execute(
@@ -45,7 +47,8 @@ class MessageRepository:
             media_urls_json,
             audio_url,
             audio_duration_seconds,
-            token_count
+            token_count,
+            client_message_id
         )
 
         return await self.get_by_id(UUID(message_id))
@@ -56,12 +59,53 @@ class MessageRepository:
             SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
-                token_count, created_at, metadata
+                token_count, client_message_id, created_at, metadata
             FROM messages
             WHERE id = $1
         """
 
         row = await db.fetchone(query, str(message_id))
+        return self._row_to_message(row) if row else None
+
+    async def get_by_client_id(self, conversation_id: UUID, client_message_id: str) -> Message | None:
+        """Get message by client_message_id in a specific conversation"""
+        query = """
+            SELECT
+                id, conversation_id, role, content, message_type,
+                media_urls, audio_url, audio_duration_seconds,
+                token_count, client_message_id, created_at, metadata
+            FROM messages
+            WHERE conversation_id = $1 AND client_message_id = $2
+        """
+
+        row = await db.fetchone(query, str(conversation_id), client_message_id)
+        return self._row_to_message(row) if row else None
+
+    async def get_assistant_reply(self, message_id: str) -> Message | None:
+        """
+        Get the assistant's reply for a specific user message.
+        Assumes the reply is the first assistant message created after the user message
+        in the same conversation.
+        """
+        msg = await self.get_by_id(UUID(message_id))
+        if not msg:
+            return None
+
+        query = """
+            SELECT
+                id, conversation_id, role, content, message_type,
+                media_urls, audio_url, audio_duration_seconds,
+                token_count, client_message_id, created_at, metadata
+            FROM messages
+            WHERE conversation_id = $1
+              AND role = 'assistant'
+              AND created_at >= $2
+              AND id != $3
+            ORDER BY created_at ASC
+            LIMIT 1
+        """
+
+        row = await db.fetchone(query, str(msg.conversation_id), msg.created_at, str(message_id))
         return self._row_to_message(row) if row else None
 
     async def list_by_conversation(
@@ -78,7 +122,7 @@ class MessageRepository:
             "SELECT "
             "id, conversation_id, role, content, message_type, "
             "media_urls, audio_url, audio_duration_seconds, "
-            "token_count, created_at, metadata "
+            "token_count, client_message_id, created_at, metadata "
             "FROM messages "
             "WHERE conversation_id = $1 "
             "ORDER BY created_at " + order_clause + " "
@@ -98,7 +142,7 @@ class MessageRepository:
             SELECT
                 id, conversation_id, role, content, message_type,
                 media_urls, audio_url, audio_duration_seconds,
-                token_count, created_at, metadata
+                token_count, client_message_id, created_at, metadata
             FROM messages
             WHERE conversation_id = $1
             ORDER BY created_at DESC
@@ -129,7 +173,7 @@ class MessageRepository:
                 SELECT
                     id, conversation_id, role, content, message_type,
                     media_urls, audio_url, audio_duration_seconds,
-                    token_count, created_at, metadata,
+                    token_count, client_message_id, created_at, metadata,
                     ROW_NUMBER() OVER (
                         PARTITION BY conversation_id
                         ORDER BY created_at DESC
@@ -203,6 +247,7 @@ class MessageRepository:
             audio_url=row["audio_url"],
             audio_duration_seconds=row["audio_duration_seconds"],
             token_count=row["token_count"],
+            client_message_id=row.get("client_message_id"),
             created_at=row["created_at"],
             metadata=metadata
         )
