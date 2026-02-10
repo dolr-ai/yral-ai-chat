@@ -187,12 +187,12 @@ jobs:
           LITESTREAM_BUCKET=${{ secrets.LITESTREAM_BUCKET }}
           LITESTREAM_ENDPOINT=${{ secrets.LITESTREAM_ENDPOINT }}
           LITESTREAM_REGION=${{ secrets.LITESTREAM_REGION }}
-
-          # Beszel Monitoring
-          BESZEL_LISTEN_PORT=${{ secrets.BESZEL_LISTEN_PORT || '45876' }}
-          BESZEL_KEY=${{ secrets.BESZEL_KEY }}
-          BESZEL_TOKEN=${{ secrets.BESZEL_TOKEN }}
-          BESZEL_HUB_URL=${{ secrets.BESZEL_HUB_URL || 'https://beszel.yral.com' }}
+          
+          # Beszel Monitoring (Disabled)
+          # BESZEL_LISTEN_PORT=${{ secrets.BESZEL_LISTEN_PORT || '45876' }}
+          # BESZEL_KEY=${{ secrets.BESZEL_KEY }}
+          # BESZEL_TOKEN=${{ secrets.BESZEL_TOKEN }}
+          # BESZEL_HUB_URL=${{ secrets.BESZEL_HUB_URL || 'https://beszel.yral.com' }}
 
           # Sentry Error Tracking & Performance Monitoring
           SENTRY_DSN=${{ secrets.SENTRY_DSN || '' }}
@@ -322,7 +322,8 @@ jobs:
             
             # Step 6: Start auxiliary services
             echo "[INFO] Starting auxiliary services"
-            docker compose -f docker-compose.prod.yml up -d metabase beszel-agent || echo "[WARN] Auxiliary services failed to start"
+            # docker compose -f docker-compose.prod.yml up -d metabase beszel-agent || echo "[WARN] Auxiliary services failed to start"
+            docker compose -f docker-compose.prod.yml up -d metabase || echo "[WARN] Auxiliary services failed to start"
 
             # Step 7: Nginx Management
             echo "[INFO] Reloading nginx"
