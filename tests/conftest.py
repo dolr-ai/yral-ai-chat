@@ -31,10 +31,7 @@ os.environ["DATABASE_POOL_TIMEOUT"] = "10.0"  # Fail fast in tests
 
 # Ensure DATABASE_PATH is always set to a test-specific path to avoid
 # conflicts with production data/locking issues with Docker
-if not os.getenv("TEST_API_URL"):
-    os.environ["DATABASE_PATH"] = ":memory:"
-    # Also set TEST_DATABASE_PATH for consistency with internal logic
-    os.environ["TEST_DATABASE_PATH"] = ":memory:"
+
 
 
 @pytest.fixture(autouse=True)

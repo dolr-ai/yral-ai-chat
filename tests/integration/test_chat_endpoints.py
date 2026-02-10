@@ -2,11 +2,11 @@
 Tests for chat endpoints
 """
 
-import asyncio
-import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 from uuid import UUID
+
+import pytest
 
 from src.db.base import db
 from src.models.internal import AIResponse
@@ -695,7 +695,8 @@ async def test_send_message_with_deleted_conversation_fk_constraint(auth_headers
 
     This is a regression test for the Sentry error: IntegrityError: FOREIGN KEY constraint failed
     """
-    from httpx import AsyncClient, ASGITransport
+    from httpx import ASGITransport, AsyncClient
+
     from src.main import app, lifespan
 
     # Use explicit lifespan management and AsyncClient to ensure DB and test share

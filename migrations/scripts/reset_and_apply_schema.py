@@ -8,10 +8,7 @@ import asyncpg
 from loguru import logger
 from src.config import settings
 
-MIGRATION_FILES = [
-    "SCHEMA_FROM_SQLITE.sql",
-    "004_dashboard_views.sql"
-]
+
 
 
 async def reset_and_apply():
@@ -46,7 +43,8 @@ async def reset_and_apply():
 
     # Apply migrations
     migrations_dir = Path("migrations/postgresql")
-    files_to_apply = [f for f in MIGRATION_FILES if (migrations_dir / f).exists()]
+    files_to_apply = [f.name for f in sorted(migrations_dir.glob("*.sql"))]
+
     
     logger.info(f"Found {len(files_to_apply)} migration files to apply.")
 

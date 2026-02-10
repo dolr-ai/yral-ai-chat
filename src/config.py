@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     port: int = Field(default=8000, ge=1, le=65535, alias="PORT")
 
     # Database Configuration
-    database_type: Literal["sqlite", "postgresql"] = Field(default="sqlite", alias="DATABASE_TYPE")
+    database_type: Literal["sqlite", "postgresql"] = Field(default="postgresql", alias="DATABASE_TYPE")
     
     # SQLite Specific
     database_path: str = Field(default="data/yral_chat.db", alias="DATABASE_PATH")
