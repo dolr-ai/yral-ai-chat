@@ -31,13 +31,14 @@ CVE-2025-58183
 # crypto/x509: golang: Denial of Service due to excessive resource consumption
 CVE-2025-61729
 
-# Litestream v0.3.13 Go stdlib vulnerabilities (Not easily patchable without upgrading)
-# These CVEs are flagged as HIGH but are in the Go runtime of the binary which we must use for stability.
-# The risks are acceptable for our S3 replication usage:
+# Litestream v0.5.7 Go stdlib vulnerabilities (Go 1.24.11)
+# These CVEs are in the Go standard library used to compile Litestream v0.5.7
+# They are NOT exploitable in our usage of Litestream because:
 # - CVE-2025-61726 (net/url): Litestream doesn't parse untrusted URLs from external input
 # - CVE-2025-61728 (archive/zip): Litestream doesn't process untrusted ZIP files
-# - CVE-2025-61730 (crypto/tls): TLS handshake issue not triggered by trusted S3 endpoint
-# - CVE-2025-68121 (crypto/tls): Session resumption issue not triggered by trusted S3 endpoint
+# - CVE-2025-61730 (crypto/tls): TLS handshake issue not triggered by S3 replication
+# - CVE-2025-68121 (crypto/tls): Session resumption issue not triggered by S3 replication
+# Will be resolved when Litestream is rebuilt with Go 1.24.12+ or 1.25.6+
 CVE-2025-61726
 CVE-2025-61728
 CVE-2025-61730
