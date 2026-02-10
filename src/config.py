@@ -18,9 +18,24 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8000, ge=1, le=65535, alias="PORT")
 
+    # Database Configuration
+    database_type: Literal["sqlite", "postgresql"] = Field(default="sqlite", alias="DATABASE_TYPE")
+    
+    # SQLite Specific
     database_path: str = Field(default="data/yral_chat.db", alias="DATABASE_PATH")
+    
+    # PostgreSQL Specific
+    postgres_user: str = Field(default="postgres", alias="POSTGRES_USER")
+    postgres_password: str = Field(default="", alias="POSTGRES_PASSWORD")
+    postgres_host: str = Field(default="localhost", alias="POSTGRES_HOST")
+    postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")
+    postgres_database: str = Field(default="yral_chat", alias="POSTGRES_DATABASE")
+    
+    # Connection Pool Settings
     database_pool_size: int = Field(default=10, ge=1, le=50, alias="DATABASE_POOL_SIZE")
     database_pool_timeout: float = Field(default=60.0, gt=0, alias="DATABASE_POOL_TIMEOUT")
+    postgres_pool_min_size: int = Field(default=5, ge=1, le=20, alias="POSTGRES_POOL_MIN_SIZE")
+    postgres_pool_max_size: int = Field(default=20, ge=1, le=100, alias="POSTGRES_POOL_MAX_SIZE")
 
     jwt_secret_key: str = Field(..., alias="JWT_SECRET_KEY")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
