@@ -33,8 +33,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     && rm -rf /var/lib/apt/lists/*
 
 # Install Litestream
-ARG LITESTREAM_VERSION=v0.5.7
-RUN wget -qO- https://github.com/benbjohnson/litestream/releases/download/${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION#v}-linux-x86_64.tar.gz | \
+ARG LITESTREAM_VERSION=v0.3.13
+RUN wget -qO- https://github.com/benbjohnson/litestream/releases/download/${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-amd64.tar.gz | \
     tar xvz -C /usr/local/bin
 
 # Copy Python dependencies from builder
