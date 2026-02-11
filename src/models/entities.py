@@ -70,6 +70,7 @@ class AIInfluencer(BaseModel):
     metadata: dict[str, object] = Field(default_factory=dict)
 
     conversation_count: int | None = None
+    message_count: int | None = None
 
 
 class Conversation(BaseModel):

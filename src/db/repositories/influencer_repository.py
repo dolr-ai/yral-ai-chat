@@ -114,6 +114,35 @@ class InfluencerRepository:
         influencer.conversation_count = int(row["conversation_count"]) if row["conversation_count"] else 0
         return influencer
 
+    async def list_trending(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
+        """List influencers sorted by total message count (descending)"""
+        query = """
+            SELECT
+                i.id, i.name, i.display_name, i.avatar_url, i.description,
+                i.category, i.system_instructions, i.personality_traits,
+                i.initial_greeting, i.suggested_messages,
+                i.is_active, i.is_nsfw, i.parent_principal_id,
+                i.source, i.created_at, i.updated_at, i.metadata,
+                COUNT(DISTINCT c.id) as conversation_count,
+                COUNT(CASE WHEN m.role = 'user' THEN 1 END) as message_count
+            FROM ai_influencers i
+            LEFT JOIN conversations c ON i.id = c.influencer_id
+            LEFT JOIN messages m ON c.id = m.conversation_id
+            WHERE i.is_active = 'active'
+            GROUP BY i.id
+            ORDER BY message_count DESC, i.created_at DESC
+            LIMIT $1 OFFSET $2
+        """
+
+        rows = await db.fetch(query, limit, offset)
+        influencers = []
+        for row in rows:
+            inf = self._row_to_influencer(row)
+            inf.conversation_count = int(row["conversation_count"]) if row["conversation_count"] else 0
+            inf.message_count = int(row["message_count"]) if row["message_count"] else 0
+            influencers.append(inf)
+        return influencers
+
     def _row_to_influencer(self, row) -> AIInfluencer:
         """Convert database row to AIInfluencer model"""
 

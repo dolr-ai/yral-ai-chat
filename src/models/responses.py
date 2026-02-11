@@ -167,6 +167,8 @@ class InfluencerResponse(BaseModel):
     source: str | None = Field(None, description="Creation source: 'admin-created-influencer' or 'user-created-influencer'")
     system_prompt: str | None = Field(None, description="User-provided original system instructions (excluding forced guardrails)")
     created_at: datetime = Field(..., description="Creation timestamp")
+    conversation_count: int | None = Field(None, description="Total number of conversations")
+    message_count: int | None = Field(None, description="Total number of messages received")
 
 
 class InfluencerCreateResponse(InfluencerResponse):

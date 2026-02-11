@@ -91,6 +91,19 @@ class InfluencerService:
         return updated
 
     @validate_call
+    @cached(ttl=600, key_prefix="trending_influencers")  # Cache for 10 minutes
+    async def list_trending_influencers(
+        self,
+        limit: int = 50,
+        offset: int = 0
+    ) -> tuple[list[AIInfluencer], int]:
+        """List influencers sorted by total message count (cached)"""
+        influencers = await self.influencer_repo.list_trending(limit=limit, offset=offset)
+        # We use a simplified count for trending (all influencers by default or reuse count_all)
+        total = await self.influencer_repo.count_all()
+        return influencers, total
+
+    @validate_call
     async def soft_delete_influencer(self, influencer_id: str) -> AIInfluencer:
         """Soft delete influencer (mark as discontinued, rename to 'Deleted Bot') and clear caches"""
         deleted = await self.influencer_repo.soft_delete(influencer_id)
@@ -100,6 +113,7 @@ class InfluencerService:
         # Clear caches
         self.get_influencer.invalidate_all()
         self.list_influencers.invalidate_all()
+        self.list_trending_influencers.invalidate_all()
         if deleted.is_nsfw:
             self.list_nsfw_influencers.invalidate_all()
         

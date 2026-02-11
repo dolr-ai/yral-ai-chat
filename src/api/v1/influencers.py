@@ -37,6 +37,25 @@ def _get_user_system_prompt(full_instructions: str | None) -> str | None:
     return full_instructions
 
 
+def _map_influencer_response(inf: AIInfluencer) -> InfluencerResponse:
+    """Helper to map AIInfluencer entity to InfluencerResponse model"""
+    return InfluencerResponse(
+        id=inf.id,
+        name=inf.name,
+        display_name=inf.display_name,
+        avatar_url=inf.avatar_url,
+        description=inf.description,
+        category=inf.category,
+        is_active=inf.is_active,
+        parent_principal_id=inf.parent_principal_id,
+        source=inf.source,
+        system_prompt=_get_user_system_prompt(inf.system_instructions),
+        created_at=inf.created_at,
+        conversation_count=inf.conversation_count,
+        message_count=inf.message_count,
+    )
+
+
 @router.get(
     "",
     response_model=ListInfluencersResponse,
@@ -84,6 +103,57 @@ async def list_influencers(
             source=inf.source,
             system_prompt=_get_user_system_prompt(inf.system_instructions),
             created_at=inf.created_at,
+            conversation_count=inf.conversation_count,
+            message_count=inf.message_count,
+        )
+        for inf in influencers
+    ]
+
+    return ListInfluencersResponse(
+        influencers=influencer_responses,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.get(
+    "/trending",
+    response_model=ListInfluencersResponse,
+    operation_id="listTrendingInfluencers",
+    summary="List trending AI influencers",
+    description="Retrieve paginated list of AI influencers sorted by total lifetime message count. Most messaged first.",
+)
+async def list_trending_influencers(
+    limit: int = Query(default=50, ge=1, le=100, description="Number of influencers to return"),
+    offset: int = Query(default=0, ge=0, description="Number of influencers to skip"),
+    influencer_service: InfluencerServiceDep = None,
+    response: Response = None,
+):
+    """List trending influencers sorted by message count"""
+    influencers, total = await influencer_service.list_trending_influencers(
+        limit=limit,
+        offset=offset,
+    )
+
+    # Add cache headers (5 minutes)
+    response.headers["Cache-Control"] = "public, max-age=300"
+
+    influencer_responses = [
+        InfluencerResponse(
+            id=inf.id,
+            name=inf.name,
+            display_name=inf.display_name,
+            avatar_url=inf.avatar_url,
+            description=inf.description,
+            category=inf.category,
+            is_active=inf.is_active,
+            parent_principal_id=inf.parent_principal_id,
+            source=inf.source,
+            system_prompt=_get_user_system_prompt(inf.system_instructions),
+            created_at=inf.created_at,
+            conversation_count=inf.conversation_count,
+            message_count=inf.message_count,
         )
         for inf in influencers
     ]
