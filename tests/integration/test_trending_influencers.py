@@ -1,11 +1,13 @@
-import pytest
 import time
+
+import pytest
+
 from tests.conftest import generate_test_token
+
 
 @pytest.mark.asyncio
 async def test_trending_influencers_sorting(client, auth_headers):
     """Test that influencers are sorted by message count on the trending endpoint"""
-    import time
     unique_suffix = int(time.time() * 10) % 10**8
     
     # 1. Create two bots
@@ -42,16 +44,16 @@ async def test_trending_influencers_sorting(client, auth_headers):
     
     # Bot 1 - 2 messages
     for _ in range(2):
-        resp = client.post(f"/api/v1/chat/conversations/{bots[0]['conv_id']}/messages", 
-                           json={"conversation_id": bots[0]['conv_id'], "content": "hi", "message_type": "text"}, 
-                           headers=bots[0]['headers'])
+        resp = client.post(f"/api/v1/chat/conversations/{bots[0]['conv_id']}/messages",
+                           json={"conversation_id": bots[0]["conv_id"], "content": "hi", "message_type": "text"},
+                           headers=bots[0]["headers"])
         assert resp.status_code == 200
         
     # Bot 2 - 3 messages
     for _ in range(3):
-        resp = client.post(f"/api/v1/chat/conversations/{bots[1]['conv_id']}/messages", 
-                           json={"conversation_id": bots[1]['conv_id'], "content": "hi", "message_type": "text"}, 
-                           headers=bots[1]['headers'])
+        resp = client.post(f"/api/v1/chat/conversations/{bots[1]['conv_id']}/messages",
+                           json={"conversation_id": bots[1]["conv_id"], "content": "hi", "message_type": "text"},
+                           headers=bots[1]["headers"])
         assert resp.status_code == 200
 
     # 3. Get trending list
