@@ -188,6 +188,36 @@ class ListInfluencersResponse(BaseModel):
     offset: int
 
 
+class TrendingInfluencerResponse(BaseModel):
+    """Trending AI Influencer response model (Strict)"""
+
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
+
+    id: str = Field(..., description="Unique identifier for the influencer (UUID or IC Principal)")
+    name: str = Field(..., description="URL-friendly username")
+    display_name: str = Field(..., description="Display name")
+    avatar_url: str | None = Field(None, description="Profile picture URL")
+    description: str | None = Field(None, description="Bio/description of the influencer")
+    category: str | None = Field(None, description="Category/expertise area")
+    is_active: InfluencerStatus = Field(
+        ..., description="Influencer status: 'active', 'coming_soon', or 'discontinued'"
+    )
+    created_at: datetime = Field(..., description="Creation timestamp")
+    conversation_count: int = Field(0, description="Total number of conversations")
+    message_count: int = Field(0, description="Total number of messages received")
+
+
+class ListTrendingInfluencersResponse(BaseModel):
+    """Response for listing trending influencers"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    influencers: list[TrendingInfluencerResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 class ServiceHealth(BaseModel):
     """Health status of a service"""
 
