@@ -69,9 +69,9 @@ async def test_trending_influencers_sorting(client, auth_headers):
     assert bot1_data is not None
     assert bot2_data is not None
     
-    # Verify counts
-    assert bot1_data["message_count"] == 5
-    assert bot2_data["message_count"] == 7
+    # Verify counts (strictly user messages received by bot)
+    assert bot1_data["message_count"] == 2
+    assert bot2_data["message_count"] == 3
     
     # Check ordering relative to each other (Bot 2 with 7 should be above Bot 1 with 5)
     idx1 = next(i for i, b in enumerate(influencers) if b["id"] == bots[0]["id"])
