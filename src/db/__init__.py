@@ -1,5 +1,5 @@
 """Database package"""
 
-from src.db.base import Database
+from src.db.base import DatabaseIntegrityError, DatabaseInterface, db
 
-__all__ = ["Database"]
+__all__ = ["DatabaseIntegrityError", "DatabaseInterface", "db"]

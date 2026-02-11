@@ -79,7 +79,7 @@ class ConversationRepository:
                         SELECT COUNT(*)
                         FROM messages m2
                         WHERE m2.conversation_id = c.id
-                        AND m2.is_read = 0
+                        AND m2.is_read = FALSE
                         AND m2.role = 'assistant'
                     ) as unread_count
                 FROM conversations c
@@ -102,7 +102,7 @@ class ConversationRepository:
                         SELECT COUNT(*)
                         FROM messages m2
                         WHERE m2.conversation_id = c.id
-                        AND m2.is_read = 0
+                        AND m2.is_read = FALSE
                         AND m2.role = 'assistant'
                     ) as unread_count
                 FROM conversations c

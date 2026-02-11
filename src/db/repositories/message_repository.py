@@ -203,8 +203,8 @@ class MessageRepository:
         """Mark all messages in a conversation as read"""
         query = """
             UPDATE messages
-            SET is_read = 1, status = 'read'
-            WHERE conversation_id = $1 AND is_read = 0 AND role = 'assistant'
+            SET is_read = TRUE, status = 'read'
+            WHERE conversation_id = $1 AND is_read = FALSE AND role = 'assistant'
         """
         await db.execute(query, str(conversation_id))
     async def count_by_conversation(self, conversation_id: UUID) -> int:

@@ -156,7 +156,7 @@ class TestRestoreLogic:
     def test_restore_flags_exist(self):
         """Verify that litestream restore supports required flags"""
         try:
-            result = subprocess.run(  # noqa: S603
+            result = subprocess.run(
                 ["litestream", "restore", "--help"],  # noqa: S607
                 capture_output=True,
                 text=True,

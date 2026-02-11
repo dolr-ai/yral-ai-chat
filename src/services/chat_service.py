@@ -2,7 +2,6 @@
 Chat service - Business logic for conversations and messages
 """
 
-import sqlite3
 import time
 from datetime import UTC, datetime
 from uuid import UUID
@@ -13,6 +12,7 @@ from pydantic import validate_call
 
 from src.core.exceptions import ForbiddenException, NotFoundException
 from src.core.websocket import manager
+from src.db.base import DatabaseIntegrityError
 from src.db.repositories import ConversationRepository, InfluencerRepository, MessageRepository
 from src.models.entities import (
     AIInfluencer,
@@ -87,7 +87,7 @@ class ChatService:
 
         try:
             conversation = await self.conversation_repo.create(user_id, influencer_id)
-        except sqlite3.IntegrityError:
+        except DatabaseIntegrityError:
             logger.warning(
                 f"Race condition detected creating conversation for user {user_id} "
                 f"and influencer {influencer_id}. Retrying fetch."
@@ -705,7 +705,7 @@ class ChatService:
 
         try:
             return await self.message_repo.create(**kwargs)
-        except sqlite3.IntegrityError as e:
+        except DatabaseIntegrityError as e:
             msg = str(e).lower()
             if "foreign key" in msg:
                 logger.warning(f"Failed to save message: Conversation {conv_id} was deleted during processing.")
