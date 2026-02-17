@@ -59,7 +59,7 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> 
     Json(StatusResponse {
         service: state.settings.app_name.clone(),
         version: state.settings.app_version.clone(),
-        environment: state.settings.environment.as_str().to_string(),
+        environment: "production".to_string(),
         uptime_seconds: uptime,
         database: DatabaseStats {
             connected: true,

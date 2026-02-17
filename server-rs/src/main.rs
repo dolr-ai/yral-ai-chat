@@ -33,7 +33,6 @@ async fn main() {
     tracing::info!(
         app = %settings.app_name,
         version = %settings.app_version,
-        environment = %settings.environment.as_str(),
         "Starting server"
     );
 
@@ -49,10 +48,9 @@ async fn main() {
         "../migrations/sqlite"
     };
 
-    if let Err(e) = db::migrations::run_migrations(&database.pool, migrations_dir).await {
-        tracing::error!(error = %e, "Failed to run migrations");
-        std::process::exit(1);
-    }
+    db::migrations::run_migrations(&database.pool, migrations_dir)
+        .await
+        .expect("Failed to run migrations");
 
     // Build app state
     let state = Arc::new(AppState {
