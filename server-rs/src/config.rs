@@ -198,10 +198,12 @@ impl Settings {
             .collect()
     }
 
+    #[inline]
     pub fn max_image_size_bytes(&self) -> u64 {
         self.max_image_size_mb as u64 * 1024 * 1024
     }
 
+    #[inline]
     pub fn max_audio_size_bytes(&self) -> u64 {
         self.max_audio_size_mb as u64 * 1024 * 1024
     }
