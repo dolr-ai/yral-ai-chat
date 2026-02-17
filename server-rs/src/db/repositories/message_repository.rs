@@ -23,6 +23,34 @@ struct MessageRow {
     metadata: String,
 }
 
+impl From<MessageRow> for Message {
+    fn from(row: MessageRow) -> Self {
+        let media_urls: Vec<String> = serde_json::from_str(&row.media_urls).unwrap_or_default();
+        let metadata: serde_json::Value = serde_json::from_str(&row.metadata)
+            .unwrap_or(serde_json::Value::Object(Default::default()));
+        let role = MessageRole::from_str(&row.role).unwrap_or(MessageRole::User);
+        let message_type = MessageType::from_str(&row.message_type).unwrap_or(MessageType::Text);
+        let created_at =
+            chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
+                .unwrap_or_default();
+
+        Self {
+            id: row.id,
+            conversation_id: row.conversation_id,
+            role,
+            content: row.content,
+            message_type,
+            media_urls,
+            audio_url: row.audio_url,
+            audio_duration_seconds: row.audio_duration_seconds,
+            token_count: row.token_count,
+            client_message_id: row.client_message_id,
+            created_at,
+            metadata,
+        }
+    }
+}
+
 impl MessageRepository {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -79,7 +107,7 @@ impl MessageRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(row_to_message))
+        Ok(row.map(Message::from))
     }
 
     pub async fn get_by_client_id(
@@ -99,7 +127,7 @@ impl MessageRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(row_to_message))
+        Ok(row.map(Message::from))
     }
 
     pub async fn get_assistant_reply(
@@ -129,7 +157,7 @@ impl MessageRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(row_to_message))
+        Ok(row.map(Message::from))
     }
 
     pub async fn list_by_conversation(
@@ -157,7 +185,7 @@ impl MessageRepository {
             .fetch_all(&self.pool)
             .await?;
 
-        Ok(rows.into_iter().map(row_to_message).collect())
+        Ok(rows.into_iter().map(Message::from).collect())
     }
 
     pub async fn get_recent_for_context(
@@ -179,7 +207,7 @@ impl MessageRepository {
         .fetch_all(&self.pool)
         .await?;
 
-        let mut messages: Vec<Message> = rows.into_iter().map(row_to_message).collect();
+        let mut messages: Vec<Message> = rows.into_iter().map(Message::from).collect();
         messages.reverse(); // oldest first for context
         Ok(messages)
     }
@@ -230,7 +258,7 @@ impl MessageRepository {
 
         for row in rows {
             let conv_id = row.conversation_id.clone();
-            let msg = row_to_message(row);
+            let msg = Message::from(row);
             if let Some(messages) = result.get_mut(&conv_id) {
                 messages.push(msg);
             }
@@ -270,31 +298,5 @@ impl MessageRepository {
         }
 
         Ok(count.0)
-    }
-}
-
-fn row_to_message(row: MessageRow) -> Message {
-    let media_urls: Vec<String> = serde_json::from_str(&row.media_urls).unwrap_or_default();
-    let metadata: serde_json::Value =
-        serde_json::from_str(&row.metadata).unwrap_or(serde_json::Value::Object(Default::default()));
-    let role = MessageRole::from_str(&row.role).unwrap_or(MessageRole::User);
-    let message_type = MessageType::from_str(&row.message_type).unwrap_or(MessageType::Text);
-    let created_at =
-        chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
-            .unwrap_or_default();
-
-    Message {
-        id: row.id,
-        conversation_id: row.conversation_id,
-        role,
-        content: row.content,
-        message_type,
-        media_urls,
-        audio_url: row.audio_url,
-        audio_duration_seconds: row.audio_duration_seconds,
-        token_count: row.token_count,
-        client_message_id: row.client_message_id,
-        created_at,
-        metadata,
     }
 }

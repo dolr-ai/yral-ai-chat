@@ -45,6 +45,71 @@ struct InfluencerWithCountRow {
     conversation_count: i64,
 }
 
+impl From<InfluencerRow> for AIInfluencer {
+    fn from(row: InfluencerRow) -> Self {
+        let personality_traits: serde_json::Value =
+            serde_json::from_str(&row.personality_traits)
+                .unwrap_or(serde_json::Value::Object(Default::default()));
+
+        let suggested_messages: Vec<String> =
+            serde_json::from_str(&row.suggested_messages).unwrap_or_default();
+
+        let metadata: serde_json::Value =
+            serde_json::from_str(&row.metadata)
+                .unwrap_or(serde_json::Value::Object(Default::default()));
+
+        let created_at =
+            chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
+                .unwrap_or_default();
+        let updated_at =
+            chrono::NaiveDateTime::parse_from_str(&row.updated_at, "%Y-%m-%d %H:%M:%S")
+                .unwrap_or_default();
+
+        Self {
+            id: row.id,
+            name: row.name,
+            display_name: row.display_name,
+            avatar_url: row.avatar_url,
+            description: row.description,
+            category: row.category,
+            system_instructions: row.system_instructions,
+            personality_traits,
+            initial_greeting: row.initial_greeting,
+            suggested_messages,
+            is_active: InfluencerStatus::from_str(&row.is_active),
+            is_nsfw: row.is_nsfw != 0,
+            created_at,
+            updated_at,
+            metadata,
+            conversation_count: None,
+        }
+    }
+}
+
+impl From<InfluencerWithCountRow> for AIInfluencer {
+    fn from(row: InfluencerWithCountRow) -> Self {
+        let mut influencer = AIInfluencer::from(InfluencerRow {
+            id: row.id,
+            name: row.name,
+            display_name: row.display_name,
+            avatar_url: row.avatar_url,
+            description: row.description,
+            category: row.category,
+            system_instructions: row.system_instructions,
+            personality_traits: row.personality_traits,
+            initial_greeting: row.initial_greeting,
+            suggested_messages: row.suggested_messages,
+            is_active: row.is_active,
+            is_nsfw: row.is_nsfw,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            metadata: row.metadata,
+        });
+        influencer.conversation_count = Some(row.conversation_count);
+        influencer
+    }
+}
+
 impl InfluencerRepository {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -73,7 +138,7 @@ impl InfluencerRepository {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(row_to_influencer).collect())
+        Ok(rows.into_iter().map(AIInfluencer::from).collect())
     }
 
     pub async fn get_by_id(&self, influencer_id: &str) -> Result<Option<AIInfluencer>, sqlx::Error> {
@@ -89,7 +154,7 @@ impl InfluencerRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(row_to_influencer))
+        Ok(row.map(AIInfluencer::from))
     }
 
     pub async fn get_with_conversation_count(
@@ -111,27 +176,7 @@ impl InfluencerRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|r| {
-            let mut inf = row_to_influencer(InfluencerRow {
-                id: r.id,
-                name: r.name,
-                display_name: r.display_name,
-                avatar_url: r.avatar_url,
-                description: r.description,
-                category: r.category,
-                system_instructions: r.system_instructions,
-                personality_traits: r.personality_traits,
-                initial_greeting: r.initial_greeting,
-                suggested_messages: r.suggested_messages,
-                is_active: r.is_active,
-                is_nsfw: r.is_nsfw,
-                created_at: r.created_at,
-                updated_at: r.updated_at,
-                metadata: r.metadata,
-            });
-            inf.conversation_count = Some(r.conversation_count);
-            inf
-        }))
+        Ok(row.map(AIInfluencer::from))
     }
 
     pub async fn count_all(&self) -> Result<i64, sqlx::Error> {
@@ -148,40 +193,5 @@ impl InfluencerRepository {
                 .fetch_optional(&self.pool)
                 .await?;
         Ok(result.map(|r| r.0 != 0).unwrap_or(false))
-    }
-}
-
-fn row_to_influencer(row: InfluencerRow) -> AIInfluencer {
-    let personality_traits: serde_json::Value =
-        serde_json::from_str(&row.personality_traits).unwrap_or(serde_json::Value::Object(Default::default()));
-
-    let suggested_messages: Vec<String> =
-        serde_json::from_str(&row.suggested_messages).unwrap_or_default();
-
-    let metadata: serde_json::Value =
-        serde_json::from_str(&row.metadata).unwrap_or(serde_json::Value::Object(Default::default()));
-
-    let created_at = chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
-        .unwrap_or_default();
-    let updated_at = chrono::NaiveDateTime::parse_from_str(&row.updated_at, "%Y-%m-%d %H:%M:%S")
-        .unwrap_or_default();
-
-    AIInfluencer {
-        id: row.id,
-        name: row.name,
-        display_name: row.display_name,
-        avatar_url: row.avatar_url,
-        description: row.description,
-        category: row.category,
-        system_instructions: row.system_instructions,
-        personality_traits,
-        initial_greeting: row.initial_greeting,
-        suggested_messages,
-        is_active: InfluencerStatus::from_str(&row.is_active),
-        is_nsfw: row.is_nsfw != 0,
-        created_at,
-        updated_at,
-        metadata,
-        conversation_count: None,
     }
 }

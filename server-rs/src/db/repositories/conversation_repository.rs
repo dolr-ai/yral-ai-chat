@@ -49,6 +49,90 @@ struct LastMessageRow {
     created_at: String,
 }
 
+impl From<ConversationRow> for Conversation {
+    fn from(row: ConversationRow) -> Self {
+        let metadata: serde_json::Value = serde_json::from_str(&row.metadata)
+            .unwrap_or(serde_json::Value::Object(Default::default()));
+
+        let created_at =
+            chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
+                .unwrap_or_default();
+        let updated_at =
+            chrono::NaiveDateTime::parse_from_str(&row.updated_at, "%Y-%m-%d %H:%M:%S")
+                .unwrap_or_default();
+
+        let suggested_messages: Vec<String> =
+            serde_json::from_str(&row.suggested_messages).unwrap_or_default();
+
+        let influencer = AIInfluencer {
+            id: row.inf_id,
+            name: row.name,
+            display_name: row.display_name,
+            avatar_url: row.avatar_url,
+            description: None,
+            category: None,
+            system_instructions: String::new(),
+            personality_traits: serde_json::Value::Object(Default::default()),
+            initial_greeting: None,
+            suggested_messages,
+            is_active: InfluencerStatus::Active,
+            is_nsfw: false,
+            created_at,
+            updated_at,
+            metadata: serde_json::Value::Object(Default::default()),
+            conversation_count: None,
+        };
+
+        Self {
+            id: row.id,
+            user_id: row.user_id,
+            influencer_id: row.influencer_id,
+            created_at,
+            updated_at,
+            metadata,
+            influencer: Some(influencer),
+            message_count: None,
+            last_message: None,
+            recent_messages: None,
+        }
+    }
+}
+
+impl From<ConversationWithCountRow> for Conversation {
+    fn from(row: ConversationWithCountRow) -> Self {
+        let mut conv = Conversation::from(ConversationRow {
+            id: row.id,
+            user_id: row.user_id,
+            influencer_id: row.influencer_id,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            metadata: row.metadata,
+            inf_id: row.inf_id,
+            name: row.name,
+            display_name: row.display_name,
+            avatar_url: row.avatar_url,
+            suggested_messages: row.suggested_messages,
+        });
+        conv.message_count = Some(row.message_count);
+        conv
+    }
+}
+
+impl From<LastMessageRow> for LastMessageInfo {
+    fn from(row: LastMessageRow) -> Self {
+        let role = MessageRole::from_str(&row.role).unwrap_or(MessageRole::User);
+        let created_at =
+            chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
+                .unwrap_or_default();
+
+        Self {
+            content: row.content,
+            role,
+            created_at,
+        }
+    }
+}
+
 impl ConversationRepository {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -87,7 +171,7 @@ impl ConversationRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(row_to_conversation))
+        Ok(row.map(Conversation::from))
     }
 
     pub async fn get_existing(
@@ -107,7 +191,7 @@ impl ConversationRepository {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(row_to_conversation))
+        Ok(row.map(Conversation::from))
     }
 
     pub async fn list_by_user(
@@ -156,26 +240,8 @@ impl ConversationRepository {
             .await?
         };
 
-        let mut conversations: Vec<Conversation> = rows
-            .into_iter()
-            .map(|r| {
-                let mut conv = row_to_conversation(ConversationRow {
-                    id: r.id,
-                    user_id: r.user_id,
-                    influencer_id: r.influencer_id,
-                    created_at: r.created_at,
-                    updated_at: r.updated_at,
-                    metadata: r.metadata,
-                    inf_id: r.inf_id,
-                    name: r.name,
-                    display_name: r.display_name,
-                    avatar_url: r.avatar_url,
-                    suggested_messages: r.suggested_messages,
-                });
-                conv.message_count = Some(r.message_count);
-                conv
-            })
-            .collect();
+        let mut conversations: Vec<Conversation> =
+            rows.into_iter().map(Conversation::from).collect();
 
         // Batch fetch last messages
         if !conversations.is_empty() {
@@ -229,7 +295,6 @@ impl ConversationRepository {
             return Ok(std::collections::HashMap::new());
         }
 
-        // Build placeholders dynamically
         let placeholders: Vec<&str> = conversation_ids.iter().map(|_| "?").collect();
         let sql = format!(
             "SELECT m1.conversation_id, m1.content, m1.role, m1.created_at
@@ -253,68 +318,10 @@ impl ConversationRepository {
 
         let mut result = std::collections::HashMap::new();
         for row in rows {
-            let role = MessageRole::from_str(&row.role).unwrap_or(MessageRole::User);
-            let created_at =
-                chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
-                    .unwrap_or_default();
-
-            result.insert(
-                row.conversation_id,
-                LastMessageInfo {
-                    content: row.content,
-                    role,
-                    created_at,
-                },
-            );
+            let conv_id = row.conversation_id.clone();
+            result.insert(conv_id, LastMessageInfo::from(row));
         }
 
         Ok(result)
-    }
-}
-
-fn row_to_conversation(row: ConversationRow) -> Conversation {
-    let metadata: serde_json::Value =
-        serde_json::from_str(&row.metadata).unwrap_or(serde_json::Value::Object(Default::default()));
-
-    let created_at =
-        chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
-            .unwrap_or_default();
-    let updated_at =
-        chrono::NaiveDateTime::parse_from_str(&row.updated_at, "%Y-%m-%d %H:%M:%S")
-            .unwrap_or_default();
-
-    let suggested_messages: Vec<String> =
-        serde_json::from_str(&row.suggested_messages).unwrap_or_default();
-
-    let influencer = AIInfluencer {
-        id: row.inf_id,
-        name: row.name,
-        display_name: row.display_name,
-        avatar_url: row.avatar_url,
-        description: None,
-        category: None,
-        system_instructions: String::new(),
-        personality_traits: serde_json::Value::Object(Default::default()),
-        initial_greeting: None,
-        suggested_messages,
-        is_active: InfluencerStatus::Active,
-        is_nsfw: false,
-        created_at,
-        updated_at,
-        metadata: serde_json::Value::Object(Default::default()),
-        conversation_count: None,
-    };
-
-    Conversation {
-        id: row.id,
-        user_id: row.user_id,
-        influencer_id: row.influencer_id,
-        created_at,
-        updated_at,
-        metadata,
-        influencer: Some(influencer),
-        message_count: None,
-        last_message: None,
-        recent_messages: None,
     }
 }
