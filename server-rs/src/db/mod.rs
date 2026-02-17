@@ -1,9 +1,9 @@
-pub mod migrations;
 pub mod repositories;
 
 use std::path::Path;
 use std::time::Instant;
 
+use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{ConnectOptions, SqlitePool};
 
@@ -98,6 +98,21 @@ pub struct HealthCheckResult {
     pub latency_ms: Option<i64>,
     pub error: Option<String>,
     pub size_mb: f64,
+}
+
+pub async fn run_migrations(pool: &SqlitePool, migrations_dir: &str) -> Result<(), sqlx::Error> {
+    let path = Path::new(migrations_dir);
+
+    if !path.exists() {
+        tracing::warn!(path = %migrations_dir, "Migrations directory not found, skipping");
+        return Ok(());
+    }
+
+    let migrator = Migrator::new(path).await?;
+    migrator.run(pool).await?;
+
+    tracing::info!("Migrations applied successfully");
+    Ok(())
 }
 
 fn resolve_db_path(db_path: &str) -> String {

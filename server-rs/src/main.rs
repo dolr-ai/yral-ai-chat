@@ -48,7 +48,7 @@ async fn main() {
         "../migrations/sqlite"
     };
 
-    db::migrations::run_migrations(&database.pool, migrations_dir)
+    db::run_migrations(&database.pool, migrations_dir)
         .await
         .expect("Failed to run migrations");
 
