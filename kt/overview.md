@@ -23,18 +23,19 @@ graph TD
         API --> Service[Chat/Influencer Services]
         Service --> Repos[Data Repositories]
     end
-    
+
     subgraph "External Services"
         Service -->|API| Gemini[Google Gemini AI]
         Service -->|API| OpenRouter[OpenRouter (NSFW)]
         Service -->|API| Replicate[Replicate (Img Gen)]
-        Service <-->|S3 API| Storage[Object Storage (S3)]
+        Service <-->|S3 API| Storage[Object Storage (Storj)]
     end
     
     subgraph "Data Layer"
         Repos --> SQLite[(SQLite DB)]
-        Litestream[Litestream Sidecar] -->|Replicate| Storage
+        Litestream[Litestream Sidecar] -->|Replicate| Backup[Cloud Backup (Hetzner)]
     end
+
 ```
 
 ## Tech Stack
@@ -43,14 +44,14 @@ graph TD
 | :--- | :--- | :--- |
 | **Framework** | FastAPI | High-performance async Python web framework. |
 | **Database** | SQLite + aiosqlite | Lightweight, serverless relational database. |
-| **Replication** | Litestream | Real-time streaming replication to S3 for disaster recovery. |
-| **AI Model** | Google Gemini 1.5 Flash | Primary LLM for chat and vision. |
+| **Replication** | Litestream | Real-time streaming replication to **Hetzner S3** for disaster recovery. |
+| **AI Model** | Google Gemini 2.5 Flash | Primary LLM for chat and vision. |
 | **Auth** | PyJWT | Stateless JWT authentication. |
-| **Storage** | S3-compatible | Used for media uploads and database backups. |
+| **Storage** | S3-compatible | **Storj** used for media uploads and object backups. |
 
 ## Project Structure
 
-```
+```bash
 yral-ai-chat/
 ├── src/
 │   ├── api/            # API Route handlers (v1, v2)
@@ -63,4 +64,5 @@ yral-ai-chat/
 ├── scripts/            # Utility scripts (deploy, migrate)
 ├── tests/              # Pytest suite
 └── docker-compose.*    # Docker orchestration
+
 ```

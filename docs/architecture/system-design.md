@@ -6,45 +6,46 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 
 ## Architecture Diagram
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Client Applications                      │
-│                     (Web, Mobile, Desktop)                       │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │ HTTPS/REST
-┌───────────────────────────▼─────────────────────────────────────┐
-│                      FastAPI Application                         │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                      Middleware Layer                     │  │
-│  │  - CORS  - Rate Limiter  - Logging  - Metrics           │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                     API Routes (v1)                       │  │
-│  │  - Chat  - Influencers  - Media  - Health               │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                    Service Layer                          │  │
-│  │  - ChatService  - InfluencerService  - StorageService    │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                  Repository Layer                         │  │
-│  │  - ConversationRepo  - MessageRepo  - InfluencerRepo     │  │
-│  └──────────────────────────────────────────────────────────┘  │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-        ┌───────────────────┼───────────────────┐
-        │                   │                   │
-┌───────▼────────┐  ┌──────▼──────┐  ┌────────▼────────┐
-│  SQLite + Pool │  │ Gemini API  │  │  S3 Storage     │
-│  + Litestream  │  │  (AI Model) │  │  (Media Files)  │
-└────────────────┘  └─────────────┘  └─────────────────┘
-        │
-        │ Continuous Replication
-        ▼
-┌────────────────┐
-│  S3 Backup     │
-│  (Litestream)  │
-└────────────────┘
+```mermaid
+graph TD
+    subgraph Clients
+        Client[Client Applications<br/>Web, Mobile, Desktop]
+    end
+
+    subgraph "Edge Layer"
+        Nginx[Nginx Reverse Proxy<br/>HTTPS Termination]
+    end
+
+    subgraph "FastAPI Application"
+        direction TB
+        Middleware[Middleware Layer<br/>CORS, Rate Limiting, Logging]
+        Routes[API Routes v1/v2<br/>Chat, Influencer, Media]
+        Services[Service Layer<br/>ChatService, GeminiClient]
+        Repos[Repository Layer<br/>DB Access]
+        
+        Middleware --> Routes --> Services --> Repos
+    end
+
+    subgraph "Infrastructure"
+        DB[(SQLite DB)]
+        S3[Storj Storage<br/>Media Files]
+        Gemini[Google Gemini API<br/>Gemini 2.5 Flash]
+    end
+
+    subgraph "Backup & Persistence"
+        Litestream[Litestream<br/>WAL Cont. Replication]
+        Hetzner[Hetzner Backup Bucket]
+    end
+
+    Client <-->|HTTPS/WSS| Nginx
+    Nginx <-->|HTTP| Middleware
+    
+    Repos <--> DB
+    Services <--> Gemini
+    Services <-->|Upload/Download| S3
+    
+    DB <--> Litestream
+    Litestream -->|Stream WAL| Hetzner
 ```
 
 ## Core Components
@@ -52,12 +53,14 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 ### 1. API Layer (`src/api/v1/`)
 
 **Responsibilities:**
+
 - HTTP request/response handling
 - Request validation
 - Route definition
 - OpenAPI documentation
 
 **Key Files:**
+
 - `chat.py` - Conversation and message endpoints
 - `influencers.py` - AI influencer discovery
 - `media.py` - File upload handling
@@ -66,12 +69,14 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 ### 2. Service Layer (`src/services/`)
 
 **Responsibilities:**
+
 - Business logic
 - External service integration
 - Data transformation
 - Error handling
 
 **Components:**
+
 - **ChatService**: Manages conversations and message flow
 - **InfluencerService**: Handles influencer data and caching
 - **GeminiClient**: Google Gemini AI integration with circuit breaker
@@ -80,11 +85,13 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 ### 3. Repository Layer (`src/db/repositories/`)
 
 **Responsibilities:**
+
 - Database operations
 - Query execution
 - Data access abstraction
 
 **Components:**
+
 - **ConversationRepository**: CRUD for conversations
 - **MessageRepository**: Message storage and retrieval
 - **InfluencerRepository**: Influencer data access
@@ -92,19 +99,19 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 ### 4. Middleware (`src/middleware/`)
 
 **Components:**
+
 - **RateLimitMiddleware**: Token bucket rate limiting
 - **RequestLoggingMiddleware**: Request/response logging with correlation IDs
-- **MetricsMiddleware**: Prometheus metrics collection
 - **APIVersionMiddleware**: API version header injection
 
 ### 5. Core Utilities (`src/core/`)
 
 **Components:**
+
 - **LRUCache**: Bounded in-memory cache with TTL
 - **CircuitBreaker**: Fault tolerance for external services
 - **Dependencies**: Dependency injection
 - **Exceptions**: Custom exception hierarchy
-- **Metrics**: Prometheus metrics definitions
 
 ## Data Flow
 
@@ -116,7 +123,7 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 4. Response to client ← 5. Repository saves ← 6. Gemini generates response
 ```
 
-### Detailed Flow:
+### Detailed Flow
 
 1. **Client Request**
    - HTTP POST to `/api/v1/chat/conversations/{id}/messages`
@@ -135,47 +142,53 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 
 4. **Background Tasks**
    - Log AI token usage
-   - Update metrics
    - Invalidate caches
 
 ## External Services
 
 ### Google Gemini API
+
 - **Purpose**: AI response generation
 - **Model**: gemini-2.5-flash
 - **Features**: Multimodal support (text, images, audio)
 - **Protection**: Circuit breaker pattern
 
-### S3-Compatible Storage (Hetzner)
-- **Purpose**: Media file storage
-- **Supported**: Images, audio files
+### Storj S3-Compatible Storage
+
+- **Purpose**: Media file storage (Images, audio)
+- **Features**: Decentralized, secure S3-compatible storage
 - **Protection**: Circuit breaker pattern
 - **Public access**: Direct URL serving
 
-### Litestream
+### Litestream (Hetzner)
+
 - **Purpose**: SQLite continuous backup
-- **Target**: S3-compatible storage
+- **Target**: Hetzner S3-compatible storage
 - **Features**: Real-time replication, point-in-time recovery
 
 ## Security
 
 ### Authentication
+
 - JWT-based authentication
 - Bearer token in Authorization header
 - Token validation on protected endpoints
 
 ### Rate Limiting
+
 - Token bucket algorithm
 - Per-minute: 60 requests
 - Per-hour: 1000 requests
 - User and IP-based limiting
 
 ### Data Validation
+
 - Pydantic v2 models
 - Request/response validation
 - Field-level constraints
 
 ### CORS
+
 - Configurable allowed origins
 - Credential support
 - Wildcard methods/headers in dev
@@ -183,16 +196,19 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 ## Performance Optimizations
 
 ### Caching
+
 - **LRU Cache**: Bounded in-memory cache (max 1000 items)
 - **TTL**: 5-minute default, configurable per key
 - **Cached Data**: Influencer lists, user metadata
 
 ### Database
+
 - **Connection Pooling**: 1-20 concurrent connections
 - **Async I/O**: Non-blocking database operations
 - **Indexes**: Optimized for common queries
 
 ### Circuit Breakers
+
 - **Gemini API**: Protects against AI service failures
 - **S3 Storage**: Graceful degradation for uploads
 - **States**: Closed, Open, Half-Open
@@ -200,20 +216,15 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 
 ## Monitoring & Observability
 
-### Metrics (Prometheus)
-- Request counts and latencies
-- Error rates by type
-- AI token usage
-- Cache hit rates
-- Circuit breaker states
-
 ### Logging (Loguru)
+
 - Structured JSON logging in production
 - Correlation IDs for request tracing
 - Log levels: DEBUG, INFO, WARNING, ERROR
 - Request/response duration tracking
 
 ### Health Checks
+
 - Database connectivity
 - AI service status
 - Storage service status
@@ -222,16 +233,19 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 ## Scalability Considerations
 
 ### Horizontal Scaling
+
 - Stateless application design
 - Shared SQLite database (read replicas possible)
 - Distributed cache considerations
 
 ### Vertical Scaling
+
 - Connection pool sizing
 - Worker process count
 - Memory limits for cache
 
 ### Database Scaling
+
 - SQLite suitable for moderate load
 - Litestream provides backup/recovery
 - Consider PostgreSQL for high concurrency
@@ -247,11 +261,10 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 - **Validation**: Pydantic v2
 - **Server**: Uvicorn
 - **Logging**: Loguru
-- **Metrics**: Prometheus Client
 
 ## Future Enhancements
 
-- [ ] WebSocket support for real-time messaging
+- [x] WebSocket support for real-time messaging
 - [ ] Redis for distributed caching
 - [ ] Message queueing for background tasks
 - [ ] Multi-region deployment
