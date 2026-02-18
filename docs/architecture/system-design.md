@@ -102,7 +102,6 @@ graph TD
 
 - **RateLimitMiddleware**: Token bucket rate limiting
 - **RequestLoggingMiddleware**: Request/response logging with correlation IDs
-- **MetricsMiddleware**: Prometheus metrics collection
 - **APIVersionMiddleware**: API version header injection
 
 ### 5. Core Utilities (`src/core/`)
@@ -113,7 +112,6 @@ graph TD
 - **CircuitBreaker**: Fault tolerance for external services
 - **Dependencies**: Dependency injection
 - **Exceptions**: Custom exception hierarchy
-- **Metrics**: Prometheus metrics definitions
 
 ## Data Flow
 
@@ -144,7 +142,6 @@ graph TD
 
 4. **Background Tasks**
    - Log AI token usage
-   - Update metrics
    - Invalidate caches
 
 ## External Services
@@ -219,14 +216,6 @@ graph TD
 
 ## Monitoring & Observability
 
-### Metrics (Prometheus)
-
-- Request counts and latencies
-- Error rates by type
-- AI token usage
-- Cache hit rates
-- Circuit breaker states
-
 ### Logging (Loguru)
 
 - Structured JSON logging in production
@@ -272,7 +261,6 @@ graph TD
 - **Validation**: Pydantic v2
 - **Server**: Uvicorn
 - **Logging**: Loguru
-- **Metrics**: Prometheus Client
 
 ## Future Enhancements
 
