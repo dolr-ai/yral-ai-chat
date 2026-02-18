@@ -16,7 +16,10 @@ The heart of the application, managing the conversation flow.
 * **Validation**: Verifies user ownership and influencer status.
 * **Deduplication**: Checks `client_message_id` to prevent double-processing.
 * **User Message**: Saved to DB (transcribed if audio).
-* **Context Building**: Fetches recent history (last 10 messages) + System Instructions.
+* **Context Building**:
+  * **System Prompt**: Combines Influencer `system_instructions` + Internal Moderation/Style prompts.
+  * **History**: Includes last 10 messages for context window efficiency.
+  * **Media**: For multimodal, media is downloaded and passed as bytes/parts to the model.
 * **AI Generation**: Calls `Gemini` (or `OpenRouter` for NSFW).
 * **Broadcasting**: Sends "typing" status via WebSocket.
 * **Response**: AI response saved to DB and returned to user.
@@ -26,8 +29,9 @@ The heart of the application, managing the conversation flow.
 
 ### Gemini Client (`src/services/gemini_client.py`)
 
-* Uses Google's `genai` SDK.
-* **Retry Logic**: Exponential backoff using `tenacity` for resilience.
+* **Model**: Defaults to `gemini-2.5-flash`.
+* **Config**: `temperature`, `max_output_tokens`, and `top_p` are configurable via `src/config.py`.
+* **Retry Logic**: Exponential backoff using `tenacity` for resilience against rate limits (429) and server errors (500).
 * **Vision**: Handles image inputs by sending media URLs to Gemini.
 * **Audio**: Can transcribe audio files via Gemini API.
 

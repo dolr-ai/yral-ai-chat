@@ -2,7 +2,7 @@
 
 ## Overview
 
-The application uses **SQLite** as the primary database with **Litestream** for continuous backup and replication to S3-compatible storage.
+The application uses **SQLite** as the primary database with **Litestream** for continuous backup and replication to **Hetzner S3-compatible storage**.
 
 ## Database Choice Rationale
 
@@ -20,56 +20,51 @@ The application uses **SQLite** as the primary database with **Litestream** for 
 - **Scale**: Best for small to medium workloads
 - **Network**: File-based (not network-distributed)
 
-**Migration Path**: PostgreSQL recommended for high-concurrency production use
+**Migration Path**: While SQLite serves current needs, the codebase is designed with a repository pattern that could be adapted for PostgreSQL if high-concurrency write requirements arise.
 
 ## Schema Design
 
 ### Entity Relationship Diagram
 
-```
-┌─────────────────────┐
-│   ai_influencers    │
-│ ─────────────────── │
-│ • id (PK)          │
-│ • name             │
-│ • display_name     │
-│ • avatar_url       │
-│ • description      │
-│ • category         │
-│ • system_instr...  │
-│ • personality...   │
-│ • is_active        │
-│ • created_at       │
-└──────────┬──────────┘
-           │
-           │ 1:N
-           │
-┌──────────▼──────────┐
-│   conversations     │
-│ ─────────────────── │
-│ • id (PK)          │
-│ • user_id          │
-│ • influencer_id(FK)│
-│ • created_at       │
-│ • updated_at       │
-└──────────┬──────────┘
-           │
-           │ 1:N
-           │
-┌──────────▼──────────┐
-│     messages        │
-│ ─────────────────── │
-│ • id (PK)          │
-│ • conversation_id(FK)│
-│ • role             │
-│ • content          │
-│ • message_type     │
-│ • media_urls       │
-│ • audio_url        │
-│ • audio_duration   │
-│ • token_count      │
-│ • created_at       │
-└─────────────────────┘
+```mermaid
+erDiagram
+    ai_influencers ||--o{ conversations : "has"
+    conversations ||--o{ messages : "contains"
+
+    ai_influencers {
+        string id PK
+        string name
+        string display_name
+        string avatar_url
+        string description
+        string category
+        string system_instructions
+        string personality_traits
+        string is_active
+        datetime created_at
+        datetime updated_at
+    }
+
+    conversations {
+        string id PK
+        string user_id
+        string influencer_id FK
+        datetime created_at
+        datetime updated_at
+    }
+
+    messages {
+        string id PK
+        string conversation_id FK
+        string role
+        string content
+        string message_type
+        json media_urls
+        string audio_url
+        integer audio_duration_seconds
+        integer token_count
+        datetime created_at
+    }
 ```
 
 ## Tables
@@ -95,10 +90,12 @@ CREATE TABLE ai_influencers (
 ```
 
 **Indexes:**
+
 - `idx_influencers_name` on `name`
 - `idx_influencers_active` on `is_active`
 
 **Usage:**
+
 - Read-heavy (rarely modified)
 - Cached in application memory
 - Queried for discovery and conversation creation
@@ -120,11 +117,13 @@ CREATE TABLE conversations (
 ```
 
 **Indexes:**
+
 - `idx_conversations_user` on `user_id`
 - `idx_conversations_influencer` on `influencer_id`
 - `idx_conversations_updated` on `updated_at`
 
 **Usage:**
+
 - Frequent reads for conversation lists
 - Infrequent writes (conversation creation)
 - Updated timestamp on new messages
@@ -150,11 +149,13 @@ CREATE TABLE messages (
 ```
 
 **Indexes:**
+
 - `idx_messages_conversation` on `conversation_id`
 - `idx_messages_created` on `created_at`
 - `idx_messages_role` on `role`
 
 **Usage:**
+
 - High write volume (every message exchange)
 - Frequent reads for message history
 - Paginated queries (LIMIT/OFFSET)
@@ -213,10 +214,10 @@ python scripts/run_migrations.py
 
 ### How Litestream Works
 
-1. **Continuous Replication**: Real-time SQLite WAL streaming
-2. **S3 Upload**: Incremental backups to S3-compatible storage
-3. **Point-in-Time Recovery**: Restore to any point in time
-4. **Automatic**: Runs as background process
+1. **Continuous Replication**: Real-time SQLite WAL streaming using Litestream.
+2. **Hetzner S3 Upload**: Incremental backups to S3-compatible storage hosted on Hetzner.
+3. **Point-in-Time Recovery**: Restore to any point in time.
+4. **Automatic**: Runs as background process.
 
 ### Configuration
 
@@ -227,6 +228,7 @@ dbs:
   - path: /path/to/yral_chat.db
     replicas:
       - url: s3://bucket-name/db-backup
+        endpoint: $LITESTREAM_ENDPOINT # Hetzner S3 endpoint
         access-key-id: $LITESTREAM_ACCESS_KEY_ID
         secret-access-key: $LITESTREAM_SECRET_ACCESS_KEY
 ```
@@ -238,6 +240,7 @@ The application automatically attempts to restore the database on startup if it'
 #### Automatic Restore
 
 On container startup, the entrypoint script:
+
 1. Checks if database exists and is valid
 2. If missing or corrupted, attempts restore from Litestream backup
 3. Verifies restored database integrity
@@ -246,6 +249,7 @@ On container startup, the entrypoint script:
 #### Manual Restore
 
 **Basic restore:**
+
 ```bash
 # Using emergency restore script (recommended)
 ./scripts/emergency_restore.sh
@@ -257,6 +261,7 @@ litestream restore -if-db-not-exists -if-replica-exists \
 ```
 
 **Point-in-time restore:**
+
 ```bash
 # Restore to specific timestamp
 litestream restore \
@@ -266,6 +271,7 @@ litestream restore \
 ```
 
 **Verify backup exists:**
+
 ```bash
 # Check backup status
 python3 /app/scripts/verify_backup.py
@@ -281,6 +287,7 @@ For detailed recovery procedures, troubleshooting, and emergency scenarios, see 
 ### Common Queries
 
 **List User Conversations:**
+
 ```sql
 SELECT c.*, i.name, i.display_name, i.avatar_url,
        COUNT(m.id) as message_count
@@ -294,6 +301,7 @@ LIMIT ? OFFSET ?
 ```
 
 **Get Conversation Messages:**
+
 ```sql
 SELECT id, role, content, message_type, media_urls,
        audio_url, audio_duration_seconds, token_count, created_at
@@ -304,6 +312,7 @@ LIMIT ? OFFSET ?
 ```
 
 **Count Active Influencers:**
+
 ```sql
 SELECT COUNT(*) FROM ai_influencers WHERE is_active = 'active'
 ```
@@ -323,12 +332,14 @@ All foreign keys and frequently queried columns are indexed for fast lookups.
 ### Pagination
 
 Always use `LIMIT` and `OFFSET` for large result sets:
+
 - Conversations: Default 20, max 100
 - Messages: Default 50, max 200
 
 ### Vacuum
 
 Periodic VACUUM operations to reclaim space:
+
 ```sql
 VACUUM;
 ```
@@ -359,6 +370,7 @@ active_connections = pool_size - db.pool_free
 ### Foreign Key Constraints
 
 Enabled to maintain referential integrity:
+
 ```sql
 PRAGMA foreign_keys = ON;
 ```
@@ -375,13 +387,13 @@ PRAGMA foreign_keys = ON;
 
 ## Scaling Considerations
 
-### When to Migrate to PostgreSQL
+### When to Consider Migration
 
-Consider PostgreSQL when:
-- Concurrent writes exceed 50/second
-- Database size exceeds 50GB
-- Need multi-master replication
-- Require advanced features (full-text search, JSON queries)
+Consider alternative databases (like PostgreSQL) only when:
+
+- Concurrent writes consistently exceed the limits of SQLite's WAL mode.
+- Database size approaches technical file system limits.
+- Need for specialized extensions not available in SQLite.
 
 ### Migration Strategy
 

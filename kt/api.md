@@ -7,7 +7,11 @@ The API is built with **FastAPI** and follows RESTful principles. It supports bo
 ## Authentication
 
 * **Method**: JWT (JSON Web Token) via Bearer header.
-* **Validation**: `src/auth/jwt_auth.py` validates `iss`, `exp`, and signatures.
+* **Validation**: `src/auth/jwt_auth.py` validates `iss` (expected: `https://auth.yral.com` or `https://auth.dolr.ai`), `exp`, and `sub`.
+* **Claims**:
+  * `sub`: User principal ID (mapped to `user_id` in DB).
+  * `iss`: Issuer verification.
+  * `exp`: Expiration check.
 * **Dependency**: `get_current_user` injects the authenticated user into route handlers.
 
 ## Key Endpoints
@@ -36,9 +40,11 @@ The API is built with **FastAPI** and follows RESTful principles. It supports bo
 Used for real-time updates (e.g., new messages, typing indicators).
 
 * **Endpoint**: `/ws/inbox/{user_id}`
-* **Events**:
+* **Events (Outgoing)**:
   * `new_message`: Pushed when a message is received (useful for multi-device sync).
-  * `typing_status`: Real-time typing feedback.
+  * `typing_status`: Real-time typing feedback (`is_typing: bool`).
+  * `error`: Communication errors.
+* **Auth**: Token passed as a query parameter for WebSocket connections.
 
 ## API Versioning
 
