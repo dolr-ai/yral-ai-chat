@@ -25,15 +25,15 @@ graph TD
     end
 
     subgraph "External Services"
-        Service -->|API| Gemini[Google Gemini AI]
-        Service -->|API| OpenRouter[OpenRouter (NSFW)]
-        Service -->|API| Replicate[Replicate (Img Gen)]
-        Service <-->|S3 API| Storage[Object Storage (Storj)]
+        Service -->|API| Gemini["Google Gemini AI"]
+        Service -->|API| OpenRouter["OpenRouter (NSFW)"]
+        Service -->|API| Replicate["Replicate (Img Gen)"]
+        Service <-->|S3 API| Storage["Object Storage (Storj)"]
     end
     
     subgraph "Data Layer"
-        Repos --> SQLite[(SQLite DB)]
-        Litestream[Litestream Sidecar] -->|Replicate| Backup[Cloud Backup (Hetzner)]
+        Repos --> SQLite["(SQLite DB)"]
+        Litestream["Litestream Sidecar"] -->|Replicate| Backup["Cloud Backup (Hetzner)"]
     end
 
 ```

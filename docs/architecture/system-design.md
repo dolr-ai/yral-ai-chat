@@ -9,32 +9,32 @@ Yral AI Chat is a FastAPI-based REST API that enables multimodal conversations w
 ```mermaid
 graph TD
     subgraph Clients
-        Client[Client Applications<br/>Web, Mobile, Desktop]
+        Client["Client Applications<br/>Web, Mobile, Desktop"]
     end
 
     subgraph "Edge Layer"
-        Nginx[Nginx Reverse Proxy<br/>HTTPS Termination]
+        Nginx["Nginx Reverse Proxy<br/>HTTPS Termination"]
     end
 
     subgraph "FastAPI Application"
         direction TB
-        Middleware[Middleware Layer<br/>CORS, Rate Limiting, Logging]
-        Routes[API Routes v1/v2<br/>Chat, Influencer, Media]
-        Services[Service Layer<br/>ChatService, GeminiClient]
-        Repos[Repository Layer<br/>DB Access]
+        Middleware["Middleware Layer<br/>CORS, Rate Limiting, Logging"]
+        Routes["API Routes v1/v2<br/>Chat, Influencer, Media"]
+        Services["Service Layer<br/>ChatService, GeminiClient"]
+        Repos["Repository Layer<br/>DB Access"]
         
         Middleware --> Routes --> Services --> Repos
     end
 
     subgraph "Infrastructure"
         DB[(SQLite DB)]
-        S3[Storj Storage<br/>Media Files]
-        Gemini[Google Gemini API<br/>Gemini 2.5 Flash]
+        S3["Storj Storage<br/>Media Files"]
+        Gemini["Google Gemini API<br/>Gemini 2.5 Flash"]
     end
 
     subgraph "Backup & Persistence"
-        Litestream[Litestream<br/>WAL Cont. Replication]
-        Hetzner[Hetzner Backup Bucket]
+        Litestream["Litestream<br/>WAL Cont. Replication"]
+        Hetzner["Hetzner Backup Bucket"]
     end
 
     Client <-->|HTTPS/WSS| Nginx
