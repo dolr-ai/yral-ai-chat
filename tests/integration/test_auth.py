@@ -67,6 +67,30 @@ def test_create_conversation_with_valid_token(client, test_influencer_id):
     assert data["user_id"] == "test_user_valid"
 
 
+def test_create_conversation_with_dolr_auth_token(client, test_influencer_id):
+    """Test creating a conversation with a valid JWT token from dolr.ai issuer"""
+    now = int(time.time())
+    payload = {
+        "sub": "test_user_dolr",
+        "iss": "https://auth.dolr.ai",
+        "iat": now,
+        "exp": now + 3600,
+    }
+    token = _encode_jwt(payload)
+
+    response = client.post(
+        "/api/v1/chat/conversations",
+        json={"influencer_id": test_influencer_id},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert "id" in data
+    assert "user_id" in data
+    assert data["user_id"] == "test_user_dolr"
+
+
 def test_create_conversation_without_token(client, test_influencer_id):
     """Test creating a conversation without authorization header"""
     response = client.post("/api/v1/chat/conversations", json={"influencer_id": test_influencer_id})
