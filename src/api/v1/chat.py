@@ -189,6 +189,7 @@ async def create_conversation(
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         message_count=conversation.message_count or 0,
+        last_message=recent_messages[0] if recent_messages else None,
         recent_messages=recent_messages,
     )
 
@@ -277,6 +278,7 @@ async def list_conversations(
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
                 message_count=conv.message_count or 0,
+                last_message=recent_messages[0] if recent_messages else None,
                 recent_messages=recent_messages,
             )
         )

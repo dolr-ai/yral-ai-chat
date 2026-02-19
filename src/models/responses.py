@@ -103,6 +103,7 @@ class ConversationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     message_count: int = 0
+    last_message: LastMessageInfo | None = None
     recent_messages: list[MessageResponse] = Field(default_factory=list)
 
 
