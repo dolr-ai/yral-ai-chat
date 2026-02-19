@@ -37,7 +37,7 @@
           "Health"
         ],
         "summary": "System status",
-        "description": "Get detailed system statistics including database info, uptime, and usage metrics",
+        "description": "Get detailed system statistics including database info, uptime, and system health",
         "operationId": "systemStatus",
         "responses": {
           "200": {
@@ -671,26 +671,6 @@
           },
           "503": {
             "description": "Service unavailable - Storage service unavailable"
-          }
-        }
-      }
-    },
-    "/metrics": {
-      "get": {
-        "tags": [
-          "Monitoring"
-        ],
-        "summary": "Get Metrics",
-        "description": "Prometheus metrics endpoint",
-        "operationId": "get_metrics_metrics_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
           }
         }
       }

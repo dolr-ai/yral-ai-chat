@@ -7,23 +7,26 @@ A FastAPI-based REST API for multimodal AI chat with personalized influencer per
 - Multiple AI influencer personas with unique personalities
 - Multimodal support (text, images, audio)
 - Conversation history and context awareness
-- JWT-based authentication
-- SQLite database with async operations and Litestream replication
-- S3-compatible media storage
-- RESTful API design
+- [x] JWT-based authentication
+- [x] SQLite database with async operations and Litestream replication (Hetzner)
+- [x] S3-compatible media storage (Storj)
+- [x] RESTful API design
 
 ## Tech Stack
 
-- **Framework**: FastAPI 0.104.1
-- **Database**: SQLite with aiosqlite + Litestream for real-time S3 backups
-- **AI Model**: Google Gemini 2.5 Flash
-- **Authentication**: JWT (PyJWT)
-- **Server**: Uvicorn with async support
-- **Storage**: S3-compatible object storage (Hetzner)
+- **Framework**: FastAPI (Async-first)
+- **Database**: SQLite with aiosqlite
+- **Backup**: Litestream with **Hetzner S3** for real-time replication
+- **Object Storage**: **Storj S3** for media and object backups
+- **AI Model**: Google Gemini 2.5 Flash (via `genai` SDK)
+- **Authentication**: JWT (PyJWT) for stateless security
+- **Media**: Replicate (Flux-dev) for image generation
+- **Monitoring**: Sentry, Loguru
+- **Code Quality**: Ruff, Black, Mypy
 
 ## Project Structure
 
-```
+```bash
 yral-ai-chat/
 ├── src/
 │   ├── api/
@@ -72,23 +75,28 @@ yral-ai-chat/
 
 ### Tables
 
-**ai_influencers**
+#### ai_influencers
+
 - Stores AI persona definitions
 - Fields: id, name, display_name, avatar_url, description, category, system_instructions, personality_traits
 
-**conversations**
+#### conversations
+
 - Links users with AI influencers
 - One conversation per user-influencer pair
 - Fields: id, user_id, influencer_id, created_at, updated_at
 
-**messages**
+#### messages
+
 - Individual chat messages
 - Fields: id, conversation_id, role (user/assistant), content, message_type, media_urls, audio_url, token_count
 
-### Relationships
+#### Relationships
 
-```
-ai_influencers (1) ──< (N) conversations (1) ──< (N) messages
+```mermaid
+graph LR
+    ai_influencers -- 1:N --- conversations
+    conversations -- 1:N --- messages
 ```
 
 ## API Documentation
@@ -97,16 +105,18 @@ ai_influencers (1) ──< (N) conversations (1) ──< (N) messages
 
 When the server is running, access the interactive API documentation:
 
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- **Swagger UI**: <http://localhost:8000/docs>
+- **ReDoc**: <http://localhost:8000/redoc>
 
 ### OpenAPI Specification
 
 The complete OpenAPI specification is available in:
+
 - `docs/api/openapi.yaml` (YAML format)
 - `docs/api/openapi.json` (JSON format)
 
 **Regenerate OpenAPI spec after API changes:**
+
 ```bash
 python scripts/export_openapi_spec.py
 ```
@@ -116,6 +126,7 @@ This updates both YAML and JSON files with the latest API schema, including oper
 ### Documentation
 
 Comprehensive documentation is available in the `docs/` directory:
+
 - **[API Documentation](docs/api/)** - OpenAPI specs and guides
 - **[System Architecture](docs/architecture/system-design.md)** - High-level design
 - **[Database Schema](docs/architecture/database.md)** - Database structure
@@ -126,40 +137,47 @@ Comprehensive documentation is available in the `docs/` directory:
 ## API Endpoints
 
 ### Authentication
+
 All endpoints except health check and influencer listing require JWT authentication via Bearer token.
 
-### Influencers
+### User Discovery (API)
 
 **GET /api/v1/influencers**
+
 - List all active AI influencers
 - Query params: limit, offset
 - Authentication: Optional
 
 **GET /api/v1/influencers/{id}**
+
 - Get specific influencer details
 - Authentication: Optional
 
 ### Conversations
 
 **POST /api/v1/chat/conversations**
+
 - Create new conversation with an influencer
 - Body: `{"influencer_id": "uuid"}`
 - Returns existing conversation if already exists
 - Authentication: Required
 
 **GET /api/v1/chat/conversations**
+
 - List user's conversations
 - Query params: limit, offset, influencer_id
 - Returns conversations with last message preview
 - Authentication: Required
 
 **DELETE /api/v1/chat/conversations/{id}**
+
 - Delete conversation and all messages
 - Authentication: Required
 
 ### Messages
 
 **POST /api/v1/chat/conversations/{id}/messages**
+
 - Send message to AI influencer
 - Supports text, multimodal (text+images), image-only, audio
 - Returns both user message and AI response
@@ -190,6 +208,7 @@ Request body examples:
 ```
 
 **GET /api/v1/chat/conversations/{id}/messages**
+
 - Get conversation message history
 - Query params: limit, offset, order (asc/desc)
 - Authentication: Required
@@ -197,6 +216,7 @@ Request body examples:
 ### Media
 
 **POST /api/v1/media/upload**
+
 - Upload image or audio file
 - Content-Type: multipart/form-data
 - Returns URL for use in messages
@@ -205,6 +225,7 @@ Request body examples:
 ### Health
 
 **GET /health**
+
 - Health check endpoint
 - Returns database and Gemini API status
 - Authentication: Not required
@@ -214,44 +235,43 @@ Request body examples:
 ### Prerequisites
 
 - Python 3.12+
-- PostgreSQL 14+
+- Docker & Docker Compose (for containerized deployment)
 - Google Gemini API key
+- S3-compatible storage (for media and backups)
 
-### Installation
+### Installation (Local)
 
-1. Clone repository and activate virtual environment:
+1. Clone repository:
+
 ```bash
-cd /root/yral-ai-chat
-source venv/bin/activate
+git clone https://github.com/dolr-ai/yral-ai-chat.git
+cd yral-ai-chat
 ```
 
-2. Install dependencies:
+1. Setup virtual environment:
+
 ```bash
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Setup PostgreSQL database:
+1. Configure Environment:
+Copy `env.example` to `.env` and fill in your keys (Gemini, S3, etc.):
+
 ```bash
-chmod +x scripts/setup_db.sh
-./scripts/setup_db.sh
+cp env.example .env
 ```
 
-4. Run database migrations:
+1. Run Migrations:
+The app uses SQLite. Migrations run automatically on startup in Docker, but locally you can init manually:
+
 ```bash
-source .env 
-PGPASSWORD=$(grep DATABASE_URL .env | cut -d':' -f3 | cut -d'@' -f1) psql -U yral_chat_user -h localhost -d yral_chat -f migrations/001_init_schema.sql
-PGPASSWORD=$(grep DATABASE_URL .env | cut -d':' -f3 | cut -d'@' -f1) psql -U yral_chat_user -h localhost -d yral_chat -f migrations/002_seed_influencers.sql
+python scripts/run_migrations.py
 ```
 
-5. Create `.env` file from `.env.example`:
-```bash
-cp .env.example .env
-# Edit .env with your actual configuration values
-```
+1. Run the server:
 
-**Note:** Never commit `.env` to version control. The `.env` file is already in `.gitignore`.
-
-6. Run the server:
 ```bash
 uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -259,6 +279,7 @@ uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ### Testing
 
 Run integration tests:
+
 ```bash
 chmod +x full_test.sh
 ./full_test.sh
@@ -267,19 +288,23 @@ chmod +x full_test.sh
 ## Application Flow
 
 ### 1. User Discovery
+
 - User calls `GET /api/v1/influencers` to browse available AI personas
 - No authentication required
 
 ### 2. Authentication
+
 - User obtains JWT token from authentication service
 - Token must contain: `user_id`, `exp`, `iss`
 
 ### 3. Start Conversation
+
 - User calls `POST /api/v1/chat/conversations` with influencer_id
 - System creates or returns existing conversation
 - Enforces one conversation per user-influencer pair
 
 ### 4. Send Messages
+
 - User sends message via `POST /conversations/{id}/messages`
 - Backend flow:
   1. Validates user ownership
@@ -290,15 +315,18 @@ chmod +x full_test.sh
   6. Returns both messages
 
 ### 5. Multimodal Messages
+
 - For images: Upload via `/media/upload`, then include URL in message
 - For audio: Upload via `/media/upload`, system transcribes and processes
 - Gemini analyzes images and text together
 
 ### 6. View History
+
 - User calls `GET /conversations/{id}/messages` for full history
 - Supports pagination and ordering
 
 ### 7. Manage Conversations
+
 - List all conversations: `GET /conversations`
 - Delete conversation: `DELETE /conversations/{id}`
 
@@ -312,14 +340,16 @@ chmod +x full_test.sh
 ## API Documentation
 
 Once running, visit:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+
+- Swagger UI: <http://localhost:8000/docs>
+- ReDoc: <http://localhost:8000/redoc>
 
 ## Logging
 
 Application logs are stored in `logs/yral_ai_chat.log`
 
 View logs:
+
 ```bash
 tail -f logs/yral_ai_chat.log
 ```
@@ -329,13 +359,16 @@ tail -f logs/yral_ai_chat.log
 All configuration is managed via environment variables in `.env` file.
 
 Key settings:
-- `DATABASE_URL`: PostgreSQL connection string
+
+- `DATABASE_PATH`: Local path to SQLite file
 - `JWT_SECRET_KEY`: Secret for JWT signing
 - `GEMINI_API_KEY`: Google Gemini API key
-- `MEDIA_UPLOAD_DIR`: Local storage directory
+- `S3_ENDPOINT_URL`: Storj S3 endpoint for media
+- `LITESTREAM_ENDPOINT`: Hetzner S3 endpoint for DB backups
 - `CORS_ORIGINS`: Allowed origins for CORS
+- `MEDIA_UPLOAD_DIR`: Local storage directory
 
-## Production Deployment
+## Docker Compose Setup
 
 ### Basic Setup
 
@@ -344,6 +377,7 @@ Key settings:
 3. Configure proper CORS origins
 4. Use production database with SSL
 5. Run with multiple workers:
+
 ```bash
 uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
@@ -353,11 +387,13 @@ uvicorn src.main:app --host 0.0.0.0 --port 8000 --workers 4
 To route HTTPS traffic (port 443) to your FastAPI app on port 8000:
 
 **Quick Setup:**
+
 ```bash
 sudo ./scripts/setup_nginx.sh
 ```
 
 **Manual Setup:**
+
 1. Copy nginx config: `sudo cp nginx/yral-ai-chat.conf /etc/nginx/sites-available/yral-ai-chat.conf`
 2. Edit the config and replace `chat.yral.com` with your actual domain
 3. Enable the site: `sudo ln -s /etc/nginx/sites-available/yral-ai-chat.conf /etc/nginx/sites-enabled/`
@@ -368,7 +404,8 @@ sudo ./scripts/setup_nginx.sh
 See `nginx/README.md` for detailed instructions and troubleshooting.
 
 **After setup, update your `.env` file:**
-```
+
+```bash
 CORS_ORIGINS=https://chat.yral.com,https://www.chat.yral.com
 MEDIA_BASE_URL=https://chat.yral.com/media
 ```
@@ -385,6 +422,7 @@ The application can be deployed using Docker and Docker Compose. This is the rec
 #### Environment-Specific Deployment
 
 The project includes separate docker-compose files for different environments:
+
 - `docker-compose.prod.yml` - Production environment
 - `docker-compose.staging.yml` - Staging environment
 
@@ -401,6 +439,7 @@ The project includes separate docker-compose files for different environments:
 2. **Deploy using docker-compose:**
 
    **Production:**
+
    ```bash
    # Set required secrets and deploy production
    JWT_SECRET_KEY="your-secret-key" \
@@ -409,6 +448,7 @@ The project includes separate docker-compose files for different environments:
    ```
 
    **Staging:**
+
    ```bash
    # Set required secrets and deploy staging
    JWT_SECRET_KEY="your-secret-key" \
@@ -417,6 +457,7 @@ The project includes separate docker-compose files for different environments:
    ```
 
    For multiple secrets:
+
    ```bash
    # Production example
    JWT_SECRET_KEY="secret1" \
@@ -426,6 +467,7 @@ The project includes separate docker-compose files for different environments:
    ```
 
    **Common Docker commands:**
+
    ```bash
    # Production
    docker compose -f docker-compose.prod.yml up -d
@@ -487,6 +529,7 @@ The repository includes a GitHub Actions workflow that automatically deploys on 
 Configure the following secrets in your GitHub repository (Settings → Secrets and variables → Actions):
 
 **Required:**
+
 - `DEPLOY_HOST`: Server IP address or hostname
 - `DEPLOY_USER`: SSH username for deployment
 - `DEPLOY_SSH_KEY`: Private SSH key for server access
@@ -494,6 +537,7 @@ Configure the following secrets in your GitHub repository (Settings → Secrets 
 - `GEMINI_API_KEY`: Google Gemini API key
 
 **Optional (with defaults):**
+
 - `APP_NAME`, `APP_VERSION`, `ENVIRONMENT`, `DEBUG`
 - `DATABASE_PATH`, `JWT_ALGORITHM`, `JWT_ISSUER`
 - `GEMINI_MODEL`, `GEMINI_MAX_TOKENS`, `GEMINI_TEMPERATURE`
@@ -517,6 +561,7 @@ Configure the following secrets in your GitHub repository (Settings → Secrets 
 2. Secrets are passed as environment variables to `docker compose up -d`, ensuring they are never stored in files on the server.
 
 **Services Deployed:**
+
 - Production API (port 8000)
 - Staging API (port 8001)
 - Metabase BI Dashboard (port 3000)
@@ -539,6 +584,7 @@ The deployment includes Metabase for interactive analytics dashboards:
 #### Docker Volumes
 
 The following directories are persisted as Docker volumes:
+
 - `./data`: SQLite database files (production and staging)
 - `./uploads`: Uploaded media files
 - `./logs`: Application logs
@@ -556,12 +602,14 @@ Database migrations are handled automatically on first startup. The SQLite schem
 The application uses [Litestream](https://litestream.io/) for continuous SQLite replication to S3-compatible storage. This ensures your database is automatically backed up in real-time.
 
 **How it works:**
+
 1. **Automatic Backups**: Litestream continuously replicates your SQLite database to S3 every 10 seconds
 2. **Automatic Restore**: On container startup, if the database is missing or corrupted, it's automatically restored from the latest S3 backup
 3. **Database Validation**: The restored database is verified for integrity before the application starts
 4. **Migration Safety**: Migrations run after restore, ensuring your data is preserved
 
 **Startup Sequence:**
+
 1. Check if database exists and is valid
 2. If missing or corrupted → restore from Litestream backup
 3. Verify restored database integrity
@@ -571,6 +619,7 @@ The application uses [Litestream](https://litestream.io/) for continuous SQLite 
 
 **Configuration:**
 Litestream requires the following environment variables:
+
 - `LITESTREAM_BUCKET`: S3 bucket name for backups
 - `LITESTREAM_ACCESS_KEY_ID`: S3 access key
 - `LITESTREAM_SECRET_ACCESS_KEY`: S3 secret key
@@ -578,11 +627,13 @@ Litestream requires the following environment variables:
 - `LITESTREAM_REGION`: S3 region (defaults to us-east-1)
 
 **Backup Retention:**
+
 - Snapshots: Every 1 hour
 - Retention: 24 hours of history
 - Sync interval: 10 seconds
 
 **Data Safety:**
+
 - Database files are stored in `./data` directory (mounted as Docker volume)
 - Backup files are stored in S3 at path: `yral-ai-chat/{database_filename}`
 - Corrupted databases are automatically backed up (with timestamp) before restore attempt
@@ -591,11 +642,13 @@ Litestream requires the following environment variables:
 **Manual Database Operations:**
 
 **Verify database integrity:**
+
 ```bash
 docker-compose exec yral-ai-chat python3 /app/scripts/verify_database.py
 ```
 
 **Manual restore from backup:**
+
 ```bash
 # Inside container
 litestream restore -if-db-not-exists -if-replica-exists \
@@ -604,6 +657,7 @@ litestream restore -if-db-not-exists -if-replica-exists \
 ```
 
 **Check backup status:**
+
 ```bash
 docker-compose exec yral-ai-chat litestream databases -config /tmp/litestream.yml
 docker-compose exec yral-ai-chat litestream snapshots -config /tmp/litestream.yml /app/data/yral_chat.db
@@ -616,17 +670,21 @@ For detailed emergency restore procedures, see [Emergency Restore Guide](docs/op
 For complete recovery procedures, see [Emergency Restore Guide](docs/operations/emergency-restore.md).
 
 Quick recovery steps:
+
 1. **Check container logs** for restore messages:
+
    ```bash
    docker-compose logs yral-ai-chat | grep -i restore
    ```
 
 2. **Restart container** (automatic restore):
+
    ```bash
    docker-compose restart yral-ai-chat
    ```
 
-5. **Verify after restore**:
+3. **Verify after restore**:
+
    ```bash
    docker-compose exec yral-ai-chat python3 /app/scripts/verify_database.py
    ```
@@ -634,6 +692,7 @@ Quick recovery steps:
 **Preventing Data Loss in CI/CD:**
 
 The deployment process includes safeguards:
+
 - Database is verified before application starts
 - Restore happens automatically if database is missing
 - Migrations run after restore to ensure schema compatibility
@@ -641,6 +700,7 @@ The deployment process includes safeguards:
 - Database validation ensures integrity before accepting connections
 
 **Important Notes:**
+
 - Always ensure `./data` directory is persisted as a Docker volume
 - Never delete the `./data` directory without first backing up to S3
 - Verify Litestream environment variables are set before deploying
@@ -661,6 +721,7 @@ docker compose -f docker-compose.staging.yml ps
 #### Troubleshooting
 
 **View logs:**
+
 ```bash
 # Production
 docker compose -f docker-compose.prod.yml logs -f yral-ai-chat
@@ -670,6 +731,7 @@ docker compose -f docker-compose.staging.yml logs -f yral-ai-chat-staging
 ```
 
 **Restart service:**
+
 ```bash
 # Production
 docker compose -f docker-compose.prod.yml restart yral-ai-chat
@@ -679,6 +741,7 @@ docker compose -f docker-compose.staging.yml restart yral-ai-chat-staging
 ```
 
 **Rebuild and redeploy:**
+
 ```bash
 # Production
 docker compose -f docker-compose.prod.yml up -d --build
@@ -688,6 +751,7 @@ docker compose -f docker-compose.staging.yml up -d --build
 ```
 
 **Check health endpoint:**
+
 ```bash
 curl http://localhost:8000/health
 ```
@@ -695,6 +759,7 @@ curl http://localhost:8000/health
 ## Error Handling
 
 All errors follow consistent format:
+
 ```json
 {
   "error": "Error Type",
@@ -704,6 +769,7 @@ All errors follow consistent format:
 ```
 
 Common HTTP status codes:
+
 - 200: Success
 - 201: Created
 - 400: Bad Request
@@ -715,8 +781,7 @@ Common HTTP status codes:
 - 500: Internal Server Error
 - 503: Service Unavailable
 
-## Additional Resources:
+## Additional Resources
 
-Front End Integration Guide- https://gist.github.com/kevin-antony-yral/3089b965f30b787923c7a58577ef37f9
-Message Types- https://gist.github.com/kevin-antony-yral/94360fe6923ecd7d02bf03b51c10dbf2
-
+Front End Integration Guide- <https://gist.github.com/kevin-antony-yral/3089b965f30b787923c7a58577ef37f9>
+Message Types- <https://gist.github.com/kevin-antony-yral/94360fe6923ecd7d02bf03b51c10dbf2>
