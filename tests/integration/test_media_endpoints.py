@@ -1,6 +1,7 @@
 """
 Tests for media upload endpoints
 """
+
 import io
 
 from PIL import Image
@@ -17,7 +18,7 @@ def test_upload_image_invalid_format(client, auth_headers):
         "/api/v1/media/upload",
         data={"type": "image"},
         files={"file": ("test.txt", io.BytesIO(file_content), "text/plain")},
-        headers=auth_headers
+        headers=auth_headers,
     )
 
     # Should return 400 bad request
@@ -31,11 +32,7 @@ def test_upload_image_invalid_format(client, auth_headers):
 
 def test_upload_without_file(client, auth_headers):
     """Test uploading without providing a file"""
-    response = client.post(
-        "/api/v1/media/upload",
-        data={"type": "image"},
-        headers=auth_headers
-    )
+    response = client.post("/api/v1/media/upload", data={"type": "image"}, headers=auth_headers)
 
     # Should return 422 validation error
     assert response.status_code == 422
@@ -53,7 +50,7 @@ def test_upload_with_invalid_type(client, auth_headers):
         "/api/v1/media/upload",
         data={"type": "invalid_type"},
         files={"file": ("test.jpg", io.BytesIO(file_content), "image/jpeg")},
-        headers=auth_headers
+        headers=auth_headers,
     )
 
     # Should return 422 validation error
@@ -72,7 +69,7 @@ def test_upload_audio_invalid_format(client, auth_headers):
         "/api/v1/media/upload",
         data={"type": "audio"},
         files={"file": ("test.txt", io.BytesIO(file_content), "text/plain")},
-        headers=auth_headers
+        headers=auth_headers,
     )
 
     # Should return 400 bad request
@@ -90,7 +87,7 @@ def test_upload_missing_type_parameter(client, auth_headers):
     response = client.post(
         "/api/v1/media/upload",
         files={"file": ("test.jpg", io.BytesIO(file_content), "image/jpeg")},
-        headers=auth_headers
+        headers=auth_headers,
     )
 
     # Should return 422 validation error (missing required field)
@@ -109,7 +106,7 @@ def test_upload_endpoint_requires_auth(client, auth_headers):
         "/api/v1/media/upload",
         data={"type": "image"},
         files={"file": ("test.txt", io.BytesIO(file_content), "text/plain")},
-        headers=auth_headers
+        headers=auth_headers,
     )
 
     # Should get a response (not 404)
@@ -124,7 +121,6 @@ async def test_upload_image_success(client, auth_headers):
     # Ensure the bucket exists before testing
     storage_service = StorageService()
     bucket_name = storage_service.bucket
-    
     # Check if bucket exists, create if it doesn't (using async client)
     async with await storage_service.get_s3_client() as s3:
         try:
@@ -145,20 +141,20 @@ async def test_upload_image_success(client, auth_headers):
     img_bytes = io.BytesIO()
     img.save(img_bytes, format="JPEG")
     image_data = img_bytes.getvalue()
-    
+
     response = client.post(
         "/api/v1/media/upload",
         data={"type": "image"},
         files={"file": ("test_image.jpg", io.BytesIO(image_data), "image/jpeg")},
-        headers=auth_headers
+        headers=auth_headers,
     )
-    
+
     assert response.status_code in [200, 201]
     data = response.json()
     assert "url" in data
     assert "storage_key" in data
     assert data["type"] == "image"
-    
+
     # Verify the file actually exists in Storj by checking S3
     storage_key = data["storage_key"]
     async with await storage_service.get_s3_client() as s3:
@@ -176,3 +172,4 @@ async def test_upload_image_success(client, auth_headers):
             if "404" in error_msg:
                 raise AssertionError(f"File was not uploaded to Storj - object {storage_key} not found in bucket {bucket_name}")
             raise
+

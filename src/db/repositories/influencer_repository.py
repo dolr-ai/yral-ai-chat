@@ -1,6 +1,7 @@
 """
 Repository for AI Influencer operations
 """
+
 import json
 
 from src.db.base import db
@@ -17,8 +18,10 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, is_nsfw, created_at, updated_at, metadata
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
             FROM ai_influencers
+            WHERE is_active != 'discontinued'
             ORDER BY CASE is_active
                 WHEN 'active' THEN 1
                 WHEN 'coming_soon' THEN 2
@@ -38,7 +41,8 @@ class InfluencerRepository:
         query = """
             SELECT
                 id, name, display_name, avatar_url, description,
-                category, is_active, created_at, updated_at
+                category, is_active, parent_principal_id, source,
+                created_at, updated_at
             FROM ai_influencers
             WHERE is_active = 'active'
             ORDER BY created_at DESC
@@ -55,9 +59,10 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, is_nsfw, created_at, updated_at, metadata
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
             FROM ai_influencers
-            WHERE id = $1 AND is_active = 'active'
+            WHERE id = $1
         """
 
         row = await db.fetchone(query, influencer_id)
@@ -70,17 +75,18 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, is_nsfw, created_at, updated_at, metadata
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
             FROM ai_influencers
-            WHERE name = $1 AND is_active = 'active'
+            WHERE name = $1 AND is_active != 'discontinued'
         """
 
         row = await db.fetchone(query, name)
         return self._row_to_influencer(row) if row else None
 
     async def count_all(self) -> int:
-        """Count all influencers (both active and inactive)"""
-        query = "SELECT COUNT(*) FROM ai_influencers"
+        """Count all influencers (excluding discontinued ones)"""
+        query = "SELECT COUNT(*) FROM ai_influencers WHERE is_active != 'discontinued'"
         result = await db.fetchval(query)
         return int(result) if result is not None else 0
 
@@ -91,11 +97,12 @@ class InfluencerRepository:
                 i.id, i.name, i.display_name, i.avatar_url, i.description,
                 i.category, i.system_instructions, i.personality_traits,
                 i.initial_greeting, i.suggested_messages,
-                i.is_active, i.is_nsfw, i.created_at, i.updated_at, i.metadata,
+                i.is_active, i.is_nsfw, i.parent_principal_id,
+                i.source, i.created_at, i.updated_at, i.metadata,
                 COUNT(c.id) as conversation_count
             FROM ai_influencers i
             LEFT JOIN conversations c ON i.id = c.influencer_id
-            WHERE i.id = $1 AND i.is_active = 'active'
+            WHERE i.id = $1 AND i.is_active != 'discontinued'
             GROUP BY i.id
         """
 
@@ -106,6 +113,35 @@ class InfluencerRepository:
         influencer = self._row_to_influencer(row)
         influencer.conversation_count = int(row["conversation_count"]) if row["conversation_count"] else 0
         return influencer
+
+    async def list_trending(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
+        """List influencers sorted by total message count (descending)"""
+        query = """
+            SELECT
+                i.id, i.name, i.display_name, i.avatar_url, i.description,
+                i.category, i.system_instructions, i.personality_traits,
+                i.initial_greeting, i.suggested_messages,
+                i.is_active, i.is_nsfw, i.parent_principal_id,
+                i.source, i.created_at, i.updated_at, i.metadata,
+                COUNT(DISTINCT c.id) as conversation_count,
+                COUNT(CASE WHEN m.role = 'user' THEN 1 END) as message_count
+            FROM ai_influencers i
+            LEFT JOIN conversations c ON i.id = c.influencer_id
+            LEFT JOIN messages m ON c.id = m.conversation_id
+            WHERE i.is_active = 'active'
+            GROUP BY i.id
+            ORDER BY message_count DESC, i.created_at DESC
+            LIMIT $1 OFFSET $2
+        """
+
+        rows = await db.fetch(query, limit, offset)
+        influencers = []
+        for row in rows:
+            inf = self._row_to_influencer(row)
+            inf.conversation_count = int(row["conversation_count"]) if row["conversation_count"] else 0
+            inf.message_count = int(row["message_count"]) if row["message_count"] else 0
+            influencers.append(inf)
+        return influencers
 
     def _row_to_influencer(self, row) -> AIInfluencer:
         """Convert database row to AIInfluencer model"""
@@ -153,6 +189,8 @@ class InfluencerRepository:
             suggested_messages=suggested_messages,
             is_active=is_active_enum,
             is_nsfw=is_nsfw_bool,
+            parent_principal_id=row.get("parent_principal_id"),
+            source=row.get("source") or "admin-created-influencer",
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             metadata=metadata,
@@ -171,7 +209,8 @@ class InfluencerRepository:
                 id, name, display_name, avatar_url, description,
                 category, system_instructions, personality_traits,
                 initial_greeting, suggested_messages,
-                is_active, is_nsfw, created_at, updated_at, metadata
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
             FROM ai_influencers
             WHERE is_nsfw = 1 AND is_active = 'active'
             ORDER BY created_at DESC
@@ -187,6 +226,119 @@ class InfluencerRepository:
         result = await db.fetchval(query)
         return int(result) if result else 0
 
+    async def create(self, influencer: AIInfluencer) -> AIInfluencer:
+        """Create a new influencer"""
+        query = """
+            INSERT INTO ai_influencers (
+                id, name, display_name, avatar_url, description,
+                category, system_instructions, personality_traits,
+                initial_greeting, suggested_messages,
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
+            ) VALUES (
+                $1, $2, $3, $4, $5,
+                $6, $7, $8,
+                $9, $10,
+                $11, $12, $13, $14, $15, $16, $17
+            )
+            RETURNING *
+        """
+
+        # Serialize dicts/lists to JSON strings
+        personality_traits_json = json.dumps(influencer.personality_traits)
+        suggested_messages_json = json.dumps(influencer.suggested_messages)
+        metadata_json = json.dumps(influencer.metadata)
+
+        # Convert enum/bool to db format
+        is_active_str = influencer.is_active.value
+        is_nsfw_int = 1 if influencer.is_nsfw else 0
+
+        row = await db.fetchone(
+            query,
+            influencer.id,
+            influencer.name,
+            influencer.display_name,
+            influencer.avatar_url,
+            influencer.description,
+            influencer.category,
+            influencer.system_instructions,
+            personality_traits_json,
+            influencer.initial_greeting,
+            suggested_messages_json,
+            is_active_str,
+            is_nsfw_int,
+            influencer.parent_principal_id,
+            influencer.source,
+            influencer.created_at,
+            influencer.updated_at,
+            metadata_json,
+        )
+
+        if not row:
+            raise RuntimeError("Failed to create influencer")
+
+        return self._row_to_influencer(row)
+
+    async def update_system_prompt(self, influencer_id: str, system_instructions: str) -> AIInfluencer | None:
+        """Update an influencer's system instructions"""
+        from datetime import UTC, datetime
+
+        query = """
+            UPDATE ai_influencers
+            SET system_instructions = $1,
+                updated_at = $2
+            WHERE id = $3
+            RETURNING
+                id, name, display_name, avatar_url, description,
+                category, system_instructions, personality_traits,
+                initial_greeting, suggested_messages,
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
+        """
+
+        row = await db.fetchone(
+            query,
+            system_instructions,
+            datetime.now(UTC),
+            influencer_id,
+        )
+
+        if not row:
+            return None
+
+        return self._row_to_influencer(row)
+
+    async def soft_delete(self, influencer_id: str) -> AIInfluencer | None:
+        """Soft delete an influencer by marking as discontinued and renaming to 'Deleted Bot'"""
+        from datetime import UTC, datetime
+
+        query = """
+            UPDATE ai_influencers
+            SET is_active = $1,
+                display_name = $2,
+                updated_at = $3
+            WHERE id = $4
+            RETURNING
+                id, name, display_name, avatar_url, description,
+                category, system_instructions, personality_traits,
+                initial_greeting, suggested_messages,
+                is_active, is_nsfw, parent_principal_id,
+                source, created_at, updated_at, metadata
+        """
+
+        row = await db.fetchone(
+            query,
+            "discontinued",
+            "Deleted Bot",
+            datetime.now(UTC),
+            influencer_id,
+        )
+
+        if not row:
+            return None
+
+        return self._row_to_influencer(row)
+
     def _row_to_influencer_summary(self, row) -> AIInfluencer:
         """Convert distinct summary row to AIInfluencer (lightweight)"""
         return AIInfluencer(
@@ -195,8 +347,9 @@ class InfluencerRepository:
             display_name=row["display_name"],
             avatar_url=row["avatar_url"],
             description=row["description"],
-            category=row["category"],
             is_active=InfluencerStatus.ACTIVE,
+            parent_principal_id=row.get("parent_principal_id"),
+            source=row.get("source") or "admin-created-influencer",
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             # Default empty values for missing fields
@@ -207,6 +360,3 @@ class InfluencerRepository:
             initial_greeting=None,
             is_nsfw=False
         )
-
-
-

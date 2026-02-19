@@ -1,6 +1,7 @@
 """
 API versioning middleware with deprecation support
 """
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -16,7 +17,7 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
 
         self.current_version = "v1"
-        self.supported_versions = {"v1"}
+        self.supported_versions = {"v1", "v2"}
         self.deprecated_versions = set()
 
         self.deprecation_messages = {}
@@ -34,8 +35,8 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
                 content={
                     "error": "unsupported_api_version",
                     "message": f"API version '{api_version}' is not supported",
-                    "supported_versions": list(self.supported_versions)
-                }
+                    "supported_versions": list(self.supported_versions),
+                },
             )
 
         response = await call_next(request)
@@ -43,23 +44,18 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
         response.headers["X-API-Version"] = api_version or self.current_version
 
         if api_version in self.deprecated_versions:
-            deprecation_msg = self.deprecation_messages.get(
-                api_version,
-                f"API {api_version} is deprecated"
-            )
+            deprecation_msg = self.deprecation_messages.get(api_version, f"API {api_version} is deprecated")
             response.headers["X-API-Deprecation"] = deprecation_msg
             response.headers["Warning"] = f'299 - "{deprecation_msg}"'
 
-            logger.warning(
-                f"Deprecated API version used: {api_version} on {request.url.path}"
-            )
+            logger.warning(f"Deprecated API version used: {api_version} on {request.url.path}")
 
         return response
 
     def _get_api_version(self, request: Request) -> str:
         """
         Extract API version from request
-        
+
         Priority:
         1. X-API-Version header
         2. Accept header with version

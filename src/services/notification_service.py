@@ -1,49 +1,102 @@
+from typing import Any
+
 import httpx
 from loguru import logger
 
 from src.config import settings
 
 
+class MetadataPNProvider:
+    """Dispatches notifications via the centralized Yral Metadata Server."""
+
+    async def send_notification(
+        self,
+        user_id: str,
+        title: str,
+        body: str,
+        data: dict[str, Any] | None = None,
+    ) -> bool:
+        """
+        Calls the Metadata Server to send a push notification.
+        Endpoint: POST /notifications/{user_id}/send
+        """
+        if not settings.metadata_url:
+            logger.warning("Notification skipped: METADATA_URL not configured")
+            return False
+
+        url = f"{settings.metadata_url.rstrip('/')}/notifications/{user_id}/send"
+        payload = {
+            "data": {
+                "title": title,
+                "body": body,
+                **(data or {})
+            }
+        }
+
+        headers = {}
+        if settings.metadata_auth_token:
+            headers["Authorization"] = f"Bearer {settings.metadata_auth_token}"
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, json=payload, headers=headers, timeout=10.0)
+                if response.status_code == 200:
+                    logger.info(f"Notification sent to {user_id} via Metadata Server")
+                    return True
+                
+                logger.error(
+                    f"Metadata PNS error for {user_id}: {response.status_code} - {response.text}"
+                )
+                return False
+        except Exception as e:
+            logger.error(f"Failed to call Metadata Server for {user_id}: {e}")
+            return False
+
+
 class NotificationService:
-    """Service to handle sending notifications to Google Chat"""
+    """Central service for application notifications (Push & Google Chat)."""
+
+    def __init__(self, provider: MetadataPNProvider | None = None):
+        self.provider = provider or MetadataPNProvider()
+
+    async def send_push_notification(
+        self,
+        user_id: str,
+        title: str,
+        body: str,
+        data: dict | None = None,
+    ) -> bool:
+        """Sends a push notification to a user's devices."""
+        try:
+            return await self.provider.send_notification(user_id, title, body, data)
+        except Exception as e:
+            logger.error(f"Push notification error: {e}")
+            return False
 
     async def send_sentry_notification(self, resource: str, action: str, data: dict):
-        """Dispatches notifications to Google Chat (Production only)"""
-        
-        if settings.environment != "production":
-            logger.debug(f"Skipping Sentry notification for {settings.environment} environment")
+        """Dispatches internal alerts to Google Chat (Production only)."""
+        if settings.environment != "production" or not settings.google_chat_webhook_url:
             return
 
-        if settings.google_chat_webhook_url:
-            await self._send_to_google_chat(resource, action, data)
-        else:
-            logger.debug("Google Chat webhook not configured, skipping notification")
-
-    async def _send_to_google_chat(self, resource: str, action: str, data: dict):
-        """Sends a formatted card to Google Chat"""
         try:
             issue = data.get("issue", {})
-            title = issue.get("title", "Sentry Alert")
-            short_id = issue.get("shortId", "N/A")
-            issue_url = issue.get("permalink", "https://sentry.yral.com/")
-            
             card = {
                 "cardsV2": [{
                     "cardId": "sentry_alert",
                     "card": {
                         "header": {
                             "title": f"Sentry: {resource.capitalize()} {action.capitalize()}",
-                            "subtitle": short_id,
+                            "subtitle": issue.get("shortId", "N/A"),
                             "imageUrl": "https://sentry.io/_static/1601416489/sentry/images/logos/apple-touch-icon.png"
                         },
                         "sections": [{
                             "widgets": [
-                                {"textParagraph": {"text": f"<b>{title}</b>"}},
+                                {"textParagraph": {"text": f"<b>{issue.get('title', 'Sentry Alert')}</b>"}},
                                 {
                                     "buttonList": {
                                         "buttons": [{
                                             "text": "View in Sentry",
-                                            "onClick": {"openLink": {"url": issue_url}}
+                                            "onClick": {"openLink": {"url": issue.get("permalink", "#")}}
                                         }]
                                     }
                                 }
@@ -54,12 +107,9 @@ class NotificationService:
             }
 
             async with httpx.AsyncClient() as client:
-                response = await client.post(settings.google_chat_webhook_url, json=card)
-                if response.status_code != 200:
-                    logger.error(f"Failed to send to Google Chat: {response.status_code} {response.text}")
-                else:
-                    logger.info("Successfully sent notification to Google Chat")
+                await client.post(settings.google_chat_webhook_url, json=card)
         except Exception as e:
-            logger.error(f"Error sending to Google Chat: {e}")
+            logger.error(f"Google Chat notification error: {e}")
+
 
 notification_service = NotificationService()

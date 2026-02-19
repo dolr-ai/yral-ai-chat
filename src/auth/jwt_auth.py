@@ -1,6 +1,7 @@
 """
 JWT Authentication and validation
 """
+
 import base64
 import json
 import time
@@ -15,6 +16,7 @@ from src.models.internal import JWTPayload
 
 class CurrentUser(BaseModel):
     """Current authenticated user"""
+
     model_config = ConfigDict(from_attributes=True)
 
     user_id: str
@@ -38,13 +40,13 @@ def _raise_auth_error(detail: str) -> None:
 def decode_jwt(token: str) -> JWTPayload:
     """
     Decode and validate JWT token from auth.yral.com
-    
+
     Args:
         token: JWT token string
-        
+
     Returns:
         Decoded payload
-        
+
     Raises:
         HTTPException: If token is invalid or expired
     """
@@ -98,7 +100,7 @@ def decode_jwt(token: str) -> JWTPayload:
             exp=payload.get("exp", 0),
             iat=payload.get("iat"),
             aud=payload.get("aud"),
-            jti=payload.get("jti")
+            jti=payload.get("jti"),
         )
 
     except HTTPException:
@@ -114,25 +116,19 @@ def decode_jwt(token: str) -> JWTPayload:
 async def get_current_user(authorization: str | None = Header(None)) -> CurrentUser:
     """
     FastAPI dependency to get current authenticated user
-    
+
     Args:
         authorization: Authorization header (Bearer token)
-        
+
     Returns:
         CurrentUser object
     """
     if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail="Missing authorization header"
-        )
+        raise HTTPException(status_code=401, detail="Missing authorization header")
 
     parts = authorization.split()
     if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authorization header format. Expected: Bearer <token>"
-        )
+        raise HTTPException(status_code=401, detail="Invalid authorization header format. Expected: Bearer <token>")
 
     token = parts[1]
     payload = decode_jwt(token)
@@ -149,10 +145,10 @@ async def get_current_user(authorization: str | None = Header(None)) -> CurrentU
 async def get_optional_user(authorization: str | None = Header(None)) -> CurrentUser | None:
     """
     Optional authentication - returns None if not authenticated
-    
+
     Args:
         authorization: Authorization header (Bearer token)
-        
+
     Returns:
         CurrentUser object or None
     """

@@ -1,11 +1,15 @@
 """
 Internal Pydantic models for service layer
 """
+
 from pydantic import BaseModel, ConfigDict, Field
+
+from src.models.entities import MessageType
 
 
 class CircuitBreakerState(BaseModel):
     """Circuit breaker state information"""
+
     model_config = ConfigDict(from_attributes=True)
 
     state: str = Field(..., description="Circuit breaker state: closed, open, or half_open")
@@ -15,6 +19,7 @@ class CircuitBreakerState(BaseModel):
 
 class DatabaseHealth(BaseModel):
     """Database health check result"""
+
     model_config = ConfigDict(from_attributes=True)
 
     status: str = Field(..., description="Database status: up or down")
@@ -28,6 +33,7 @@ class DatabaseHealth(BaseModel):
 
 class AIProviderHealth(BaseModel):
     """AI Provider API health check result"""
+
     model_config = ConfigDict(from_attributes=True)
 
     status: str = Field(..., description="Service status: up or down")
@@ -37,6 +43,7 @@ class AIProviderHealth(BaseModel):
 
 class CacheStats(BaseModel):
     """Cache statistics"""
+
     model_config = ConfigDict(from_attributes=True)
 
     total_items: int = Field(..., description="Total number of cached items")
@@ -51,6 +58,7 @@ class CacheStats(BaseModel):
 
 class JWTPayload(BaseModel):
     """JWT token payload"""
+
     model_config = ConfigDict(from_attributes=True, extra="allow")
 
     sub: str = Field(..., description="Subject (user ID)")
@@ -60,3 +68,58 @@ class JWTPayload(BaseModel):
     aud: str | None = Field(None, description="Audience")
     jti: str | None = Field(None, description="JWT ID")
 
+
+class PersonalityTrait(BaseModel):
+    """Trait key-value pair for character personality"""
+    trait: str = Field(..., description="Name of the trait (e.g., energy_level)")
+    value: str = Field(..., description="Value of the trait (e.g., high)")
+
+
+class CharacterValidation(BaseModel):
+    """Internal model for AI character validation response from LLM"""
+
+    is_valid: bool = Field(..., description="Whether the character concept is valid and non-NSFW")
+    reason: str | None = Field(None, description="Reason for invalidation (if is_valid is false)")
+    name: str | None = Field(None, description="URL-friendly username (slug)")
+    display_name: str | None = Field(None, description="Human-readable display name")
+    description: str | None = Field(None, description="Character biography/description")
+    initial_greeting: str | None = Field(None, description="Initial greeting message")
+    suggested_messages: list[str] | None = Field(None, description="List of suggested starter messages")
+    personality_traits: list[PersonalityTrait] | None = Field(
+        None, description="List of personality traits"
+    )
+    category: str | None = Field(None, description="Expertise or character category")
+    image_prompt: str | None = Field(None, description="Detailed prompt for avatar generation")
+
+
+class LLMGenerateParams(BaseModel):
+    """Parameters for AI response generation"""
+
+    user_message: str
+    system_instructions: str
+    conversation_history: list[object] | None = None  # Using object to avoid circular import with Message
+    media_urls: list[str] | None = None
+    max_tokens: int | None = None
+    response_mime_type: str | None = None
+    response_schema: dict[str, object] | None = None
+
+
+class AIResponse(BaseModel):
+    """Standard AI response structure"""
+
+    text: str
+    token_count: int
+
+
+class SendMessageParams(BaseModel):
+    """Parameters for ChatService.send_message"""
+
+    conversation_id: str
+    user_id: str
+    content: str
+    message_type: MessageType = MessageType.TEXT
+    media_urls: list[str] | None = None
+    audio_url: str | None = None
+    audio_duration_seconds: int | None = None
+    background_tasks: object | None = None
+    client_message_id: str | None = None

@@ -1,6 +1,7 @@
 """
 Rate limiting middleware using token bucket algorithm
 """
+
 import time
 from collections import defaultdict
 
@@ -18,7 +19,7 @@ class TokenBucket:
     def __init__(self, capacity: int, refill_rate: float):
         """
         Initialize token bucket
-        
+
         Args:
             capacity: Maximum number of tokens
             refill_rate: Tokens added per second
@@ -31,10 +32,10 @@ class TokenBucket:
     def consume(self, tokens: int = 1) -> bool:
         """
         Try to consume tokens
-        
+
         Args:
             tokens: Number of tokens to consume
-            
+
         Returns:
             True if tokens were consumed, False if insufficient tokens
         """
@@ -65,7 +66,7 @@ class TokenBucket:
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
     Rate limiting middleware with token bucket algorithm
-    
+
     Limits requests per minute and per hour for each user/IP
     """
 
@@ -73,26 +74,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.buckets: dict[str, tuple[TokenBucket, TokenBucket]] = defaultdict(
             lambda: (
-                TokenBucket(
-                    capacity=settings.rate_limit_per_minute,
-                    refill_rate=settings.rate_limit_per_minute / 60.0
-                ),
-                TokenBucket(
-                    capacity=settings.rate_limit_per_hour,
-                    refill_rate=settings.rate_limit_per_hour / 3600.0
-                )
+                TokenBucket(capacity=settings.rate_limit_per_minute, refill_rate=settings.rate_limit_per_minute / 60.0),
+                TokenBucket(capacity=settings.rate_limit_per_hour, refill_rate=settings.rate_limit_per_hour / 3600.0),
             )
         )
         self.cleanup_interval = 300
         self.last_cleanup = time.time()
 
-        self.excluded_paths = {
-            "/health",
-            "/docs",
-            "/redoc",
-            "/openapi.json",
-            "/"
-        }
+        self.excluded_paths = {"/health", "/docs", "/redoc", "/openapi.json", "/"}
 
     async def dispatch(self, request: Request, call_next):
         """Process request with rate limiting"""
@@ -106,9 +95,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         if not minute_bucket.consume():
             retry_after = minute_bucket.get_retry_after()
-            logger.warning(
-                f"Rate limit exceeded (per minute) for {identifier} on {request.url.path}"
-            )
+            logger.warning(f"Rate limit exceeded (per minute) for {identifier} on {request.url.path}")
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content={
@@ -116,16 +103,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "message": f"Too many requests. Try again in {retry_after} seconds.",
                     "retry_after": retry_after,
                     "limit_type": "per_minute",
-                    "limit": settings.rate_limit_per_minute
+                    "limit": settings.rate_limit_per_minute,
                 },
-                headers={"Retry-After": str(retry_after)}
+                headers={"Retry-After": str(retry_after)},
             )
 
         if not hour_bucket.consume():
             retry_after = hour_bucket.get_retry_after()
-            logger.warning(
-                f"Rate limit exceeded (per hour) for {identifier} on {request.url.path}"
-            )
+            logger.warning(f"Rate limit exceeded (per hour) for {identifier} on {request.url.path}")
             return JSONResponse(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 content={
@@ -133,9 +118,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "message": f"Hourly rate limit exceeded. Try again in {retry_after} seconds.",
                     "retry_after": retry_after,
                     "limit_type": "per_hour",
-                    "limit": settings.rate_limit_per_hour
+                    "limit": settings.rate_limit_per_hour,
                 },
-                headers={"Retry-After": str(retry_after)}
+                headers={"Retry-After": str(retry_after)},
             )
 
         self._cleanup_buckets()
@@ -151,7 +136,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def _get_identifier(self, request: Request) -> str:
         """
         Get unique identifier for rate limiting
-        
+
         Priority: user_id from JWT > IP address
         """
         if hasattr(request.state, "user_id"):
@@ -172,8 +157,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         identifiers_to_remove = []
 
         for identifier, (minute_bucket, hour_bucket) in self.buckets.items():
-            if (minute_bucket.last_refill < inactive_threshold and
-                hour_bucket.last_refill < inactive_threshold):
+            if minute_bucket.last_refill < inactive_threshold and hour_bucket.last_refill < inactive_threshold:
                 identifiers_to_remove.append(identifier)
 
         for identifier in identifiers_to_remove:

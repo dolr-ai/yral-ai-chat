@@ -1,6 +1,7 @@
 """
 Circuit breaker pattern implementation for external service calls
 """
+
 import time
 from collections.abc import Callable
 from enum import Enum
@@ -12,6 +13,7 @@ from src.models.internal import CircuitBreakerState
 
 class CircuitState(Enum):
     """Circuit breaker states"""
+
     CLOSED = "closed"  # Normal operation
     OPEN = "open"  # Failures detected, rejecting calls
     HALF_OPEN = "half_open"  # Testing if service recovered
@@ -26,15 +28,10 @@ class CircuitBreaker:
     Circuit breaker for protecting against cascading failures
     """
 
-    def __init__(
-        self,
-        failure_threshold: int = 5,
-        timeout: int = 60,
-        recovery_timeout: int = 30
-    ):
+    def __init__(self, failure_threshold: int = 5, timeout: int = 60, recovery_timeout: int = 30):
         """
         Initialize circuit breaker
-        
+
         Args:
             failure_threshold: Number of failures before opening circuit
             timeout: Seconds to wait before attempting recovery
@@ -51,15 +48,15 @@ class CircuitBreaker:
     def call(self, func: Callable, *args, **kwargs) -> object:
         """
         Execute function with circuit breaker protection
-        
+
         Args:
             func: Function to execute
             *args: Positional arguments
             **kwargs: Keyword arguments
-            
+
         Returns:
             Function result
-            
+
         Raises:
             CircuitBreakerOpenError: If circuit is open
             Exception: If function fails
@@ -83,15 +80,15 @@ class CircuitBreaker:
     async def call_async(self, func: Callable, *args, **kwargs) -> object:
         """
         Execute async function with circuit breaker protection
-        
+
         Args:
             func: Async function to execute
             *args: Positional arguments
             **kwargs: Keyword arguments
-            
+
         Returns:
             Function result
-            
+
         Raises:
             CircuitBreakerOpenError: If circuit is open
             Exception: If function fails
@@ -126,10 +123,7 @@ class CircuitBreaker:
         self.last_failure_time = time.time()
 
         if self.failure_count >= self.failure_threshold and self.state != CircuitState.OPEN:
-            logger.warning(
-                f"Circuit breaker entering OPEN state "
-                f"(failures: {self.failure_count})"
-            )
+            logger.warning(f"Circuit breaker entering OPEN state " f"(failures: {self.failure_count})")
             self.state = CircuitState.OPEN
 
     def _should_attempt_reset(self) -> bool:
@@ -142,20 +136,10 @@ class CircuitBreaker:
     def get_state(self) -> CircuitBreakerState:
         """Get current circuit breaker state"""
         return CircuitBreakerState(
-            state=self.state.value,
-            failure_count=self.failure_count,
-            last_failure_time=self.last_failure_time
+            state=self.state.value, failure_count=self.failure_count, last_failure_time=self.last_failure_time
         )
 
 
-gemini_circuit_breaker = CircuitBreaker(
-    failure_threshold=3,
-    timeout=60,
-    recovery_timeout=30
-)
+gemini_circuit_breaker = CircuitBreaker(failure_threshold=3, timeout=60, recovery_timeout=30)
 
-s3_circuit_breaker = CircuitBreaker(
-    failure_threshold=5,
-    timeout=30,
-    recovery_timeout=15
-)
+s3_circuit_breaker = CircuitBreaker(failure_threshold=5, timeout=30, recovery_timeout=15)

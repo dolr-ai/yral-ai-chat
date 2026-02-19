@@ -1,6 +1,7 @@
 """
 Enhanced logging middleware with correlation IDs and structured logging
 """
+
 import json
 import sys
 import time
@@ -21,11 +22,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app):
         super().__init__(app)
-        self.excluded_paths = {
-            "/docs",
-            "/redoc",
-            "/openapi.json"
-        }
+        self.excluded_paths = {"/docs", "/redoc", "/openapi.json"}
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request with enhanced logging"""
@@ -51,8 +48,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     "path": path,
                     "query_params": query_params,
                     "client_ip": client_ip,
-                    "user_agent": user_agent[:100] if user_agent else None
-                }
+                    "user_agent": user_agent[:100] if user_agent else None,
+                },
             )
 
         try:
@@ -63,7 +60,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             response.headers["X-Correlation-ID"] = correlation_id
 
             if path not in self.excluded_paths:
-                log_level = "error" if response.status_code >= 500 else "warning" if response.status_code >= 400 else "info"
+                log_level = (
+                    "error" if response.status_code >= 500 else "warning" if response.status_code >= 400 else "info"
+                )
 
                 log_data = {
                     "correlation_id": correlation_id,
@@ -71,15 +70,14 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     "path": path,
                     "status_code": response.status_code,
                     "duration_ms": duration_ms,
-                    "client_ip": client_ip
+                    "client_ip": client_ip,
                 }
 
                 if hasattr(request.state, "user_id"):
                     log_data["user_id"] = request.state.user_id
 
                 getattr(logger, log_level)(
-                    f"Request completed: {method} {path} - {response.status_code} ({duration_ms}ms)",
-                    extra=log_data
+                    f"Request completed: {method} {path} - {response.status_code} ({duration_ms}ms)", extra=log_data
                 )
         except Exception as e:
             duration_ms = int((time.time() - start_time) * 1000)
@@ -93,8 +91,8 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                     "duration_ms": duration_ms,
                     "client_ip": client_ip,
                     "exception": str(e),
-                    "exception_type": type(e).__name__
-                }
+                    "exception_type": type(e).__name__,
+                },
             )
             raise
         else:
@@ -103,10 +101,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     def _get_client_ip(self, request: Request) -> str:
         """
         Get client IP address, checking for proxy headers
-        
+
         Args:
             request: FastAPI request object
-            
+
         Returns:
             Client IP address
         """
@@ -128,6 +126,7 @@ def configure_logging():
     logger.remove()
 
     if settings.log_format == "json":
+
         def json_sink(message):
             """Custom sink for JSON logging"""
             # Handle both loguru.Message objects and raw dicts
@@ -141,7 +140,7 @@ def configure_logging():
 
             timestamp = get_val(record, "time")
             level = get_val(record, "level")
-            
+
             # Robust timestamp stringification
             if hasattr(timestamp, "isoformat"):
                 timestamp_str = timestamp.isoformat()
@@ -159,7 +158,7 @@ def configure_logging():
                 "message": get_val(record, "message", ""),
                 "module": get_val(record, "module", ""),
                 "function": get_val(record, "function", ""),
-                "line": get_val(record, "line", 0)
+                "line": get_val(record, "line", 0),
             }
 
             # Handle extra data (may be nested)
@@ -179,24 +178,20 @@ def configure_logging():
                 if exc_type and exc_value:
                     log_data["exception"] = {
                         "type": exc_type.__name__ if hasattr(exc_type, "__name__") else str(exc_type),
-                        "value": str(exc_value)
+                        "value": str(exc_value),
                     }
                 else:
                     log_data["exception"] = str(exception)
-            
             # Write JSON log line to stdout efficiently
             sys.stdout.write(json.dumps(log_data) + "\n")
 
-        logger.add(
-            json_sink,
-            level=settings.log_level
-        )
+        logger.add(json_sink, level=settings.log_level)
     else:
         logger.add(
             sys.stdout,
             format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level> {extra}",
             level=settings.log_level,
-            colorize=True
+            colorize=True,
         )
 
     logger.info(f"Logging configured: level={settings.log_level}, format={settings.log_format}")
