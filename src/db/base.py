@@ -83,7 +83,10 @@ class ConnectionPool:
             await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
             # Performance tuning
             await conn.execute("PRAGMA synchronous = NORMAL")
-            await conn.execute("PRAGMA mmap_size = 268435456")  # 256MB
+            await conn.execute("PRAGMA mmap_size = 1073741824")  # 1GB
+            await conn.execute("PRAGMA threads = 4")
+            await conn.execute("PRAGMA secure_delete = OFF")
+            await conn.execute("PRAGMA cache_spill = OFF")
         await conn.execute("PRAGMA cache_size = -64000")    # 64MB (negative value = kb)
         await conn.execute("PRAGMA temp_store = MEMORY")
         
