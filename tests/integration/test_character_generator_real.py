@@ -30,7 +30,7 @@ def setup_overrides(mock_gemini):
 
 
 
-def test_validate_metadata_with_real_replicate(client, mock_gemini):
+def test_validate_metadata_with_real_replicate(client, mock_gemini, auth_headers):
     """
     Test validation and metadata generation using REAL Replicate API for image generation.
     Gemini is mocked to ensure deterministic metadata input for Replicate.
@@ -63,7 +63,8 @@ def test_validate_metadata_with_real_replicate(client, mock_gemini):
     # Call the endpoint
     response = client.post(
         "/api/v1/influencers/validate-and-generate-metadata",
-        json={"system_instructions": system_instructions}
+        json={"system_instructions": system_instructions},
+        headers=auth_headers
     )
 
     # Assertions

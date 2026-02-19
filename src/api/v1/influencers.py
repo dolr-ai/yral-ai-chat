@@ -204,6 +204,7 @@ async def get_influencer(
 async def generate_prompt(
     request: GeneratePromptRequest,
     character_generator: CharacterGeneratorServiceDep,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
 ):
     """Generate system instructions"""
     return await character_generator.generate_system_instructions(request.prompt)
@@ -219,6 +220,7 @@ async def generate_prompt(
 async def validate_and_generate_metadata(
     request: ValidateMetadataRequest,
     character_generator: CharacterGeneratorServiceDep,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
 ):
     """Validate system instructions and generate metadata using AI"""
     return await character_generator.validate_and_generate_metadata(request.system_instructions)
@@ -235,6 +237,7 @@ async def create_influencer(
     request: CreateInfluencerRequest,
     influencer_service: InfluencerServiceDep,
     character_generator_service: CharacterGeneratorServiceDep,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
 ):
     # Generate starting content if missing
     initial_greeting = request.initial_greeting
@@ -259,8 +262,8 @@ async def create_influencer(
         suggested_messages=suggested_messages,
         is_active=InfluencerStatus.ACTIVE,
         is_nsfw=False,  # Enforce non-NSFW for all new characters
-        parent_principal_id=request.parent_principal_id,
-        source="user-created-influencer" if request.parent_principal_id else "admin-created-influencer",
+        parent_principal_id=current_user.user_id,
+        source="user-created-influencer",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
         metadata={},

@@ -208,7 +208,6 @@ class CreateInfluencerRequest(BaseModel):
     avatar_url: str | None = Field(None, description="URL of the avatar image")
     is_nsfw: bool = Field(default=False, description="Whether the character is NSFW (Ignored: Enforced to False)")
     bot_principal_id: str = Field(..., description="ID of the bot principal (used as primary ID)")
-    parent_principal_id: str | None = Field(None, description="ID of the parent principal (user who created it)")
 
     @field_validator("name")
     @classmethod
