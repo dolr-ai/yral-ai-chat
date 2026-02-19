@@ -88,6 +88,11 @@ class SendMessageRequest(BaseModel):
         description="Optional unique identifier for deduplication (UUID format recommended)",
         examples=["550e8400-e29b-41d4-a716-446655440000"]
     )
+    client_message_id: str | None = Field(
+        default=None,
+        description="Optional unique identifier for deduplication (UUID format recommended)",
+        examples=["550e8400-e29b-41d4-a716-446655440000"]
+    )
 
     @field_validator("message_type", mode="before")
     @classmethod
