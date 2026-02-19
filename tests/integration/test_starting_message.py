@@ -64,7 +64,7 @@ def test_create_influencer_generates_starting_message(client, mock_gemini, mock_
         "parent_principal_id": "creator-principal-id",
     }
 
-    response = client.post("/api/v1/influencers/create", json=create_req)
+    response = client.post("/api/v1/influencers/create", json=create_req, headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     

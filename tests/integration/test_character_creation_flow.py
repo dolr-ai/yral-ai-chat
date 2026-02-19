@@ -31,7 +31,7 @@ def setup_overrides(mock_gemini, mock_replicate):
     app.dependency_overrides.clear()
 
 
-def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
+def test_character_creation_end_to_end(client, mock_gemini, mock_replicate, auth_headers):
     """
     Test the full character creation flow:
     1. Generate Prompt
@@ -43,7 +43,7 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     # --- Step 1: Generate Prompt ---
     mock_gemini.generate_response.return_value = AIResponse(text="You are a master hacker named Neo.", token_count=100)
 
-    response = client.post("/api/v1/influencers/generate-prompt", json={"prompt": "cyberpunk hacker"})
+    response = client.post("/api/v1/influencers/generate-prompt", json={"prompt": "cyberpunk hacker"}, headers=auth_headers)
     assert response.status_code == 200
     data = response.json()
     assert "system_instructions" in data
@@ -66,7 +66,9 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     mock_replicate.generate_image.return_value = "https://example.com/neo.jpg"
 
     response = client.post(
-        "/api/v1/influencers/validate-and-generate-metadata", json={"system_instructions": system_instructions}
+        "/api/v1/influencers/validate-and-generate-metadata",
+        json={"system_instructions": system_instructions},
+        headers=auth_headers
     )
     assert response.status_code == 200
     data = response.json()
@@ -91,7 +93,7 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
         "parent_principal_id": "creator-principal-id",
     }
 
-    response = client.post("/api/v1/influencers/create", json=create_req)
+    response = client.post("/api/v1/influencers/create", json=create_req, headers=auth_headers)
     assert response.status_code == 200
     created_data = response.json()
     assert created_data["name"] == "neohacker"
@@ -108,14 +110,16 @@ def test_character_creation_end_to_end(client, mock_gemini, mock_replicate):
     assert "starter_video_prompt" not in retrieved_data
 
 
-def test_character_creation_nsfw_rejection(client, mock_gemini):
+def test_character_creation_nsfw_rejection(client, mock_gemini, auth_headers):
     """Test that NSFW content is rejected during validation step"""
 
     mock_nsfw_response = {"is_valid": False, "reason": "NSFW content detected"}
     mock_gemini.generate_response.return_value = AIResponse(text=json.dumps(mock_nsfw_response), token_count=50)
 
     response = client.post(
-        "/api/v1/influencers/validate-and-generate-metadata", json={"system_instructions": "Some NSFW instructions..."}
+        "/api/v1/influencers/validate-and-generate-metadata",
+        json={"system_instructions": "Some NSFW instructions..."},
+        headers=auth_headers
     )
     assert response.status_code == 200  # API returns 200 but is_valid is False
     data = response.json()

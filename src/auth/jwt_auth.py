@@ -7,7 +7,7 @@ import json
 import time
 
 import sentry_sdk
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Query
 from loguru import logger
 from pydantic import BaseModel, ConfigDict
 
@@ -159,3 +159,29 @@ async def get_optional_user(authorization: str | None = Header(None)) -> Current
         return await get_current_user(authorization)
     except HTTPException:
         return None
+
+
+async def get_current_user_ws(token: str | None = Query(None)) -> CurrentUser:
+    """
+    FastAPI dependency to get current authenticated user for WebSocket connections.
+    Validates token from 'token' query parameter.
+
+    Args:
+        token: JWT token string from query params
+
+    Returns:
+        CurrentUser object
+
+    Raises:
+        HTTPException: If token is missing, invalid or expired
+    """
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing authentication token")
+
+    payload = decode_jwt(token)
+    user_id = payload.sub
+
+    return CurrentUser(
+        user_id=user_id,
+        payload=payload,
+    )

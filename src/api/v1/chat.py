@@ -5,7 +5,7 @@ Chat endpoints
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer
 
-from src.auth.jwt_auth import CurrentUser, get_current_user
+from src.auth.jwt_auth import CurrentUser, get_current_user, get_current_user_ws
 from src.core.background_tasks import (
     invalidate_cache_for_user,
     log_ai_usage,
@@ -555,12 +555,13 @@ async def mark_conversation_as_read(
 async def websocket_inbox_endpoint(
     websocket: WebSocket,
     user_id: str,
+    current_user: CurrentUser = Depends(get_current_user_ws),  # noqa: B008
 ):
     """
     WebSocket endpoint for real-time inbox updates.
     
     ### Connection:
-    `ws://{host}/api/v1/chat/ws/inbox/{user_id}`
+    `ws://{host}/api/v1/chat/ws/inbox/{user_id}?token={jwt_token}`
     
     ### Events:
     Clients connect to receive real-time events:
@@ -568,6 +569,11 @@ async def websocket_inbox_endpoint(
     - `conversation_read`: When a conversation is marked as read
     - `typing_status`: When an influencer is typing
     """
+    # Verify user_id matches token subject
+    if current_user.user_id != user_id:
+        await websocket.close(code=4003)  # Forbidden
+        return
+
     await manager.connect(websocket, user_id)
     try:
         while True:
