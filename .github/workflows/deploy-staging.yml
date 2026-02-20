@@ -119,6 +119,10 @@ jobs:
           S3_ENDPOINT_URL=${{ secrets.S3_ENDPOINT_URL }}
           S3_PUBLIC_URL_BASE=${{ secrets.S3_PUBLIC_URL_BASE }}
           
+          # Metadata Server
+          METADATA_URL=${{ secrets.METADATA_URL || 'https://metadata.yral.com' }}
+          YRAL_METADATA_NOTIFICATION_API_KEY=${{ secrets.YRAL_METADATA_NOTIFICATION_API_KEY }}
+          
           # Whisper API (Optional)
           USE_WHISPER=${{ secrets.USE_WHISPER || 'false' }}
           WHISPER_API_KEY=${{ secrets.WHISPER_API_KEY || '' }}

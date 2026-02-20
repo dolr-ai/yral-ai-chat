@@ -64,6 +64,10 @@ services:
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
       - S3_PUBLIC_URL_BASE=${S3_PUBLIC_URL_BASE}
 
+      # Metadata Server
+      - METADATA_URL=${METADATA_URL:-https://metadata.yral.com}
+      - YRAL_METADATA_NOTIFICATION_API_KEY=${YRAL_METADATA_NOTIFICATION_API_KEY}
+
       # Optional: Whisper API
       - USE_WHISPER=${USE_WHISPER:-false}
       - WHISPER_API_KEY=${WHISPER_API_KEY:-}
