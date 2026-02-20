@@ -197,7 +197,7 @@ class CreateInfluencerRequest(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    name: str = Field(..., min_length=3, max_length=12, description="Internal name (slug) - 3-12 alphanumeric characters")
+    name: str = Field(..., min_length=3, max_length=15, description="Internal name (slug) - 3-15 alphanumeric characters")
     display_name: str = Field(..., min_length=1, max_length=100, description="Display name")
     description: str | None = Field(None, max_length=500, description="Short bio")
     system_instructions: str = Field(..., description="System prompts for the AI")
