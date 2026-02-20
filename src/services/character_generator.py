@@ -62,7 +62,7 @@ class CharacterGeneratorService:
             "   a) It must be coherent and not nonsensical. "
             "   b) It must be strictly NON-NSFW (no sexually explicit content, no erotica). "
             "2. IMPORTANT: If the concept violates safety guidelines, you MUST set 'is_valid' to false and provide a reason."
-            "3. If valid, generate metadata: name (MUST be 3-12 characters, lowercase, alphanumeric only - no spaces, underscores, or special characters), display_name, description (should be a 1 liner), initial_greeting, suggested_messages, personality_traits, category. "
+            "3. If valid, generate metadata: name (MUST be 3-12 characters, lowercase, alphanumeric only - no spaces, underscores, or special characters), display_name (MUST be 3-30 characters only), description (should be a 1 liner), initial_greeting, suggested_messages, personality_traits, category. "
             "4. IMPORTANT: Use the language specified in the system instructions for 'initial_greeting' and 'suggested_messages'. If no specific language is mentioned, default to Hinglish (Hindi mixed with English text in English letters). "
             "5. If valid, refine the system instructions if needed to be more effective and store them in 'system_instructions'. "
             "6. Create a specific, detailed image generation prompt for the character's avatar and store it in 'image_prompt'. The style of the image should be realistic. "
