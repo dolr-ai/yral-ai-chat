@@ -28,7 +28,7 @@ pub struct SendMessageRequest {
 
 impl SendMessageRequest {
     pub fn parsed_message_type(&self) -> Option<MessageType> {
-        MessageType::from_str(&self.message_type)
+        self.message_type.parse().ok()
     }
 
     pub fn validate_content(&self) -> Result<(), String> {
@@ -78,10 +78,9 @@ pub struct PaginationParams {
 }
 
 impl PaginationParams {
-    pub fn limit(&self) -> i64 {
-        self.limit.unwrap_or(50).clamp(1, 100)
+    pub fn limit(&self, default: i64, max: i64) -> i64 {
+        self.limit.unwrap_or(default).clamp(1, max)
     }
-
     pub fn offset(&self) -> i64 {
         self.offset.unwrap_or(0).max(0)
     }
@@ -95,13 +94,8 @@ pub struct ListConversationsParams {
 }
 
 impl ListConversationsParams {
-    pub fn limit(&self) -> i64 {
-        self.limit.unwrap_or(20).clamp(1, 100)
-    }
-
-    pub fn offset(&self) -> i64 {
-        self.offset.unwrap_or(0).max(0)
-    }
+    pub fn limit(&self) -> i64 { self.limit.unwrap_or(20).clamp(1, 100) }
+    pub fn offset(&self) -> i64 { self.offset.unwrap_or(0).max(0) }
 }
 
 #[derive(Debug, Deserialize)]
@@ -112,14 +106,8 @@ pub struct ListMessagesParams {
 }
 
 impl ListMessagesParams {
-    pub fn limit(&self) -> i64 {
-        self.limit.unwrap_or(50).clamp(1, 200)
-    }
-
-    pub fn offset(&self) -> i64 {
-        self.offset.unwrap_or(0).max(0)
-    }
-
+    pub fn limit(&self) -> i64 { self.limit.unwrap_or(50).clamp(1, 200) }
+    pub fn offset(&self) -> i64 { self.offset.unwrap_or(0).max(0) }
     pub fn order(&self) -> &str {
         match self.order.as_deref() {
             Some("asc") => "asc",
@@ -155,8 +143,6 @@ pub struct CreateInfluencerRequest {
     pub personality_traits: serde_json::Value,
     pub category: Option<String>,
     pub avatar_url: Option<String>,
-    #[serde(default)]
-    pub is_nsfw: bool,
     pub bot_principal_id: String,
     pub parent_principal_id: Option<String>,
 }
@@ -176,18 +162,3 @@ pub struct UpdateSystemPromptRequest {
     pub system_instructions: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ListTrendingParams {
-    pub limit: Option<i64>,
-    pub offset: Option<i64>,
-}
-
-impl ListTrendingParams {
-    pub fn limit(&self) -> i64 {
-        self.limit.unwrap_or(50).clamp(1, 100)
-    }
-
-    pub fn offset(&self) -> i64 {
-        self.offset.unwrap_or(0).max(0)
-    }
-}

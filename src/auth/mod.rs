@@ -22,7 +22,6 @@ pub struct JwtPayload {
 #[derive(Debug, Clone)]
 pub struct AuthenticatedUser {
     pub user_id: String,
-    pub payload: JwtPayload,
 }
 
 fn decode_jwt(token: &str) -> Result<JwtPayload, AppError> {
@@ -66,9 +65,8 @@ where
                 )
             })?;
 
-        let payload = decode_jwt(token)?;
-        let user_id = payload.sub.clone();
+        let claims = decode_jwt(token)?;
 
-        Ok(Self { user_id, payload })
+        Ok(Self { user_id: claims.sub })
     }
 }

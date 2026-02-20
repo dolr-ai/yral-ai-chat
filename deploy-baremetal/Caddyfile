@@ -1,0 +1,46 @@
+{
+    # Global options
+    email joel@gobazzinga.io
+
+    # Enable HTTP/1.1, HTTP/2, and HTTP/3
+    servers {
+        protocols h1 h2 h2c h3
+    }
+}
+
+# Main HTTPS service
+ai-chat.yral.com {
+    # HTTP reverse proxy
+    reverse_proxy yral-ai-chat:8000 {
+        # Headers
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        # Flush immediately for WebSocket and streaming
+        flush_interval -1
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Logging
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+}
+
+# Health check endpoint on HTTP (for load balancer health checks)
+:80 {
+    respond /health "OK" 200
+    respond "Service available at https://ai-chat.yral.com" 200
+}
