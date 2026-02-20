@@ -1,9 +1,11 @@
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+use super::{parse_dt, parse_json};
 use crate::models::entities::{
     AIInfluencer, Conversation, InfluencerStatus, LastMessageInfo, MessageRole,
 };
+
 
 pub struct ConversationRepository {
     pool: SqlitePool,
@@ -23,23 +25,10 @@ struct ConversationRow {
     display_name: String,
     avatar_url: Option<String>,
     suggested_messages: String,
-}
-
-#[derive(sqlx::FromRow)]
-struct ConversationWithCountRow {
-    id: String,
-    user_id: String,
-    influencer_id: String,
-    created_at: String,
-    updated_at: String,
-    metadata: String,
-    inf_id: String,
-    name: String,
-    display_name: String,
-    avatar_url: Option<String>,
-    suggested_messages: String,
-    message_count: i64,
-    unread_count: i64,
+    #[sqlx(default)]
+    message_count: Option<i64>,
+    #[sqlx(default)]
+    unread_count: Option<i64>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -54,16 +43,8 @@ struct LastMessageRow {
 
 impl From<ConversationRow> for Conversation {
     fn from(row: ConversationRow) -> Self {
-        let metadata: serde_json::Value = serde_json::from_str(&row.metadata)
-            .unwrap_or(serde_json::Value::Object(Default::default()));
-
-        let created_at =
-            chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
-                .unwrap_or_default();
-        let updated_at =
-            chrono::NaiveDateTime::parse_from_str(&row.updated_at, "%Y-%m-%d %H:%M:%S")
-                .unwrap_or_default();
-
+        let created_at = parse_dt(&row.created_at);
+        let updated_at = parse_dt(&row.updated_at);
         let suggested_messages: Vec<String> =
             serde_json::from_str(&row.suggested_messages).unwrap_or_default();
 
@@ -95,49 +76,22 @@ impl From<ConversationRow> for Conversation {
             influencer_id: row.influencer_id,
             created_at,
             updated_at,
-            metadata,
+            metadata: parse_json(&row.metadata),
             influencer: Some(influencer),
-            message_count: None,
-            unread_count: 0,
+            message_count: row.message_count,
+            unread_count: row.unread_count.unwrap_or(0),
             last_message: None,
             recent_messages: None,
         }
     }
 }
 
-impl From<ConversationWithCountRow> for Conversation {
-    fn from(row: ConversationWithCountRow) -> Self {
-        let unread_count = row.unread_count;
-        let mut conv = Conversation::from(ConversationRow {
-            id: row.id,
-            user_id: row.user_id,
-            influencer_id: row.influencer_id,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            metadata: row.metadata,
-            inf_id: row.inf_id,
-            name: row.name,
-            display_name: row.display_name,
-            avatar_url: row.avatar_url,
-            suggested_messages: row.suggested_messages,
-        });
-        conv.message_count = Some(row.message_count);
-        conv.unread_count = unread_count;
-        conv
-    }
-}
-
 impl From<LastMessageRow> for LastMessageInfo {
     fn from(row: LastMessageRow) -> Self {
-        let role = MessageRole::from_str(&row.role).unwrap_or(MessageRole::User);
-        let created_at =
-            chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
-                .unwrap_or_default();
-
         Self {
             content: row.content,
-            role,
-            created_at,
+            role: row.role.parse().unwrap_or(MessageRole::User),
+            created_at: parse_dt(&row.created_at),
             status: row.status,
             is_read: row.is_read != 0,
         }
@@ -213,7 +167,7 @@ impl ConversationRepository {
         offset: i64,
     ) -> Result<Vec<Conversation>, sqlx::Error> {
         let rows = if let Some(inf_id) = influencer_id {
-            sqlx::query_as::<_, ConversationWithCountRow>(
+            sqlx::query_as::<_, ConversationRow>(
                 "SELECT c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                         i.id as inf_id, i.name, i.display_name, i.avatar_url, i.suggested_messages,
                         COUNT(m.id) as message_count,
@@ -233,7 +187,7 @@ impl ConversationRepository {
             .fetch_all(&self.pool)
             .await?
         } else {
-            sqlx::query_as::<_, ConversationWithCountRow>(
+            sqlx::query_as::<_, ConversationRow>(
                 "SELECT c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                         i.id as inf_id, i.name, i.display_name, i.avatar_url, i.suggested_messages,
                         COUNT(m.id) as message_count,

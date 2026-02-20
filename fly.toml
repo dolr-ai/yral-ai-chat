@@ -1,0 +1,42 @@
+primary_region = 'iad'
+
+[build]
+dockerfile = "deploy-baremetal/Dockerfile"
+
+[env]
+ENABLE_LITESTREAM = 'true'
+PORT = '8000'
+HOST = '0.0.0.0'
+LOG_LEVEL = 'info'
+LOG_FORMAT = 'json'
+DATABASE_PATH = '/app/data/yral_chat.db'
+
+[[services]]
+internal_port = 8000
+protocol = "tcp"
+processes = ["app"]
+
+[[services.ports]]
+handlers = ["http"]
+port = 80
+
+[[services.ports]]
+handlers = ["tls", "http"]
+port = 443
+
+[services.concurrency]
+hard_limit = 250
+soft_limit = 200
+
+[[services.http_checks]]
+interval = 10000
+grace_period = "10s"
+method = "get"
+path = "/health"
+protocol = "http"
+timeout = 2000
+
+[[vm]]
+memory = '1gb'
+cpu_kind = 'shared'
+cpus = 1

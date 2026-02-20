@@ -9,13 +9,12 @@ use crate::db::repositories::InfluencerRepository;
 use crate::error::AppError;
 use crate::models::entities::{AIInfluencer, InfluencerStatus};
 use crate::models::requests::{
-    CreateInfluencerRequest, GeneratePromptRequest, ListTrendingParams, PaginationParams,
+    CreateInfluencerRequest, GeneratePromptRequest, PaginationParams,
     UpdateSystemPromptRequest, ValidateMetadataRequest,
 };
 use crate::models::responses::{
-    GeneratedMetadataResponse, InfluencerCreateResponse, InfluencerResponse,
-    ListInfluencersResponse, ListTrendingInfluencersResponse, SystemPromptResponse,
-    TrendingInfluencerResponse,
+    GeneratedMetadataResponse, InfluencerResponse, ListInfluencersResponse,
+    ListTrendingInfluencersResponse, SystemPromptResponse, TrendingInfluencerResponse,
 };
 use crate::services::character_generator::CharacterGeneratorService;
 use crate::services::moderation;
@@ -37,6 +36,7 @@ impl From<AIInfluencer> for InfluencerResponse {
             created_at: i.created_at,
             conversation_count: i.conversation_count,
             message_count: i.message_count,
+            starter_video_prompt: None,
         }
     }
 }
@@ -48,7 +48,7 @@ pub async fn list_influencers(
 ) -> Result<Json<ListInfluencersResponse>, AppError> {
     let repo = InfluencerRepository::new(state.db.pool.clone());
 
-    let limit = params.limit();
+    let limit = params.limit(50, 100);
     let offset = params.offset();
 
     let (influencers, total) =
@@ -68,11 +68,11 @@ pub async fn list_influencers(
 // GET /api/v1/influencers/trending
 pub async fn list_trending(
     State(state): State<Arc<AppState>>,
-    Query(params): Query<ListTrendingParams>,
+    Query(params): Query<PaginationParams>,
 ) -> Result<Json<ListTrendingInfluencersResponse>, AppError> {
     let repo = InfluencerRepository::new(state.db.pool.clone());
 
-    let limit = params.limit();
+    let limit = params.limit(50, 100);
     let offset = params.offset();
 
     let (influencers, total) =
@@ -150,7 +150,7 @@ pub async fn validate_and_generate_metadata(
 pub async fn create_influencer(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateInfluencerRequest>,
-) -> Result<(StatusCode, Json<InfluencerCreateResponse>), AppError> {
+) -> Result<(StatusCode, Json<InfluencerResponse>), AppError> {
     let repo = InfluencerRepository::new(state.db.pool.clone());
 
     // Check name uniqueness
@@ -242,25 +242,10 @@ pub async fn create_influencer(
         }
     };
 
-    Ok((
-        StatusCode::CREATED,
-        Json(InfluencerCreateResponse {
-            id: influencer.id,
-            name: influencer.name,
-            display_name: influencer.display_name,
-            avatar_url: influencer.avatar_url,
-            description: influencer.description,
-            category: influencer.category,
-            is_active: influencer.is_active,
-            parent_principal_id: influencer.parent_principal_id,
-            source: influencer.source,
-            system_prompt: Some(moderation::strip_guardrails(
-                &influencer.system_instructions,
-            )),
-            created_at: influencer.created_at,
-            starter_video_prompt,
-        }),
-    ))
+    let mut resp = InfluencerResponse::from(influencer);
+    resp.starter_video_prompt = starter_video_prompt;
+
+    Ok((StatusCode::CREATED, Json(resp)))
 }
 
 // PATCH /api/v1/influencers/{influencer_id}/system-prompt

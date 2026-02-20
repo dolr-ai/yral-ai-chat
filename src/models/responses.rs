@@ -112,22 +112,6 @@ pub struct InfluencerResponse {
     pub conversation_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_count: Option<i64>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct InfluencerCreateResponse {
-    pub id: String,
-    pub name: String,
-    pub display_name: String,
-    pub avatar_url: Option<String>,
-    pub description: Option<String>,
-    pub category: Option<String>,
-    pub is_active: InfluencerStatus,
-    pub parent_principal_id: Option<String>,
-    pub source: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub system_prompt: Option<String>,
-    pub created_at: NaiveDateTime,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub starter_video_prompt: Option<String>,
 }
@@ -197,12 +181,6 @@ pub struct MarkConversationAsReadResponse {
     pub last_read_at: NaiveDateTime,
 }
 
-#[derive(Debug, Serialize)]
-pub struct GenerateImageResponse {
-    pub image_url: Option<String>,
-    pub prompt_used: String,
-}
-
 // ── Health / Status ──
 
 #[derive(Debug, Serialize)]
@@ -267,10 +245,3 @@ pub struct DeleteConversationResponse {
     pub deleted_messages_count: i64,
 }
 
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub error: String,
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub details: Option<serde_json::Value>,
-}
