@@ -95,4 +95,4 @@ media_upload.py
 
 # Beszel Monitoring
 beszel_agent_data/
-server-rs/target/
+target/
