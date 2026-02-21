@@ -128,7 +128,7 @@ class LRUCache:
         )
 
 
-cache = LRUCache(max_size=1000, default_ttl=300)
+cache = LRUCache(max_size=250, default_ttl=300)
 
 
 def cache_key(*args, **kwargs) -> str:

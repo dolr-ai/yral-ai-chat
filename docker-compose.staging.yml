@@ -14,11 +14,13 @@ services:
       # Persist logs (staging)
       - ./logs:/app/logs
       # Note: Media files are stored in S3, not locally
-    shm_size: '2gb'
+    shm_size: '256mb'
     deploy:
       resources:
+        limits:
+          memory: 1.5G
         reservations:
-          memory: 1G
+          memory: 512M
     environment:
       # Application Settings
       - APP_NAME=${APP_NAME:-Yral AI Chat API}
