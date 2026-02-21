@@ -42,6 +42,10 @@ services:
       - GEMINI_MAX_TOKENS=${GEMINI_MAX_TOKENS:-2048}
       - GEMINI_TEMPERATURE=${GEMINI_TEMPERATURE:-0.7}
 
+      # Replicate API
+      - REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
+      - REPLICATE_MODEL=${REPLICATE_MODEL:-black-forest-labs/flux-dev}
+
       # OpenRouter API
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL:-google/gemini-2.5-flash}
@@ -59,6 +63,10 @@ services:
       - AWS_REGION=${AWS_REGION}
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
       - S3_PUBLIC_URL_BASE=${S3_PUBLIC_URL_BASE}
+
+      # Metadata Server
+      - METADATA_URL=${METADATA_URL:-https://metadata.yral.com}
+      - YRAL_METADATA_NOTIFICATION_API_KEY=${YRAL_METADATA_NOTIFICATION_API_KEY}
 
       # Optional: Whisper API
       - USE_WHISPER=${USE_WHISPER:-false}

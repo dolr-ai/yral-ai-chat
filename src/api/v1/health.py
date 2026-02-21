@@ -1,6 +1,7 @@
 """
 Health check and status endpoints
 """
+
 import os
 import subprocess
 import time
@@ -37,9 +38,9 @@ def check_restore_status() -> dict[str, str | bool | int | None]:
     restore_info: dict[str, str | bool | int | None] = {
         "restored_recently": False,
         "restore_indicator": None,
-        "database_age_seconds": None
+        "database_age_seconds": None,
     }
-    
+
     try:
         db_path = os.getenv("DATABASE_PATH", settings.database_path)
         if not Path(db_path).is_absolute():
@@ -47,11 +48,12 @@ def check_restore_status() -> dict[str, str | bool | int | None]:
                 db_path = str(Path("/app") / db_path)
             else:
                 db_path = str(Path(__file__).parent.parent.parent / db_path)
-        
+
         db_file = Path(db_path)
         if not db_file.exists():
             return restore_info
         
+
         # Check for corrupted backup files (indicates restore happened)
         db_dir = db_file.parent
         corrupted_backups = list(db_dir.glob(f"{db_file.name}.corrupted.*"))
@@ -61,10 +63,10 @@ def check_restore_status() -> dict[str, str | bool | int | None]:
             restore_info["restored_recently"] = True
             restore_info["restore_indicator"] = "corrupted_backup_found"
             restore_info["database_age_seconds"] = int(time_since_db_modified)
-        
+
     except Exception as e:
         logger.warning(f"Error checking restore status: {e}")
-    
+
     return restore_info
 
 
@@ -75,19 +77,21 @@ def check_litestream_process() -> ServiceHealth:  # noqa: PLR0911
     """
     # Check if Litestream is enabled
     enable_litestream = os.getenv("ENABLE_LITESTREAM", "true").lower() == "true"
-    has_credentials = all([
-        os.getenv("LITESTREAM_BUCKET"),
-        os.getenv("LITESTREAM_ACCESS_KEY_ID"),
-        os.getenv("LITESTREAM_SECRET_ACCESS_KEY")
-    ])
-    
+    has_credentials = all(
+        [
+            os.getenv("LITESTREAM_BUCKET"),
+            os.getenv("LITESTREAM_ACCESS_KEY_ID"),
+            os.getenv("LITESTREAM_SECRET_ACCESS_KEY"),
+        ]
+    )
+
     # If Litestream is disabled or not configured, return as not applicable
     if not enable_litestream or not has_credentials:
         return ServiceHealth(
             status="up",  # Not a problem if disabled
-            error=None
+            error=None,
         )
-    
+
     # Check if litestream process is running
     try:
         # Use ps to check for litestream replicate process
@@ -96,19 +100,15 @@ def check_litestream_process() -> ServiceHealth:  # noqa: PLR0911
             capture_output=True,
             text=True,
             timeout=2,
-            check=False
+            check=False,
         )
-        
+
         if result.returncode == 0:
             # Look for litestream replicate process
             if "litestream replicate" in result.stdout:
-                return ServiceHealth(
-                    status="up",
-                    error=None
-                )
+                return ServiceHealth(status="up", error=None)
             return ServiceHealth(
-                status="degraded",
-                error="Litestream process not found (replication may not be running)"
+                status="degraded", error="Litestream process not found (replication may not be running)"
             )
         # If ps command fails, try alternative method
         # Check if litestream binary exists and is accessible
@@ -117,28 +117,16 @@ def check_litestream_process() -> ServiceHealth:  # noqa: PLR0911
                 ["litestream", "version"],  # noqa: S607
                 capture_output=True,
                 timeout=2,
-                check=False
+                check=False,
             )
-            return ServiceHealth(
-                status="degraded",
-                error="Cannot verify Litestream process status"
-            )
+            return ServiceHealth(status="degraded", error="Cannot verify Litestream process status")
         except FileNotFoundError:
-            return ServiceHealth(
-                status="degraded",
-                error="Litestream binary not found"
-            )
+            return ServiceHealth(status="degraded", error="Litestream binary not found")
     except subprocess.TimeoutExpired:
-        return ServiceHealth(
-            status="degraded",
-            error="Litestream process check timed out"
-        )
+        return ServiceHealth(status="degraded", error="Litestream process check timed out")
     except Exception as e:
         logger.warning(f"Error checking Litestream process: {e}")
-        return ServiceHealth(
-            status="degraded",
-            error=f"Error checking Litestream: {e!s}"
-        )
+        return ServiceHealth(status="degraded", error=f"Error checking Litestream: {e!s}")
 
 
 @router.get(
@@ -147,10 +135,7 @@ def check_litestream_process() -> ServiceHealth:  # noqa: PLR0911
     operation_id="healthCheck",
     summary="Health check",
     description="Fast, lightweight health check. Checks database connectivity and circuit breaker states (no external API calls)",
-    responses={
-        200: {"description": "Health check completed"},
-        500: {"description": "Internal server error"}
-    }
+    responses={200: {"description": "Health check completed"}, 500: {"description": "Internal server error"}},
 )
 async def health_check():
     """
@@ -165,25 +150,22 @@ async def health_check():
             status=db_health.status,
             latency_ms=db_health.latency_ms,
             error=db_health.error,
-            pool_size=db_health.pool_size
+            pool_size=db_health.pool_size,
         )
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
-        services["database"] = ServiceHealth(
-            status="down",
-            error=str(e)
-        )
+        services["database"] = ServiceHealth(status="down", error=str(e))
 
     gemini_circuit_state = gemini_circuit_breaker.get_state()
     services["gemini_api"] = ServiceHealth(
         status="up" if gemini_circuit_state.state == "closed" else "degraded",
-        error=None if gemini_circuit_state.state == "closed" else f"Circuit breaker {gemini_circuit_state.state}"
+        error=None if gemini_circuit_state.state == "closed" else f"Circuit breaker {gemini_circuit_state.state}",
     )
 
     s3_circuit_state = s3_circuit_breaker.get_state()
     services["s3_storage"] = ServiceHealth(
         status="up" if s3_circuit_state.state == "closed" else "degraded",
-        error=None if s3_circuit_state.state == "closed" else f"Circuit breaker {s3_circuit_state.state}"
+        error=None if s3_circuit_state.state == "closed" else f"Circuit breaker {s3_circuit_state.state}",
     )
 
     # Check Litestream replication process
@@ -194,9 +176,8 @@ async def health_check():
     restore_status = check_restore_status()
     if restore_status["restored_recently"]:
         services["database_restore"] = ServiceHealth(
-            status="up",
-            error=f"Database restored recently ({restore_status['restore_indicator']})"
-    )
+            status="up", error=f"Database restored recently ({restore_status['restore_indicator']})"
+        )
 
     overall_status = "healthy"
     degraded_count = sum(1 for s in services.values() if s.status in ["down", "degraded"])
@@ -206,12 +187,8 @@ async def health_check():
     elif degraded_count > 0:
         overall_status = "degraded"
 
-    response = HealthResponse(
-        status=overall_status,
-        timestamp=datetime.now(UTC),
-        services=services
-    )
-    
+    response = HealthResponse(status=overall_status, timestamp=datetime.now(UTC), services=services)
+
     # Add restore info to response if available
     if restore_status["restored_recently"]:
         # Store restore info in a way that's accessible
@@ -220,7 +197,7 @@ async def health_check():
             f"Database restore detected: {restore_status['restore_indicator']}, "
             f"database age: {restore_status['database_age_seconds']}s"
         )
-    
+
     return response
 
 
@@ -232,8 +209,8 @@ async def health_check():
     description="Get detailed system statistics including database info, uptime, and usage metrics",
     responses={
         200: {"description": "System status retrieved successfully"},
-        500: {"description": "Internal server error"}
-    }
+        500: {"description": "Internal server error"},
+    },
 )
 async def system_status(
     message_repo: MessageRepositoryDep = None,
@@ -244,7 +221,7 @@ async def system_status(
     db_stats = DatabaseStats(
         connected=db_health.status == "up",
         pool_size=db_health.pool_size,
-        active_connections=db_health.pool_size if db_health.status == "up" else None
+        active_connections=db_health.pool_size if db_health.status == "up" else None,
     )
 
     try:
@@ -257,9 +234,7 @@ async def system_status(
         active_influencers = 0
 
     system_stats = SystemStatistics(
-        total_conversations=total_conversations,
-        total_messages=total_messages,
-        active_influencers=active_influencers
+        total_conversations=total_conversations, total_messages=total_messages, active_influencers=active_influencers
     )
 
     uptime_seconds = int(time.time() - app_start_time)
@@ -271,7 +246,5 @@ async def system_status(
         uptime_seconds=uptime_seconds,
         database=db_stats,
         statistics=system_stats,
-        timestamp=datetime.now(UTC)
+        timestamp=datetime.now(UTC),
     )
-
-

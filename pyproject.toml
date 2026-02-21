@@ -25,6 +25,7 @@ dependencies = [
     "uvicorn[standard]==0.32.1",
     "pydantic==2.10.4",
     "aiosqlite==0.20.0",
+    "replicate>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -163,6 +164,9 @@ ignore = [
     "RUF013",  # PEP 484 prohibits implicit Optional
     "E501",    # Line too long (black handles this)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"src/db/repositories/message_repository.py" = ["S608"]  # False positive: using parameterized placeholders
 
 # Mypy configuration
 [tool.mypy]

@@ -1,27 +1,32 @@
 """
 Chat endpoints
 """
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer
 
-from src.auth.jwt_auth import CurrentUser, get_current_user
+from src.auth.jwt_auth import CurrentUser, get_current_user, get_current_user_ws
 from src.core.background_tasks import (
     invalidate_cache_for_user,
     log_ai_usage,
     update_conversation_stats,
 )
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
-from src.models.entities import Message
-from src.models.requests import CreateConversationRequest, SendMessageRequest
+from src.core.websocket import manager
+from src.models.entities import InfluencerStatus, Message
+from src.models.internal import SendMessageParams
+from src.models.requests import CreateConversationRequest, GenerateImageRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,
     DeleteConversationResponse,
     InfluencerBasicInfo,
     ListConversationsResponse,
     ListMessagesResponse,
+    MarkConversationAsReadResponse,
     MessageResponse,
     SendMessageResponse,
 )
+from src.models.websocket_events import WebSocketEvent
 from src.services.chat_service import ChatService
 from src.services.storage_service import StorageService
 
@@ -74,6 +79,8 @@ async def _convert_message_to_response(
         audio_duration_seconds=msg.audio_duration_seconds,
         token_count=msg.token_count,
         created_at=msg.created_at,
+        status=msg.status,
+        is_read=msg.is_read,
     )
 
 
@@ -138,46 +145,61 @@ async def create_conversation(
         influencer_id=request.influencer_id,
     )
 
-    message_count = await message_repo.count_by_conversation(conversation.id)
-    
-    recent_messages: list[MessageResponse] | None = None
-    if message_count >= 1:
-        recent_messages_list = await message_repo.list_by_conversation(
-            conversation_id=conversation.id,
-            limit=10,
-            offset=0,
-            order="desc",
-        )
-        if recent_messages_list:
+    # Batch generate presigned URLs for recent messages
+    recent_messages = []
+    if conversation.recent_messages:
+        all_keys = []
+        if storage_service:
+            for msg in conversation.recent_messages:
+                if msg.media_urls:
+                    for url in msg.media_urls:
+                        if url:
+                            all_keys.append(storage_service.extract_key_from_url(url))
+                if msg.audio_url:
+                    all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
+            
+            presigned_map = {}
+            if all_keys:
+                presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
+            
+            # Sort newest first for UI
+            sorted_messages = sorted(
+                conversation.recent_messages,
+                key=lambda m: m.created_at,
+                reverse=True
+            )
+            
             recent_messages = [
-                await _convert_message_to_response(msg, storage_service)
-                for msg in recent_messages_list
+                await _convert_message_to_response(msg, storage_service, presigned_map)
+                for msg in sorted_messages
             ]
 
     return ConversationResponse(
         id=conversation.id,
         user_id=conversation.user_id,
+        influencer_id=conversation.influencer.id,
         influencer=InfluencerBasicInfo(
             id=conversation.influencer.id,
             name=conversation.influencer.name,
             display_name=conversation.influencer.display_name,
             avatar_url=conversation.influencer.avatar_url,
-            suggested_messages=conversation.influencer.suggested_messages
-            if message_count <= 1
-            else None,
+            suggested_messages=conversation.influencer.suggested_messages,
+            is_online=conversation.influencer.is_active == InfluencerStatus.ACTIVE,
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
-        message_count=message_count,
+        message_count=conversation.message_count or 0,
+        last_message=recent_messages[0] if recent_messages else None,
         recent_messages=recent_messages,
     )
+
 
 @router.get(
     "/conversations",
     response_model=ListConversationsResponse,
     operation_id="listConversations",
     summary="List user conversations",
-    description="Retrieve paginated list of user's conversations, optionally filtered by influencer. Includes the last 10 messages per conversation.",
+    description="Retrieve list of user's conversations, optionally filtered by influencer.",
     responses={
         200: {"description": "List of conversations retrieved successfully"},
         401: {"description": "Unauthorized - Invalid or missing JWT token"},
@@ -197,10 +219,10 @@ async def list_conversations(
 ):
     """
     List user's conversations
-    
+
     Optionally filter by influencer_id
     """
-    conversations, total = await chat_service.list_conversations(
+    conversations, _total = await chat_service.list_conversations(
         user_id=current_user.user_id,
         influencer_id=influencer_id,
         limit=limit,
@@ -209,29 +231,29 @@ async def list_conversations(
 
     conversation_responses: list[ConversationResponse] = []
     
-    # Collect all messages that need URL signing
-    all_messages_for_signing = []
+    # Pre-calculate all presigned URLs for all recent messages across all conversations
+    # to avoid N+1 calls inside the loop
+    all_recent_messages = []
     for conv in conversations:
         if conv.recent_messages:
-            all_messages_for_signing.extend(conv.recent_messages)
+            all_recent_messages.extend(conv.recent_messages)
             
-    # Batch generate presigned URLs if StorageService is available
+    # Gather keys for batch processing
+    all_keys = []
     presigned_map = {}
-    if storage_service and all_messages_for_signing:
-        all_keys = []
-        for msg in all_messages_for_signing:
+    if storage_service:
+        for msg in all_recent_messages:
             if msg.media_urls:
                 for url in msg.media_urls:
                     if url:
                         all_keys.append(storage_service.extract_key_from_url(url))
             if msg.audio_url:
                 all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
-        
         if all_keys:
             presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
 
     for conv in conversations:
-        recent_messages: list[MessageResponse] | None = None
+        recent_messages: list[MessageResponse] = []
         if conv.recent_messages:
             recent_messages = [
                 await _convert_message_to_response(msg, storage_service, presigned_map)
@@ -251,17 +273,19 @@ async def list_conversations(
                     suggested_messages=conv.influencer.suggested_messages
                     if (conv.message_count or 0) <= 1
                     else None,
+                    is_online=conv.influencer.is_active == InfluencerStatus.ACTIVE,
                 ),
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
                 message_count=conv.message_count or 0,
+                last_message=recent_messages[0] if recent_messages else None,
                 recent_messages=recent_messages,
             )
         )
 
     return ListConversationsResponse(
         conversations=conversation_responses,
-        total=total,
+        total=len(conversation_responses),
         limit=limit,
         offset=offset,
     )
@@ -372,25 +396,27 @@ async def send_message(
 ):
     """
     Send a message to AI influencer
-    
+
     Supports:
     - Text-only messages
     - Image-only messages
     - Text + Image messages (multimodal)
     - Audio/voice messages
-    
+
     Background tasks are used for logging and cache invalidation.
     """
     user_msg, assistant_msg, is_duplicate = await chat_service.send_message(
-        conversation_id=conversation_id,
-        user_id=current_user.user_id,
-        content=request.content,
-        message_type=request.message_type,
-        media_urls=request.media_urls or [],
-        audio_url=request.audio_url,
-        audio_duration_seconds=request.audio_duration_seconds,
-        background_tasks=background_tasks,
-        client_message_id=request.client_message_id
+        SendMessageParams(
+            conversation_id=conversation_id,
+            user_id=current_user.user_id,
+            content=request.content,
+            message_type=request.message_type,
+            media_urls=request.media_urls or [],
+            audio_url=request.audio_url,
+            audio_duration_seconds=request.audio_duration_seconds,
+            background_tasks=background_tasks,
+            client_message_id=request.client_message_id,
+        )
     )
 
     # Check if we hit the fallback error message
@@ -420,6 +446,48 @@ async def send_message(
         user_message=await _convert_message_to_response(user_msg, storage_service),
         assistant_message=await _convert_message_to_response(assistant_msg, storage_service),
     )
+
+
+@router.post(
+    "/conversations/{conversation_id}/images",
+    response_model=MessageResponse,
+    operation_id="generateImage",
+    summary="Generate an image in conversation",
+    description="""
+    Generate an image based on a prompt or conversation context.
+    
+    If 'prompt' is provided, it is used directly.
+    If 'prompt' is omitted, the last few messages are used to generate a relevant image prompt.
+    The generated image is saved to storage and returned as a new message.
+    """,
+    responses={
+        201: {"description": "Image generated successfully"},
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden - Not your conversation"},
+        404: {"description": "Conversation not found"},
+        500: {"description": "Internal server error"},
+        503: {"description": "Image generation service unavailable"},
+    },
+    status_code=201,
+)
+async def generate_image(
+    conversation_id: str,
+    request: GenerateImageRequest,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
+    chat_service: ChatServiceDep = None,
+    storage_service: StorageServiceDep = None,
+):
+    """Generate an image in the conversation"""
+    try:
+        message = await chat_service.generate_image_for_conversation(
+            conversation_id=conversation_id,
+            user_id=current_user.user_id,
+            prompt=request.prompt,
+        )
+        return await _convert_message_to_response(message, storage_service)
+    except NotImplementedError:
+        # 503 if service not configured
+        return Response(status_code=503, content="Image generation service unavailable")
 
 
 @router.delete(
@@ -455,4 +523,77 @@ async def delete_conversation(
         deleted_messages_count=deleted_messages,
     )
 
+
+@router.post(
+    "/conversations/{conversation_id}/read",
+    response_model=MarkConversationAsReadResponse,
+    operation_id="markConversationAsRead",
+    summary="Mark conversation as read",
+    description="Mark all messages in a conversation as read and reset unread count to 0",
+    responses={
+        200: {"description": "Conversation marked as read successfully"},
+        401: {"description": "Unauthorized - Invalid or missing JWT token"},
+        403: {"description": "Forbidden - Not authorized to access this conversation"},
+        404: {"description": "Conversation not found"},
+        429: {"description": "Rate limit exceeded"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def mark_conversation_as_read(
+    conversation_id: str,
+    current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
+    chat_service: ChatServiceDep = None,
+):
+    """Mark all messages in a conversation as read"""
+    result = await chat_service.mark_conversation_as_read(
+        conversation_id=conversation_id,
+        user_id=current_user.user_id,
+    )
+
+    return MarkConversationAsReadResponse(**result)
+
+
+@router.websocket("/ws/inbox/{user_id}")
+async def websocket_inbox_endpoint(
+    websocket: WebSocket,
+    user_id: str,
+    current_user: CurrentUser = Depends(get_current_user_ws),  # noqa: B008
+):
+    """
+    WebSocket endpoint for real-time inbox updates.
+    
+    ### Connection:
+    `ws://{host}/api/v1/chat/ws/inbox/{user_id}?token={jwt_token}`
+    
+    ### Events:
+    Clients connect to receive real-time events:
+    - `new_message`: When a new message arrives in any conversation
+    - `conversation_read`: When a conversation is marked as read
+    - `typing_status`: When an influencer is typing
+    """
+    # Verify user_id matches token subject
+    if current_user.user_id != user_id:
+        await websocket.close(code=4003)  # Forbidden
+        return
+
+    await manager.connect(websocket, user_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, user_id)
+
+
+@router.get(
+    "/ws/docs",
+    response_model=WebSocketEvent,
+    include_in_schema=True,
+    summary="WebSocket Event Schemas (Documentation Only)",
+    description="This endpoint does not perform any action. It exists solely to expose the Pydantic models for WebSocket events to the OpenAPI (Swagger) documentation.",
+    operation_id="docWebSocketEvents",
+    tags=["Documentation"],
+)
+async def doc_websocket_events():
+    """Dummy endpoint for WebSocket documentation"""
+    return Response(status_code=418)  # I'm a teapot
 

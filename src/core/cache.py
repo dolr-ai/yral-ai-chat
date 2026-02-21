@@ -2,6 +2,7 @@
 Caching utilities with in-memory fallback
 LRU cache with TTL support and bounded size
 """
+
 import hashlib
 import json
 import time
@@ -20,7 +21,7 @@ class LRUCache:
     def __init__(self, max_size: int = 1000, default_ttl: int = 300):
         """
         Initialize cache
-        
+
         Args:
             max_size: Maximum number of items in cache (default: 1000)
             default_ttl: Default time-to-live in seconds (default: 300)
@@ -35,10 +36,10 @@ class LRUCache:
     def get(self, key: str) -> object | None:
         """
         Get value from cache (LRU: moves to end)
-        
+
         Args:
             key: Cache key
-            
+
         Returns:
             Cached value or None if not found or expired
         """
@@ -60,7 +61,7 @@ class LRUCache:
     def set(self, key: str, value: object, ttl: int | None = None):
         """
         Set value in cache with TTL and LRU eviction
-        
+
         Args:
             key: Cache key
             value: Value to cache
@@ -95,15 +96,12 @@ class LRUCache:
     def cleanup_expired(self) -> int:
         """
         Remove expired items from cache
-        
+
         Returns:
             Number of items removed
         """
         now = time.time()
-        expired_keys = [
-            key for key, (_, expiry) in self._cache.items()
-            if now > expiry
-        ]
+        expired_keys = [key for key, (_, expiry) in self._cache.items() if now > expiry]
         for key in expired_keys:
             del self._cache[key]
 
@@ -126,8 +124,9 @@ class LRUCache:
             hits=self._hits,
             misses=self._misses,
             hit_rate=round(hit_rate, 3),
-            evictions=self._evictions
+            evictions=self._evictions,
         )
+
 
 cache = LRUCache(max_size=1000, default_ttl=300)
 
@@ -135,18 +134,15 @@ cache = LRUCache(max_size=1000, default_ttl=300)
 def cache_key(*args, **kwargs) -> str:
     """
     Generate cache key from function arguments
-    
+
     Args:
         *args: Positional arguments
         **kwargs: Keyword arguments
-        
+
     Returns:
         Hashed cache key
     """
-    key_data = {
-        "args": args,
-        "kwargs": kwargs
-    }
+    key_data = {"args": args, "kwargs": kwargs}
     key_str = json.dumps(key_data, sort_keys=True, default=str)
     return hashlib.sha256(key_str.encode()).hexdigest()
 
@@ -154,16 +150,17 @@ def cache_key(*args, **kwargs) -> str:
 def cached(ttl: int = 300, key_prefix: str = ""):
     """
     Decorator to cache function results
-    
+
     Args:
         ttl: Time to live in seconds
         key_prefix: Prefix for cache key
-        
+
     Example:
         @cached(ttl=600, key_prefix="influencers")
         async def list_influencers(limit: int, offset: int):
             ...
     """
+
     def decorator(func: Callable):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -180,21 +177,25 @@ def cached(ttl: int = 300, key_prefix: str = ""):
 
             return result
 
+        def invalidate_all():
+            """Invalidate all cache entries for this function"""
+            invalidate_cache_pattern(f"{key_prefix}:{func.__name__}")
+
+        wrapper.invalidate_all = invalidate_all
+
         return wrapper
+
     return decorator
 
 
 def invalidate_cache_pattern(pattern: str):
     """
     Invalidate cache entries matching a pattern
-    
+
     Args:
         pattern: Pattern to match (simple prefix matching)
     """
-    keys_to_delete = [
-        key for key in cache._cache
-        if key.startswith(pattern)
-    ]
+    keys_to_delete = [key for key in cache._cache if key.startswith(pattern)]
 
     for key in keys_to_delete:
         cache.delete(key)

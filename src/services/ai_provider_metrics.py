@@ -2,6 +2,7 @@
 AI Provider Usage Metrics & Analytics
 Tracks usage statistics for Gemini and OpenRouter providers
 """
+
 from datetime import UTC, datetime
 from functools import lru_cache
 
@@ -20,17 +21,13 @@ class AIProviderMetrics:
         """Initialize metrics for a provider if not exists"""
         provider = provider.lower()
         if provider not in self.metrics:
-            self.metrics[provider] = {
-                "requests": 0,
-                "errors": 0,
-                "total_tokens": 0
-            }
+            self.metrics[provider] = {"requests": 0, "errors": 0, "total_tokens": 0}
 
     def record_request(self, provider: str, token_count: int = 0, error: bool = False):
         """Record an AI provider API request"""
         provider = provider.lower()
         self._ensure_provider(provider)
-        
+
         if error:
             self.metrics[provider]["errors"] += 1
             logger.warning(f"{provider.capitalize()} error recorded. Total: {self.metrics[provider]['errors']}")
@@ -56,7 +53,8 @@ class AIProviderMetrics:
                 "errors": total_errors,
                 "tokens": total_tokens,
                 "error_rate": (total_errors / (total_requests + total_errors) * 100)
-                if (total_requests + total_errors) > 0 else 0,
+                if (total_requests + total_errors) > 0
+                else 0,
             },
             "uptime_seconds": uptime.total_seconds(),
         }
@@ -67,7 +65,8 @@ class AIProviderMetrics:
                 "errors": m["errors"],
                 "total_tokens": m["total_tokens"],
                 "error_rate": (m["errors"] / (m["requests"] + m["errors"]) * 100)
-                if (m["requests"] + m["errors"]) > 0 else 0,
+                if (m["requests"] + m["errors"]) > 0
+                else 0,
             }
 
         return summary
@@ -76,7 +75,7 @@ class AIProviderMetrics:
         """Get a human-readable metrics summary"""
         metrics = self.get_metrics_summary()
         summary = "\n=== AI Provider Metrics Summary ===\n"
-        
+
         for provider, m in metrics["providers"].items():
             summary += f"{provider.capitalize()}:\n"
             summary += f"  Requests: {m['requests']}\n"
@@ -99,7 +98,6 @@ class AIProviderMetrics:
         self.metrics = {}
         self.start_time = datetime.now(UTC)
         logger.info("All metrics reset")
-
 
 
 @lru_cache(maxsize=1)

@@ -1,6 +1,7 @@
 """
 Fixtures for unit tests
 """
+
 from datetime import UTC, datetime
 
 import pytest
@@ -21,8 +22,9 @@ def sample_influencer():
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
         is_active=InfluencerStatus.ACTIVE,
-        is_nsfw=False
+        is_nsfw=False,
     )
+
 
 @pytest.fixture
 def sample_conversation():
@@ -33,8 +35,9 @@ def sample_conversation():
         influencer_id="00000000-0000-0000-0000-000000000001",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
-        metadata={"memories": {}}
+        metadata={"memories": {}},
     )
+
 
 @pytest.fixture
 def sample_message():
@@ -45,12 +48,11 @@ def sample_message():
         role=MessageRole.USER,
         content="Hello world",
         message_type=MessageType.TEXT,
-        created_at=datetime.now(UTC)
+        created_at=datetime.now(UTC),
     )
+
+
 @pytest.fixture
 def sample_health_result():
     """Create a sample AIProviderHealth result"""
-    return AIProviderHealth(
-        status="up",
-        latency_ms=150.0
-    )
+    return AIProviderHealth(status="up", latency_ms=150.0)

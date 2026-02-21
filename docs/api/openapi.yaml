@@ -27,7 +27,7 @@ paths:
       - Health
       summary: System status
       description: Get detailed system statistics including database info, uptime,
-        and usage metrics
+        and system health
       operationId: systemStatus
       responses:
         '200':
@@ -451,19 +451,6 @@ paths:
           description: Internal server error - Upload failed
         '503':
           description: Service unavailable - Storage service unavailable
-  /metrics:
-    get:
-      tags:
-      - Monitoring
-      summary: Get Metrics
-      description: Prometheus metrics endpoint
-      operationId: get_metrics_metrics_get
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema: {}
   /:
     get:
       tags:

@@ -1,6 +1,7 @@
 """
 Domain entity models
 """
+
 from __future__ import annotations
 
 from datetime import datetime  # noqa: TC003
@@ -11,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class MessageType(str, Enum):
     """Message type enumeration"""
+
     TEXT = "text"
     MULTIMODAL = "multimodal"
     IMAGE = "image"
@@ -19,21 +21,26 @@ class MessageType(str, Enum):
 
 class MessageRole(str, Enum):
     """Message role enumeration"""
+
     USER = "user"
     ASSISTANT = "assistant"
 
 
 class LastMessageInfo(BaseModel):
     """Last message information for conversation list"""
+
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     content: str | None = None
     role: MessageRole
     created_at: datetime
+    status: str | None = "delivered"
+    is_read: bool = False
 
 
 class InfluencerStatus(str, Enum):
     """Influencer status enumeration"""
+
     ACTIVE = "active"
     COMING_SOON = "coming_soon"
     DISCONTINUED = "discontinued"
@@ -41,8 +48,9 @@ class InfluencerStatus(str, Enum):
 
 class AIInfluencer(BaseModel):
     """AI Influencer entity"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: str  # Changed from UUID to str to support IC Principal IDs
     name: str
     display_name: str
@@ -55,17 +63,21 @@ class AIInfluencer(BaseModel):
     suggested_messages: list[str] = Field(default_factory=list)
     is_active: InfluencerStatus = InfluencerStatus.ACTIVE
     is_nsfw: bool = Field(default=False, description="Whether this influencer handles NSFW content")
+    parent_principal_id: str | None = None
+    source: str | None = None
     created_at: datetime
     updated_at: datetime
     metadata: dict[str, object] = Field(default_factory=dict)
 
     conversation_count: int | None = None
+    message_count: int | None = None
 
 
 class Conversation(BaseModel):
     """Conversation entity"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: str  # Changed from UUID to str
     user_id: str
     influencer_id: str  # Changed from UUID to str to support IC Principal IDs
@@ -75,31 +87,27 @@ class Conversation(BaseModel):
 
     influencer: AIInfluencer | None = None
     message_count: int | None = None
+    unread_count: int = 0
     last_message: LastMessageInfo | None = None
     recent_messages: list[Message] | None = None
 
 
 class Message(BaseModel):
     """Message entity"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: str  # Changed from UUID to str
     conversation_id: str  # Changed from UUID to str
     role: MessageRole
     content: str | None = None
     message_type: MessageType
-    media_urls: list[str] = Field(
-        default_factory=list,
-        description="List of storage keys for image files"
-    )
-    audio_url: str | None = Field(
-        None,
-        description="Storage key for audio file"
-    )
+    media_urls: list[str] = Field(default_factory=list, description="List of storage keys for image files")
+    audio_url: str | None = Field(None, description="Storage key for audio file")
     audio_duration_seconds: int | None = None
     token_count: int | None = None
     client_message_id: str | None = None
     created_at: datetime
+    status: str = "delivered"
+    is_read: bool = False
     metadata: dict[str, object] = Field(default_factory=dict)
-
-
