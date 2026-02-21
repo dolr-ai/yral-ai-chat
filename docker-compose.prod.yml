@@ -18,9 +18,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2.2G
+          memory: 8G
         reservations:
-          memory: 1G
+          memory: 2G
     environment:
       # Application Settings
       - APP_NAME=${APP_NAME:-Yral AI Chat API}
