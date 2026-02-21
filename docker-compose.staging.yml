@@ -28,8 +28,15 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
 
-      # Database (SQLite) - staging database (hardcoded to prevent .env override)
-      - DATABASE_PATH=/app/data/yral_chat_staging.db
+      # Database (PostgreSQL)
+      - DATABASE_TYPE=postgresql
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DATABASE=${POSTGRES_DATABASE}
+      - POSTGRES_POOL_MIN_SIZE=${POSTGRES_POOL_MIN_SIZE:-5}
+      - POSTGRES_POOL_MAX_SIZE=${POSTGRES_POOL_MAX_SIZE:-20}
 
       # JWT Authentication (REQUIRED)
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
@@ -90,14 +97,8 @@ services:
       - SENTRY_PROFILES_SAMPLE_RATE=${SENTRY_PROFILES_SAMPLE_RATE:-0.0}
       - SENTRY_WEBHOOK_SECRET=${SENTRY_WEBHOOK_SECRET}
       - GOOGLE_CHAT=${GOOGLE_CHAT}
-
-      # Litestream Configuration
-      - ENABLE_LITESTREAM=${ENABLE_LITESTREAM:-true}
-      - LITESTREAM_ACCESS_KEY_ID=${LITESTREAM_ACCESS_KEY_ID}
-      - LITESTREAM_SECRET_ACCESS_KEY=${LITESTREAM_SECRET_ACCESS_KEY}
-      - LITESTREAM_BUCKET=${LITESTREAM_BUCKET}
-      - LITESTREAM_ENDPOINT=${LITESTREAM_ENDPOINT}
-      - LITESTREAM_REGION=${LITESTREAM_REGION}
+      # Litestream Configuration (Removed for PostgreSQL)
+      # - ENABLE_LITESTREAM=false
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" ]
       interval: 30s

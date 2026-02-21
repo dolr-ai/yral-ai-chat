@@ -212,7 +212,7 @@ class InfluencerRepository:
                 is_active, is_nsfw, parent_principal_id,
                 source, created_at, updated_at, metadata
             FROM ai_influencers
-            WHERE is_nsfw = 1 AND is_active = 'active'
+            WHERE is_nsfw = TRUE AND is_active = 'active'
             ORDER BY created_at DESC
             LIMIT $1 OFFSET $2
         """
@@ -222,7 +222,7 @@ class InfluencerRepository:
 
     async def count_nsfw(self) -> int:
         """Count all NSFW influencers that are active"""
-        query = "SELECT COUNT(*) FROM ai_influencers WHERE is_nsfw = 1 AND is_active = 'active'"
+        query = "SELECT COUNT(*) FROM ai_influencers WHERE is_nsfw = TRUE AND is_active = 'active'"
         result = await db.fetchval(query)
         return int(result) if result else 0
 
@@ -249,9 +249,8 @@ class InfluencerRepository:
         suggested_messages_json = json.dumps(influencer.suggested_messages)
         metadata_json = json.dumps(influencer.metadata)
 
-        # Convert enum/bool to db format
+        # Convert enum to db format
         is_active_str = influencer.is_active.value
-        is_nsfw_int = 1 if influencer.is_nsfw else 0
 
         row = await db.fetchone(
             query,
@@ -266,7 +265,7 @@ class InfluencerRepository:
             influencer.initial_greeting,
             suggested_messages_json,
             is_active_str,
-            is_nsfw_int,
+            influencer.is_nsfw,
             influencer.parent_principal_id,
             influencer.source,
             influencer.created_at,
