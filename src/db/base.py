@@ -70,11 +70,16 @@ class ConnectionPool:
             except Exception as e:
                 logger.warning(f"Failed to set WAL mode: {e}")
 
-            # Litestream optimization: Prevent WAL from growing too large
-            # Increased to 10000 pages (~40MB) to reduce checkpoint frequency under load
-            await conn.execute("PRAGMA wal_autocheckpoint = 10000")
+            # CRITICAL: Disable SQLite's built-in WAL autocheckpoint.
+            # Litestream holds continuous read locks on the WAL during replication.
+            # SQLite's TRUNCATE checkpoint requires ZERO active readers to succeed.
+            # With pool connections + Litestream all holding read locks, autocheckpoint
+            # was silently failing every time, causing the WAL to grow unbounded (600MB+).
+            # Setting to 0 gives Litestream exclusive ownership of checkpointing —
+            # its own forced-truncate mechanism coordinates safely with its own locks.
+            await conn.execute("PRAGMA wal_autocheckpoint = 0")
             
-            # Increased to 64MB to prevent excessive truncation/checkpoints
+            # Keep journal size limit reasonable (64MB)
             await conn.execute("PRAGMA journal_size_limit = 67108864")
             
             # Timeout handling
@@ -83,8 +88,11 @@ class ConnectionPool:
             await conn.execute(f"PRAGMA busy_timeout = {actual_timeout}")
             # Performance tuning
             await conn.execute("PRAGMA synchronous = NORMAL")
-            await conn.execute("PRAGMA mmap_size = 268435456")  # 256MB
-        await conn.execute("PRAGMA cache_size = -64000")    # 64MB (negative value = kb)
+            # Reduced from 256MB to 32MB: the 256MB mmap per connection multiplied
+            # across 10 pool connections was a major OOM contributor.
+            await conn.execute("PRAGMA mmap_size = 33554432")  # 32MB
+        # Reduced from 64MB to 16MB to lower per-connection memory footprint.
+        await conn.execute("PRAGMA cache_size = -16000")    # 16MB (negative value = kb)
         await conn.execute("PRAGMA temp_store = MEMORY")
         
         # Verify timeout setting
