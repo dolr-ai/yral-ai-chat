@@ -140,7 +140,7 @@ jobs:
           LOG_FORMAT=${{ secrets.LOG_FORMAT || 'json' }}
           
           # Litestream Configuration
-          ENABLE_LITESTREAM=false
+          ENABLE_LITESTREAM=${{ secrets.ENABLE_LITESTREAM || 'true' }}
           LITESTREAM_ACCESS_KEY_ID=${{ secrets.LITESTREAM_ACCESS_KEY_ID }}
           LITESTREAM_SECRET_ACCESS_KEY=${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
           LITESTREAM_BUCKET=${{ secrets.LITESTREAM_BUCKET }}
