@@ -17,8 +17,10 @@ services:
     shm_size: '256mb'
     deploy:
       resources:
+        limits:
+          memory: 2.2G
         reservations:
-          memory: 2G
+          memory: 1G
     environment:
       # Application Settings
       - APP_NAME=${APP_NAME:-Yral AI Chat API}
