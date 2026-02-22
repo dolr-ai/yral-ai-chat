@@ -57,8 +57,7 @@ class ConnectionPool:
         conn = await aiosqlite.connect(
             self.db_path,
             timeout=busy_timeout_ms / 1000.0,
-            isolation_level=None,
-            uri=self.db_path.startswith("file:")
+            isolation_level=None
         )
 
         await conn.execute("PRAGMA foreign_keys = ON")
@@ -113,51 +112,31 @@ class ConnectionPool:
     async def acquire(self) -> aiosqlite.Connection:
         """Acquire a connection from the pool"""
         try:
-            conn = await asyncio.wait_for(self._pool.get(), timeout=self.timeout)
-            # Track active connections for visibility
-            db_connections_active.inc()
-            return conn
+            return await asyncio.wait_for(self._pool.get(), timeout=self.timeout)
         except TimeoutError as e:
-            # Log current pool state to help debug exhaustion
-            logger.error(
-                f"Timeout waiting for database connection from pool. "
-                f"Active connections: {db_connections_active._value.get()}, "
-                f"Created connections: {self._created_connections}, "
-                f"Pool size: {self.pool_size}"
-            )
+            logger.error("Timeout waiting for database connection from pool")
             raise DatabaseConnectionPoolTimeoutError("Database connection pool timeout") from e
 
     async def release(self, conn: aiosqlite.Connection):
         """Release a connection back to the pool"""
         try:
             await self._pool.put(conn)
-            db_connections_active.dec()
         except asyncio.QueueFull:
             await conn.close()
-            db_connections_active.dec()
             logger.warning("Connection pool full, closing connection")
 
     async def close_all(self):
         """Close all connections in the pool"""
-        logger.info(f"Closing database connection pool ({self._created_connections} connections created)...")
-        
         while not self._pool.empty():
+            conn = await self._pool.get()
             try:
-                # Use wait_for to avoid hanging indefinitely if pool is inconsistent
-                conn = await asyncio.wait_for(self._pool.get(), timeout=1.0)
-                try:
-                    # Safe optimization: HELP SQLite query planner by analyzing data before close
-                    await conn.execute("PRAGMA optimize")
-                except Exception as e:
-                    logger.debug(f"PRAGMA optimize failed during shutdown: {e}")
-                await conn.close()
-                db_connections_active.dec()
-            except (TimeoutError, asyncio.QueueEmpty):
-                break
+                # Safe optimization: HELP SQLite query planner by analyzing data before close
+                await conn.execute("PRAGMA optimize")
             except Exception as e:
-                logger.error(f"Error closing connection in pool: {e}")
-                
-        logger.info("Database connection pool closed")
+                logger.debug(f"PRAGMA optimize failed during shutdown: {e}")
+            await conn.close()
+            db_connections_active.dec()
+        logger.info(f"Closed all {self._created_connections} database connections")
 
 
 class Database:
@@ -206,7 +185,7 @@ class Database:
     @staticmethod
     def _resolve_db_path(db_path: str) -> str:
         """Resolve relative database path to absolute path based on project root"""
-        if db_path == ":memory:" or db_path.startswith("file:"):
+        if db_path == ":memory:":
             return db_path
             
         if Path(db_path).is_absolute():
@@ -240,8 +219,8 @@ class Database:
 
             conn = await self._pool.acquire()
             try:
-                # If using in-memory DB (literal or shared cache URI), apply migrations on the first connection
-                if self.db_path == ":memory:" or "mode=memory" in self.db_path:
+                # If using in-memory DB, apply migrations on the first connection
+                if self.db_path == ":memory:":
                     await self._apply_migrations(conn)
 
                 async with conn.execute("SELECT sqlite_version()") as cursor:
