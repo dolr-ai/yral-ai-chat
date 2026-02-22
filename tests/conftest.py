@@ -24,17 +24,18 @@ from fastapi.testclient import TestClient
 # Load environment variables from .env for tests
 load_dotenv()
 
-# Force single connection pool for tests to avoid SQLite disk I/O errors
-# caused by file locking contention when running multiple workers
-os.environ["DATABASE_POOL_SIZE"] = "1"
+# Increase connection pool for tests to avoid contention
+os.environ["DATABASE_POOL_SIZE"] = "5"
 os.environ["DATABASE_POOL_TIMEOUT"] = "10.0"  # Fail fast in tests
 
 # Ensure DATABASE_PATH is always set to a test-specific path to avoid
 # conflicts with production data/locking issues with Docker
 if not os.getenv("TEST_API_URL"):
-    os.environ["DATABASE_PATH"] = ":memory:"
+    # Using URI format with cache=shared allows multiple connections to the same in-memory DB
+    shared_memory_db = "file:test_db?mode=memory&cache=shared"
+    os.environ["DATABASE_PATH"] = shared_memory_db
     # Also set TEST_DATABASE_PATH for consistency with internal logic
-    os.environ["TEST_DATABASE_PATH"] = ":memory:"
+    os.environ["TEST_DATABASE_PATH"] = shared_memory_db
 
 
 @pytest.fixture(autouse=True)
