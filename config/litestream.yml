@@ -14,6 +14,10 @@ dbs:
         secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
         # Sync settings - tuned to reduce lock contention
         sync-interval: 10s
+        # Checkpoint settings - CRITICAL: wal_autocheckpoint=0 is set in the app
+        # so Litestream is responsible for checkpointing. Without this, the WAL
+        # grows unbounded and causes 100% CPU (aiosqlite threads scan the whole WAL).
+        checkpoint-interval: 5m   # Litestream checkpoints every 5 min
         # Retention settings
         retention: 720h
         retention-check-interval: 1h
