@@ -52,13 +52,15 @@ if not is_test and settings.sentry_dsn and sentry_env:
             dsn=settings.sentry_dsn,
             environment=sentry_env,
             traces_sample_rate=settings.sentry_traces_sample_rate,
-            profiles_sample_rate=settings.sentry_profiles_sample_rate,
+            # CRITICAL: Do NOT enable profiles_sample_rate in Python 3.12 under high ThreadPool load.
+            # The background _thread (monitor.py) interrupts workers constantly, pegging CPU to 100%.
+            profiles_sample_rate=0.0,
             release=settings.sentry_release,
             send_default_pii=True,
             integrations=[FastApiIntegration(transaction_style="endpoint")],
             debug=settings.debug,
         )
-        logger.info(f"Sentry initialized for {sentry_env}")
+        logger.info(f"Sentry initialized for {sentry_env} (Profiler Disabled)")
     except Exception as e:
         logger.error(f"Failed to initialize Sentry: {e}")
 

@@ -163,7 +163,7 @@ class Database:
              logger.warning(f"Migrations directory not found: {migrations_dir}")
              return
 
-        migration_files = sorted([f for f in os.listdir(migrations_dir) if f.endswith(".sql")])
+        migration_files = sorted([f.name for f in migrations_dir.iterdir() if f.name.endswith(".sql")])
         
         for filename in migration_files:
             if filename in applied:
