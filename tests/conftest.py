@@ -139,8 +139,12 @@ def client():
     else:
         # Local mode: use TestClient (no uvicorn needed)
         from src.main import app
+        from tests.mock_providers import MockGeminiClient
 
+        # Inject mock Gemini client
         with TestClient(app) as test_client:
+            # Override both app state and dependency to be sure
+            app.state.gemini_client = MockGeminiClient()
             yield test_client
 
 
