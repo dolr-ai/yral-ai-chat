@@ -2,6 +2,7 @@
 Yral AI Chat API - Main Application
 """
 
+import asyncio
 import os
 import sys
 from contextlib import asynccontextmanager
