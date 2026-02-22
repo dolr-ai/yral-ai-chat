@@ -78,6 +78,13 @@ async def lifespan(app: FastAPI):
     # Initialize connections
     await db.connect()
     
+    # Eager checkpoint on startup to drain any existing WAL
+    await db.eager_checkpoint()
+
+    # Start periodic WAL checkpoint background task (every 5 min)
+    _wal_task = asyncio.create_task(db.periodic_wal_checkpoint(interval_seconds=300))
+    logger.info("Started periodic WAL checkpoint safety net")
+
     # Pre-warm repositories & AI clients
     get_conversation_repository()
     get_influencer_repository()
@@ -91,6 +98,11 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down...")
+    _wal_task.cancel()
+    try:
+        await _wal_task
+    except asyncio.CancelledError:
+        pass
     await db.disconnect()
     logger.info("Shutdown complete")
 

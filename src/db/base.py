@@ -241,6 +241,58 @@ class Database:
             self._pool = None
             logger.info("Database connection pool closed")
 
+    async def periodic_wal_checkpoint(self, interval_seconds: int = 300) -> None:
+        """
+        Background task to periodically run PRAGMA wal_checkpoint(PASSIVE).
+        This is a safety net for when wal_autocheckpoint=0 is set (to allow Litestream
+        to manage checkpointing). It ensures the WAL doesn't grow unbounded if
+        Litestream replication is delayed or fails to checkpoint.
+        """
+        if self.db_path == ":memory:":
+            return
+
+        while True:
+            await asyncio.sleep(interval_seconds)
+            if not self._pool:
+                continue
+
+            try:
+                conn = await self._pool.acquire()
+                try:
+                    # PASSIVE checkpoint: flushes as many frames as possible
+                    # without blocking other readers/writers.
+                    async with conn.execute("PRAGMA wal_checkpoint(PASSIVE)") as cursor:
+                        row = await cursor.fetchone()
+                        if row:
+                            logger.info(
+                                f"Periodic WAL checkpoint: log={row[1]} pages, "
+                                f"checkpointed={row[2]}, busy={row[0]}"
+                            )
+                finally:
+                    await self._pool.release(conn)
+            except Exception as e:
+                logger.warning(f"Periodic WAL checkpoint failed (non-fatal): {e}")
+
+    async def eager_checkpoint(self) -> None:
+        """Run an immediate PASSIVE checkpoint (e.g., on startup)."""
+        if not self._pool or self.db_path == ":memory:":
+            return
+
+        try:
+            conn = await self._pool.acquire()
+            try:
+                async with conn.execute("PRAGMA wal_checkpoint(PASSIVE)") as cursor:
+                    row = await cursor.fetchone()
+                    if row:
+                        logger.info(
+                            f"Eager WAL checkpoint: log={row[1]} pages, "
+                            f"checkpointed={row[2]}, busy={row[0]}"
+                        )
+            finally:
+                await self._pool.release(conn)
+        except Exception as e:
+            logger.warning(f"Eager WAL checkpoint failed (non-fatal): {e}")
+
     async def execute(self, query: str, *args) -> str:
         """Execute a query without returning results"""
         if not self._pool:
