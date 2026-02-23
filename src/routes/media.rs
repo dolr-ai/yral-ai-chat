@@ -83,7 +83,7 @@ pub async fn upload_media(
         .await?;
 
     // Generate presigned URL for immediate access
-    let presigned_url = state.storage.generate_presigned_url(&storage_key);
+    let presigned_url = state.storage.generate_presigned_url(&storage_key).await;
 
     Ok(Json(MediaUploadResponse {
         url: presigned_url,

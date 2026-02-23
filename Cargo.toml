@@ -43,9 +43,9 @@ uuid = { version = "1", features = ["v4", "serde"] }
 validator = { version = "0.19", features = ["derive"] }
 regex = "1"
 
-# S3 storage (presigned URLs)
-rusty-s3 = "0.5"
-url = "2"
+# S3 storage (aws-sdk)
+aws-config = { version = "1.5", features = ["behavior-version-latest"] }
+aws-sdk-s3 = { version = "1.64", features = ["behavior-version-latest"] }
 
 # Base64 (audio encoding for Gemini)
 base64 = "0.22"

@@ -295,7 +295,7 @@ pub async fn send_message(
     // Transcribe audio if needed
     let transcribed_content = if message_type == MessageType::Audio {
         if let Some(ref audio_key) = body.audio_url {
-            let presigned = state.storage.generate_presigned_url(audio_key);
+            let presigned = state.storage.generate_presigned_url(audio_key).await;
             match state.gemini.transcribe_audio(&presigned).await {
                 Ok(text) => Some(format!("[Transcribed: {text}]")),
                 Err(e) => {
@@ -350,7 +350,7 @@ pub async fn send_message(
     let url_map = if s3_keys.is_empty() {
         HashMap::new()
     } else {
-        state.storage.generate_presigned_urls_batch(&s3_keys)
+        state.storage.generate_presigned_urls_batch(&s3_keys).await
     };
     let presign = |key: &str| url_map.get(key).cloned().unwrap_or_else(|| key.to_string());
     for msg in &mut history {
@@ -376,12 +376,16 @@ pub async fn send_message(
     // Presign current media URLs for AI
     let media_urls_for_ai: Option<Vec<String>> =
         if matches!(message_type, MessageType::Image | MessageType::Multimodal) {
-            body.media_urls.as_ref().map(|urls| {
-                let batch = state.storage.generate_presigned_urls_batch(urls);
-                urls.iter()
-                    .map(|u| batch.get(u).cloned().unwrap_or_else(|| u.clone()))
-                    .collect()
-            })
+            if let Some(urls) = body.media_urls.as_ref() {
+                let batch = state.storage.generate_presigned_urls_batch(urls).await;
+                Some(
+                    urls.iter()
+                        .map(|u| batch.get(u).cloned().unwrap_or_else(|| u.clone()))
+                        .collect(),
+                )
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -482,8 +486,8 @@ pub async fn send_message(
     // Presign media URLs in response messages so clients get usable URLs
     let mut user_resp = MessageResponse::from(user_message);
     let mut asst_resp = MessageResponse::from(assistant_message);
-    presign_message_urls(&state.storage, &mut user_resp);
-    presign_message_urls(&state.storage, &mut asst_resp);
+    presign_message_urls(&state.storage, &mut user_resp).await;
+    presign_message_urls(&state.storage, &mut asst_resp).await;
 
     Ok((
         status,
@@ -577,17 +581,11 @@ pub async fn generate_image(
     tracing::info!(prompt = %final_prompt, "Generating image");
 
     // 2. Generate image using flux-kontext-dev with influencer avatar
-    let input_image = influencer
-        .avatar_url
-        .as_deref()
-        .filter(|u| !u.is_empty())
-        .map(|url| {
-            if url.starts_with("http") {
-                url.to_string()
-            } else {
-                state.storage.generate_presigned_url(url)
-            }
-        });
+    let input_image = match influencer.avatar_url.as_deref().filter(|u| !u.is_empty()) {
+        Some(url) if url.starts_with("http") => Some(url.to_string()),
+        Some(url) => Some(state.storage.generate_presigned_url(url).await),
+        None => None,
+    };
 
     let image_url = match &input_image {
         Some(img) => {
@@ -700,7 +698,7 @@ pub async fn delete_conversation(
 // ── Helpers ──
 
 /// Presign S3 storage keys in a MessageResponse so clients receive usable URLs.
-fn presign_message_urls(
+async fn presign_message_urls(
     storage: &crate::services::storage::StorageService,
     msg: &mut MessageResponse,
 ) {
@@ -716,7 +714,7 @@ fn presign_message_urls(
         return;
     }
 
-    let url_map = storage.generate_presigned_urls_batch(&s3_keys);
+    let url_map = storage.generate_presigned_urls_batch(&s3_keys).await;
     let presign = |key: &str| url_map.get(key).cloned().unwrap_or_else(|| key.to_string());
 
     msg.media_urls = msg.media_urls.iter().map(|u| presign(u)).collect();
