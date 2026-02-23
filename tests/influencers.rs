@@ -216,7 +216,7 @@ async fn test_create_influencer_success() {
         .json(&json!({
             "bot_principal_id": bot_id,
             "parent_principal_id": owner,
-            "name": format!("bot{}", &bot_id[9..]),
+            "name": unique_bot_name("bot"),
             "display_name": "Test Bot",
             "description": "A test bot",
             "system_instructions": "You are a helpful assistant.",
@@ -250,7 +250,7 @@ async fn test_create_influencer_parent_id_override() {
         .json(&json!({
             "bot_principal_id": bot_id,
             "parent_principal_id": "fake_parent_id",
-            "name": format!("ovr{}", &bot_id[9..]),
+            "name": unique_bot_name("ovr"),
             "display_name": "Override Bot",
             "description": "Bot to test parent_id override",
             "system_instructions": "You are a test bot.",
@@ -313,7 +313,7 @@ async fn test_delete_influencer_success() {
         .json(&json!({
             "bot_principal_id": bot_id,
             "parent_principal_id": owner,
-            "name": format!("del{}", &bot_id[9..]),
+            "name": unique_bot_name("del"),
             "display_name": "Bot to Delete",
             "description": "A test bot for deletion",
             "system_instructions": "You are a helpful assistant.",
@@ -361,7 +361,7 @@ async fn test_delete_influencer_forbidden() {
         .json(&json!({
             "bot_principal_id": bot_id,
             "parent_principal_id": owner,
-            "name": format!("frb{}", &bot_id[9..]),
+            "name": unique_bot_name("frb"),
             "display_name": "Bot for Forbidden Test",
             "description": "A test bot",
             "system_instructions": "You are a helpful assistant.",

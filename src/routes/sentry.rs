@@ -19,10 +19,10 @@ pub async fn sentry_webhook(
     let secret = match &state.settings.sentry_webhook_secret {
         Some(s) => s,
         None => {
-            tracing::warn!("Sentry webhook received but SENTRY_WEBHOOK_SECRET not configured");
+            tracing::error!("SENTRY_WEBHOOK_SECRET is not configured");
             return (
-                StatusCode::FORBIDDEN,
-                Json(serde_json::json!({"error": "Webhook secret not configured"})),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"detail": "Webhook secret not configured"})),
             );
         }
     };
@@ -48,7 +48,7 @@ pub async fn sentry_webhook(
         tracing::warn!(resource = %resource, "Sentry webhook signature mismatch");
         return (
             StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"error": "Invalid signature"})),
+            Json(serde_json::json!({"detail": "Invalid signature"})),
         );
     }
 

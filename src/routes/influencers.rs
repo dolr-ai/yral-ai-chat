@@ -182,17 +182,11 @@ pub async fn create_influencer(
     // Append moderation guardrails
     let system_instructions = moderation::with_guardrails(&body.system_instructions);
 
-    // Generate greeting if not provided
-    let (initial_greeting, suggested_messages) = if body.initial_greeting.is_some() {
-        (
-            body.initial_greeting.clone(),
-            if body.suggested_messages.is_empty() {
-                vec![]
-            } else {
-                body.suggested_messages.clone()
-            },
-        )
-    } else {
+    // Generate greeting/suggestions if either is missing (matches Python behavior)
+    let mut initial_greeting = body.initial_greeting.clone();
+    let mut suggested_messages = body.suggested_messages.clone();
+
+    if initial_greeting.is_none() || suggested_messages.is_empty() {
         match CharacterGeneratorService::generate_initial_greeting(
             &state.gemini,
             &body.display_name,
@@ -200,19 +194,25 @@ pub async fn create_influencer(
         )
         .await
         {
-            Ok((greeting, suggestions)) => (Some(greeting), suggestions),
+            Ok((gen_greeting, gen_suggestions)) => {
+                if initial_greeting.is_none() {
+                    initial_greeting = Some(gen_greeting);
+                }
+                if suggested_messages.is_empty() {
+                    suggested_messages = gen_suggestions;
+                }
+            }
             Err(e) => {
                 tracing::error!(error = %e, "Failed to generate greeting");
-                (
-                    Some(format!(
+                if initial_greeting.is_none() {
+                    initial_greeting = Some(format!(
                         "Hey! I'm {}! How can I help you today?",
                         body.display_name
-                    )),
-                    vec![],
-                )
+                    ));
+                }
             }
         }
-    };
+    }
 
     // Always use the authenticated user's ID (security: prevent override)
     let parent_principal_id = user.user_id.clone();

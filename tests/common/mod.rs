@@ -147,5 +147,18 @@ pub fn unique_bot_id() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis();
-    format!("test-bot-{ts}")
+    format!("testbot{ts}")
+}
+
+/// Generate a short alphanumeric name suitable for influencer creation (3-15 chars).
+pub fn unique_bot_name(prefix: &str) -> String {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    let suffix = format!("{ts}");
+    // Take last N digits to fit within 15 chars
+    let max_suffix = 15 - prefix.len();
+    let start = suffix.len().saturating_sub(max_suffix);
+    format!("{prefix}{}", &suffix[start..])
 }
