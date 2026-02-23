@@ -2,9 +2,12 @@
 Unit tests for LRU cache with TTL support
 """
 
+import asyncio
 import time
 
-from src.core.cache import LRUCache, cache_key
+import pytest
+
+from src.core.cache import LRUCache, cache, cache_key, cached
 
 
 class TestLRUCache:
@@ -245,3 +248,47 @@ class TestCacheIntegration:
         cache.clear()
         stats = cache.get_stats()
         assert stats.total_items == 0
+
+
+
+@pytest.mark.asyncio
+class TestCacheStampedeProtection:
+    """Test cache stampede/dogpiling protection"""
+
+    async def test_concurrent_access_only_executes_once(self):
+        """Test that multiple concurrent requests to an expired/empty cache key only execute the function once"""
+        cache.clear()
+        
+        execution_count = 0
+        
+        @cached(ttl=60, key_prefix="stampede_test")
+        async def slow_function(arg):
+            nonlocal execution_count
+            execution_count += 1
+            # Simulate slow DB query
+            await asyncio.sleep(0.1)
+            return f"result_{arg}"
+
+        # Launch 10 concurrent requests for the SAME key
+        tasks = [slow_function("test_key") for _ in range(10)]
+        results = await asyncio.gather(*tasks)
+
+        # All 10 requests should get the same correct result
+        assert all(r == "result_test_key" for r in results)
+        
+        # CRITICAL: The underlying function should have only been executed exactly ONCE
+        # The other 9 requests should have awaited the lock and returned the cached value
+        assert execution_count == 1
+        
+        # Try a different key concurrently
+        execution_count = 0
+        tasks = [
+             slow_function("key1"),
+             slow_function("key2"),
+             slow_function("key1"),
+             slow_function("key2")
+        ]
+        await asyncio.gather(*tasks)
+        
+        # Only 2 executions should happen (one for key1, one for key2)
+        assert execution_count == 2

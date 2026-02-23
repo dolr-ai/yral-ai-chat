@@ -3,6 +3,7 @@ Caching utilities with in-memory fallback
 LRU cache with TTL support and bounded size
 """
 
+import asyncio
 import hashlib
 import json
 import time
@@ -32,6 +33,18 @@ class LRUCache:
         self._hits = 0
         self._misses = 0
         self._evictions = 0
+        self._locks: dict[str, asyncio.Lock] = {}
+
+    def get_lock(self, key: str) -> asyncio.Lock:
+        """Get or create an asyncio Lock for a specific cache key"""
+        if key not in self._locks:
+            self._locks[key] = asyncio.Lock()
+        return self._locks[key]
+
+    def cleanup_lock(self, key: str):
+        """Remove a lock if it's no longer needed"""
+        if key in self._locks and not self._locks[key].locked():
+            del self._locks[key]
 
     def get(self, key: str) -> object | None:
         """
@@ -166,16 +179,35 @@ def cached(ttl: int = 300, key_prefix: str = ""):
         async def wrapper(*args, **kwargs):
             key = f"{key_prefix}:{func.__name__}:{cache_key(*args, **kwargs)}"
 
+            # 1. Fast path: check if we already have it
             cached_value = cache.get(key)
             if cached_value is not None:
                 logger.debug(f"Cache hit: {key}")
                 return cached_value
 
-            logger.debug(f"Cache miss: {key}")
-            result = await func(*args, **kwargs)
-            cache.set(key, result, ttl=ttl)
+            # 2. Cache miss -> Stampede Protection
+            # Get a unique lock for this specific key
+            lock = cache.get_lock(key)
+            
+            async with lock:
+                # 3. Double-check pattern
+                # If another request was also waiting for the lock, it might have
+                # already populated the cache while we were waiting.
+                cached_value = cache.get(key)
+                if cached_value is not None:
+                    logger.debug(f"Cache hit (after await): {key}")
+                    cache.cleanup_lock(key)
+                    return cached_value
 
-            return result
+                # 4. We are the first one, do the expensive work
+                logger.debug(f"Cache miss (executing): {key}")
+                try:
+                    result = await func(*args, **kwargs)
+                    cache.set(key, result, ttl=ttl)
+                    return result
+                finally:
+                    # Clean up the lock object when done protecting this refresh
+                    cache.cleanup_lock(key)
 
         def invalidate_all():
             """Invalidate all cache entries for this function"""
