@@ -109,7 +109,12 @@ class NotificationService:
             async with httpx.AsyncClient() as client:
                 await client.post(settings.google_chat_webhook_url, json=card)
         except Exception as e:
-            logger.error(f"Google Chat notification error: {e}")
-
+            # CRITICAL: We DO NOT use `logger.error` or `logger.exception` here.
+            # If Google Chat rate-limits or times out, using standard logging will
+            # trigger Sentry to catch the error, which sends an alert to Sentry Cloud,
+            # which fires a webhook back here, which triggers another Chat notification,
+            # forming an infinite loop that exhausts the thread pool and DB connection pool.
+            # Using print bypasses Sentry but still writes to stdout (docker logs).
+            print(f"ERROR: Google Chat notification error: {e}")  # noqa: T201
 
 notification_service = NotificationService()

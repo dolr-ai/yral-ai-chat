@@ -43,7 +43,7 @@ async def test_chat_service_memory_background_task_direct(test_influencer_id):
     user_id = "direct-test-user"
 
     # 4. Create a real conversation via the service
-    conv, is_new = await service.create_conversation(user_id, test_influencer_id)
+    conv, _is_new = await service.create_conversation(user_id, test_influencer_id)
     assert conv.id is not None
 
     # 5. Create a real BackgroundTasks object (from FastAPI)

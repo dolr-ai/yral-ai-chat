@@ -2,6 +2,7 @@
 Yral AI Chat API - Main Application
 """
 
+import asyncio
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -52,13 +53,15 @@ if not is_test and settings.sentry_dsn and sentry_env:
             dsn=settings.sentry_dsn,
             environment=sentry_env,
             traces_sample_rate=settings.sentry_traces_sample_rate,
-            profiles_sample_rate=settings.sentry_profiles_sample_rate,
+            # CRITICAL: Do NOT enable profiles_sample_rate in Python 3.12 under high ThreadPool load.
+            # The background _thread (monitor.py) interrupts workers constantly, pegging CPU to 100%.
+            profiles_sample_rate=0.0,
             release=settings.sentry_release,
             send_default_pii=True,
             integrations=[FastApiIntegration(transaction_style="endpoint")],
             debug=settings.debug,
         )
-        logger.info(f"Sentry initialized for {sentry_env}")
+        logger.info(f"Sentry initialized for {sentry_env} (Profiler Disabled)")
     except Exception as e:
         logger.error(f"Failed to initialize Sentry: {e}")
 
@@ -76,6 +79,13 @@ async def lifespan(app: FastAPI):
     # Initialize connections
     await db.connect()
     
+    # Eager checkpoint on startup to drain any existing WAL
+    await db.eager_checkpoint()
+
+    # Start periodic WAL checkpoint background task (every 5 min)
+    _wal_task = asyncio.create_task(db.periodic_wal_checkpoint(interval_seconds=300))
+    logger.info("Started periodic WAL checkpoint safety net")
+
     # Pre-warm repositories & AI clients
     get_conversation_repository()
     get_influencer_repository()
@@ -89,6 +99,11 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down...")
+    _wal_task.cancel()
+    try:
+        await _wal_task
+    except asyncio.CancelledError:
+        pass
     await db.disconnect()
     logger.info("Shutdown complete")
 
