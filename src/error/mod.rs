@@ -22,6 +22,8 @@ pub enum AppError {
     #[error("{0}")]
     Unauthorized(String),
     #[error("{0}")]
+    ValidationError(String),
+    #[error("{0}")]
     Conflict(String),
     #[error("{0}")]
     ServiceUnavailable(String),
@@ -44,6 +46,9 @@ impl AppError {
     pub fn unauthorized(msg: impl Into<String>) -> Self {
         Self::Unauthorized(msg.into())
     }
+    pub fn validation_error(msg: impl Into<String>) -> Self {
+        Self::ValidationError(msg.into())
+    }
     pub fn conflict(msg: impl Into<String>) -> Self {
         Self::Conflict(msg.into())
     }
@@ -59,6 +64,7 @@ impl AppError {
             Self::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
             Self::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
+            Self::ValidationError(_) => (StatusCode::UNPROCESSABLE_ENTITY, "validation_error"),
             Self::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "unauthorized"),
             Self::Conflict(_) => (StatusCode::CONFLICT, "conflict"),
             Self::ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, "service_unavailable"),

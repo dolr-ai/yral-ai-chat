@@ -247,11 +247,12 @@ pub async fn send_message(
     let inf_repo = InfluencerRepository::new(state.db.pool.clone());
 
     // Validate
-    body.validate_content().map_err(AppError::bad_request)?;
+    body.validate_content()
+        .map_err(AppError::validation_error)?;
 
     let message_type = body
         .parsed_message_type()
-        .ok_or_else(|| AppError::bad_request("Invalid message type"))?;
+        .ok_or_else(|| AppError::validation_error("Invalid message type"))?;
 
     // Verify conversation
     let conv = conv_repo

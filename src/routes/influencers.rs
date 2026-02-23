@@ -167,7 +167,7 @@ pub async fn create_influencer(
 ) -> Result<Json<InfluencerResponse>, AppError> {
     // Validate request body
     body.validate()
-        .map_err(|e| AppError::bad_request(format!("{e}")))?;
+        .map_err(|e| AppError::validation_error(format!("{e}")))?;
 
     let repo = InfluencerRepository::new(state.db.pool.clone());
 
