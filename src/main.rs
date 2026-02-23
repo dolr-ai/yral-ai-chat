@@ -247,9 +247,17 @@ fn build_cors(settings: &Settings) -> CorsLayer {
             .allow_headers(Any)
     } else {
         let allowed: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
+        use axum::http::Method;
         CorsLayer::new()
             .allow_origin(allowed)
-            .allow_methods(Any)
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
             .allow_headers([
                 header::AUTHORIZATION,
                 header::CONTENT_TYPE,
