@@ -12,7 +12,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Litestream for SQLite replication
-RUN wget -q https://github.com/benbjohnson/litestream/releases/latest/download/litestream-v0.3.13-linux-amd64.tar.gz -O /tmp/litestream.tar.gz \
+RUN wget -q https://github.com/benbjohnson/litestream/releases/download/v0.3.13/litestream-v0.3.13-linux-amd64.tar.gz -O /tmp/litestream.tar.gz \
     && tar -xzf /tmp/litestream.tar.gz -C /usr/local/bin/ \
     && rm /tmp/litestream.tar.gz \
     && chmod +x /usr/local/bin/litestream
