@@ -121,10 +121,10 @@ impl ReplicateClient {
 
         // If "Prefer: wait" didn't resolve, poll
         if prediction.status == "starting" || prediction.status == "processing" {
-            if let Some(urls) = &prediction.urls {
-                if let Some(get_url) = &urls.get {
-                    return self.poll_prediction(get_url).await;
-                }
+            if let Some(urls) = &prediction.urls
+                && let Some(get_url) = &urls.get
+            {
+                return self.poll_prediction(get_url).await;
             }
             return self
                 .poll_prediction(&format!(

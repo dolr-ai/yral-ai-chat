@@ -250,8 +250,7 @@ pub async fn send_message(
     let inf_repo = InfluencerRepository::new(state.db.pool.clone());
 
     // Validate
-    body.validate_content()
-        .map_err(|e| AppError::bad_request(e))?;
+    body.validate_content().map_err(AppError::bad_request)?;
 
     let message_type = body
         .parsed_message_type()
@@ -268,21 +267,19 @@ pub async fn send_message(
     }
 
     // Deduplication
-    if let Some(ref client_id) = body.client_message_id {
-        if let Some(existing) = msg_repo
+    if let Some(ref client_id) = body.client_message_id
+        && let Some(existing) = msg_repo
             .get_by_client_id(&conversation_id, client_id)
             .await?
-        {
-            if let Some(reply) = msg_repo.get_assistant_reply(&existing.id).await? {
-                return Ok((
-                    StatusCode::OK,
-                    Json(SendMessageResponse {
-                        user_message: MessageResponse::from(existing),
-                        assistant_message: MessageResponse::from(reply),
-                    }),
-                ));
-            }
-        }
+        && let Some(reply) = msg_repo.get_assistant_reply(&existing.id).await?
+    {
+        return Ok((
+            StatusCode::OK,
+            Json(SendMessageResponse {
+                user_message: MessageResponse::from(existing),
+                assistant_message: MessageResponse::from(reply),
+            }),
+        ));
     }
 
     let influencer = inf_repo
@@ -791,7 +788,7 @@ fn spawn_notifications(
     let influencer_avatar = influencer.avatar_url.clone();
     let msg_content = response_text.to_string();
     let msg_json =
-        serde_json::to_value(&MessageResponse::from(assistant_message.clone())).unwrap_or_default();
+        serde_json::to_value(MessageResponse::from(assistant_message.clone())).unwrap_or_default();
 
     tokio::spawn(async move {
         let unread_count = MessageRepository::new(pool)
