@@ -128,13 +128,15 @@ class InfluencerRepository:
                 i.initial_greeting, i.suggested_messages,
                 i.is_active, i.is_nsfw, i.parent_principal_id,
                 i.source, i.created_at, i.updated_at, i.metadata,
-                COUNT(DISTINCT c.id) as conversation_count,
-                SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) as message_count
+                (SELECT COUNT(c.id) FROM conversations c WHERE c.influencer_id = i.id) as conversation_count,
+                (
+                    SELECT COUNT(m.id)
+                    FROM conversations c
+                    JOIN messages m ON c.id = m.conversation_id
+                    WHERE c.influencer_id = i.id AND m.role = 'user'
+                ) as message_count
             FROM ai_influencers i
-            LEFT JOIN conversations c ON i.id = c.influencer_id
-            LEFT JOIN messages m ON c.id = m.conversation_id
             WHERE i.is_active = 'active'
-            GROUP BY i.id
             ORDER BY message_count DESC, i.created_at DESC
             LIMIT $1 OFFSET $2
         """
