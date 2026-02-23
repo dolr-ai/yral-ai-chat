@@ -7,6 +7,12 @@ use tokio_tungstenite::{
     tungstenite::protocol::{Message, frame::coding::CloseCode},
 };
 
+/// Install a rustls CryptoProvider so TLS WebSocket connections work.
+/// Safe to call multiple times — only the first call has an effect.
+fn ensure_crypto_provider() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 /// Convert HTTP base URL to WebSocket URL.
 fn ws_url(base: &str, path: &str) -> String {
     base.replace("https://", "wss://")
@@ -20,6 +26,7 @@ fn close_code_u16(code: CloseCode) -> u16 {
 
 #[tokio::test]
 async fn test_websocket_missing_token() {
+    ensure_crypto_provider();
     let base = base_url();
     let url = ws_url(&base, "/api/v1/chat/ws/inbox/user123");
 
@@ -39,6 +46,7 @@ async fn test_websocket_missing_token() {
 
 #[tokio::test]
 async fn test_websocket_invalid_token() {
+    ensure_crypto_provider();
     let base = base_url();
     let url = ws_url(&base, "/api/v1/chat/ws/inbox/user123?token=invalid-token");
 
@@ -56,6 +64,7 @@ async fn test_websocket_invalid_token() {
 
 #[tokio::test]
 async fn test_websocket_wrong_user() {
+    ensure_crypto_provider();
     let base = base_url();
     let token = generate_test_token("user456");
     let url = ws_url(
@@ -77,6 +86,7 @@ async fn test_websocket_wrong_user() {
 
 #[tokio::test]
 async fn test_websocket_authorized_success() {
+    ensure_crypto_provider();
     let base = base_url();
     let user_id = "ws_test_user_123";
     let token = generate_test_token(user_id);
