@@ -113,8 +113,7 @@ jobs:
       - name: Parse server IPs
         id: parse
         run: |
-          # Convert comma-separated IPs to JSON array
-          IPS="${{ vars.BAREMETAL_SERVER_IPS }}"
+          IPS="${{ secrets.BAREMETAL_SERVER_IPS }}"
           JSON=$(echo "$IPS" | tr ',' '\n' | jq -R . | jq -s -c .)
           echo "servers=$JSON" >> $GITHUB_OUTPUT
 
@@ -174,29 +173,29 @@ jobs:
             IMAGE_TAG=${{ github.sha }} \
             JWT_SECRET_KEY='${{ secrets.JWT_SECRET_KEY }}' \
             GEMINI_API_KEY='${{ secrets.GEMINI_API_KEY }}' \
-            GEMINI_MODEL='${{ vars.GEMINI_MODEL }}' \
-            GEMINI_MAX_TOKENS='${{ vars.GEMINI_MAX_TOKENS }}' \
-            GEMINI_TEMPERATURE='${{ vars.GEMINI_TEMPERATURE }}' \
+            GEMINI_MODEL='gemini-2.5-flash' \
+            GEMINI_MAX_TOKENS='2048' \
+            GEMINI_TEMPERATURE='0.7' \
             OPENROUTER_API_KEY='${{ secrets.OPENROUTER_API_KEY }}' \
-            OPENROUTER_MODEL='${{ vars.OPENROUTER_MODEL }}' \
+            OPENROUTER_MODEL='${{ secrets.OPENROUTER_MODEL }}' \
             REPLICATE_API_TOKEN='${{ secrets.REPLICATE_API_TOKEN }}' \
-            REPLICATE_MODEL='${{ vars.REPLICATE_MODEL }}' \
+            REPLICATE_MODEL='black-forest-labs/flux-dev' \
             AWS_ACCESS_KEY_ID='${{ secrets.AWS_ACCESS_KEY_ID }}' \
             AWS_SECRET_ACCESS_KEY='${{ secrets.AWS_SECRET_ACCESS_KEY }}' \
             AWS_S3_BUCKET='${{ secrets.AWS_S3_BUCKET }}' \
             AWS_REGION='${{ secrets.AWS_REGION }}' \
             S3_ENDPOINT_URL='${{ secrets.S3_ENDPOINT_URL }}' \
             S3_PUBLIC_URL_BASE='${{ secrets.S3_PUBLIC_URL_BASE }}' \
-            METADATA_URL='${{ vars.METADATA_URL }}' \
+            METADATA_URL='https://metadata.yral.com' \
             YRAL_METADATA_NOTIFICATION_API_KEY='${{ secrets.YRAL_METADATA_NOTIFICATION_API_KEY }}' \
             CORS_ORIGINS='${{ secrets.CORS_ORIGINS }}' \
-            ENABLE_LITESTREAM='${{ secrets.ENABLE_LITESTREAM }}' \
+            ENABLE_LITESTREAM='true' \
             LITESTREAM_ACCESS_KEY_ID='${{ secrets.LITESTREAM_ACCESS_KEY_ID }}' \
             LITESTREAM_SECRET_ACCESS_KEY='${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}' \
             LITESTREAM_BUCKET='${{ secrets.LITESTREAM_BUCKET }}' \
             LITESTREAM_ENDPOINT='${{ secrets.LITESTREAM_ENDPOINT }}' \
             LITESTREAM_REGION='${{ secrets.LITESTREAM_REGION }}' \
-            LITESTREAM_PATH='${{ secrets.LITESTREAM_PATH }}' \
+            LITESTREAM_PATH='yral-ai-chat/production' \
             docker compose up -d
 
             echo 'Waiting for services to start...'

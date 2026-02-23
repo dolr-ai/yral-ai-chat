@@ -9,7 +9,7 @@ permissions:
 
 env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-  FLY_ORG: ${{ vars.FLY_ORG }}
+  FLY_ORG: gobazzinga-inc-584
 
 jobs:
   build_check:
@@ -23,6 +23,9 @@ jobs:
 
     concurrency:
       group: pr-${{ github.event.number }}
+
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
 
     environment:
       name: pr-${{ github.event.number }}
@@ -53,20 +56,20 @@ jobs:
           APP_NAME="pr-${{ github.event.number }}-${{ github.repository_owner }}-yral-ai-chat"
           flyctl secrets set "JWT_SECRET_KEY=$JWT_SECRET_KEY" --app "$APP_NAME" --stage
           flyctl secrets set "GEMINI_API_KEY=$GEMINI_API_KEY" --app "$APP_NAME" --stage
-          flyctl secrets set "GEMINI_MODEL=$GEMINI_MODEL" --app "$APP_NAME" --stage
-          flyctl secrets set "GEMINI_MAX_TOKENS=$GEMINI_MAX_TOKENS" --app "$APP_NAME" --stage
-          flyctl secrets set "GEMINI_TEMPERATURE=$GEMINI_TEMPERATURE" --app "$APP_NAME" --stage
+          flyctl secrets set "GEMINI_MODEL=gemini-2.5-flash" --app "$APP_NAME" --stage
+          flyctl secrets set "GEMINI_MAX_TOKENS=2048" --app "$APP_NAME" --stage
+          flyctl secrets set "GEMINI_TEMPERATURE=0.7" --app "$APP_NAME" --stage
           flyctl secrets set "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" --app "$APP_NAME" --stage
           flyctl secrets set "OPENROUTER_MODEL=$OPENROUTER_MODEL" --app "$APP_NAME" --stage
           flyctl secrets set "REPLICATE_API_TOKEN=$REPLICATE_API_TOKEN" --app "$APP_NAME" --stage
-          flyctl secrets set "REPLICATE_MODEL=$REPLICATE_MODEL" --app "$APP_NAME" --stage
+          flyctl secrets set "REPLICATE_MODEL=black-forest-labs/flux-dev" --app "$APP_NAME" --stage
           flyctl secrets set "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" --app "$APP_NAME" --stage
           flyctl secrets set "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" --app "$APP_NAME" --stage
           flyctl secrets set "AWS_S3_BUCKET=$AWS_S3_BUCKET" --app "$APP_NAME" --stage
           flyctl secrets set "AWS_REGION=$AWS_REGION" --app "$APP_NAME" --stage
           flyctl secrets set "S3_ENDPOINT_URL=$S3_ENDPOINT_URL" --app "$APP_NAME" --stage
           flyctl secrets set "S3_PUBLIC_URL_BASE=$S3_PUBLIC_URL_BASE" --app "$APP_NAME" --stage
-          flyctl secrets set "METADATA_URL=$METADATA_URL" --app "$APP_NAME" --stage
+          flyctl secrets set "METADATA_URL=https://metadata.yral.com" --app "$APP_NAME" --stage
           flyctl secrets set "YRAL_METADATA_NOTIFICATION_API_KEY=$YRAL_METADATA_NOTIFICATION_API_KEY" --app "$APP_NAME" --stage
           flyctl secrets set "CORS_ORIGINS=$CORS_ORIGINS" --app "$APP_NAME" --stage
           flyctl secrets set "ENABLE_LITESTREAM=true" --app "$APP_NAME" --stage
@@ -81,20 +84,15 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          GEMINI_MAX_TOKENS: ${{ vars.GEMINI_MAX_TOKENS }}
-          GEMINI_TEMPERATURE: ${{ vars.GEMINI_TEMPERATURE }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
           REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
-          REPLICATE_MODEL: ${{ vars.REPLICATE_MODEL }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
           S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
           S3_PUBLIC_URL_BASE: ${{ secrets.S3_PUBLIC_URL_BASE }}
-          METADATA_URL: ${{ vars.METADATA_URL }}
           YRAL_METADATA_NOTIFICATION_API_KEY: ${{ secrets.YRAL_METADATA_NOTIFICATION_API_KEY }}
           CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
           LITESTREAM_ACCESS_KEY_ID: ${{ secrets.LITESTREAM_ACCESS_KEY_ID }}
@@ -102,3 +100,39 @@ jobs:
           LITESTREAM_BUCKET: ${{ secrets.LITESTREAM_BUCKET }}
           LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
           LITESTREAM_REGION: ${{ secrets.LITESTREAM_REGION }}
+
+  integration_tests:
+    needs: preview
+    if: ${{ github.event.action != 'closed' && needs.preview.outputs.url != '' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust Setup
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Use rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Wait for preview to be healthy
+        run: |
+          URL="${{ needs.preview.outputs.url }}"
+          echo "Waiting for $URL/health to be healthy..."
+          for i in $(seq 1 30); do
+            if curl -sf "$URL/health" > /dev/null 2>&1; then
+              echo "Preview is healthy!"
+              exit 0
+            fi
+            echo "Attempt $i/30 - not ready yet, waiting 10s..."
+            sleep 10
+          done
+          echo "Preview failed to become healthy after 5 minutes"
+          exit 1
+
+      - name: Run integration tests
+        env:
+          TEST_API_URL: ${{ needs.preview.outputs.url }}
+        run: cargo test --test health --test auth --test influencers --test chat --test chat_v2 --test websocket --test rate_limit -- --test-threads=1
