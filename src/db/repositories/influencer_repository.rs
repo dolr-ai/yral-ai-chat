@@ -70,10 +70,10 @@ impl InfluencerRepository {
 
     pub async fn create(&self, influencer: &AIInfluencer) -> Result<(), sqlx::Error> {
         let personality_traits =
-            serde_json::to_string(&influencer.personality_traits).unwrap_or_else(|_| "{}".into());
+            serde_json::to_string(&influencer.personality_traits).unwrap_or("{}".to_string());
         let suggested_messages =
-            serde_json::to_string(&influencer.suggested_messages).unwrap_or_else(|_| "[]".into());
-        let metadata = serde_json::to_string(&influencer.metadata).unwrap_or_else(|_| "{}".into());
+            serde_json::to_string(&influencer.suggested_messages).unwrap_or("[]".to_string());
+        let metadata = serde_json::to_string(&influencer.metadata).unwrap_or("{}".to_string());
 
         sqlx::query(
             "INSERT INTO ai_influencers (

@@ -251,7 +251,7 @@ impl ConversationRepository {
         conversation_id: &str,
         metadata: &serde_json::Value,
     ) -> Result<(), sqlx::Error> {
-        let metadata_json = serde_json::to_string(metadata).unwrap_or_else(|_| "{}".to_string());
+        let metadata_json = serde_json::to_string(metadata).unwrap_or("{}".to_string());
         sqlx::query(
             "UPDATE conversations SET metadata = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         )

@@ -56,7 +56,7 @@ pub async fn sentry_webhook(
     let action = serde_json::from_slice::<serde_json::Value>(&body)
         .ok()
         .and_then(|v| v.get("action")?.as_str().map(String::from))
-        .unwrap_or_else(|| "unknown".to_string());
+        .unwrap_or("unknown".to_string());
 
     tracing::info!(resource = %resource, action = %action, "Sentry webhook received");
 

@@ -46,7 +46,7 @@ impl From<MessageRow> for Message {
             created_at: parse_dt(&row.created_at),
             metadata: serde_json::from_str(&row.metadata)
                 .unwrap_or(serde_json::Value::Object(Default::default())),
-            status: row.status.unwrap_or_else(|| "delivered".to_string()),
+            status: row.status.unwrap_or("delivered".to_string()),
             is_read: row.is_read.unwrap_or(0) != 0,
         }
     }
@@ -71,8 +71,7 @@ impl MessageRepository {
         client_message_id: Option<&str>,
     ) -> Result<Message, sqlx::Error> {
         let message_id = Uuid::new_v4().to_string();
-        let media_urls_json =
-            serde_json::to_string(media_urls).unwrap_or_else(|_| "[]".to_string());
+        let media_urls_json = serde_json::to_string(media_urls).unwrap_or("[]".to_string());
 
         sqlx::query(
             "INSERT INTO messages (

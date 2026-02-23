@@ -51,11 +51,8 @@ fn influencer_to_basic_info(
         display_name: influencer.display_name.clone(),
         avatar_url: influencer.avatar_url.clone(),
         is_online: influencer.is_active == InfluencerStatus::Active,
-        suggested_messages: if include_suggested_messages {
-            Some(influencer.suggested_messages.clone())
-        } else {
-            None
-        },
+        suggested_messages: include_suggested_messages
+            .then(|| influencer.suggested_messages.clone()),
     }
 }
 

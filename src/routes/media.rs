@@ -55,7 +55,7 @@ pub async fn upload_media(
         file_bytes.ok_or_else(|| AppError::bad_request("Missing 'file' field in upload"))?;
     let media_type =
         media_type.ok_or_else(|| AppError::bad_request("Missing 'type' field in upload"))?;
-    let file_name = file_name.unwrap_or_else(|| "upload".to_string());
+    let file_name = file_name.unwrap_or("upload".to_string());
 
     if media_type != "image" && media_type != "audio" {
         return Err(AppError::bad_request(
