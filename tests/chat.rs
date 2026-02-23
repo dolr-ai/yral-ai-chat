@@ -441,3 +441,174 @@ async fn test_send_message_accepts_uppercase_text_type() {
         assert_eq!(data["user_message"]["message_type"], "text");
     }
 }
+
+// --- Mark as Read ---
+
+#[tokio::test]
+async fn test_mark_as_read_success() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let user = unique_user();
+    let auth = auth_header(&user);
+    let conv_id = create_test_conversation(&client, &base, &user, &influencer_id).await;
+
+    let resp = client
+        .post(format!("{base}/api/v1/chat/conversations/{conv_id}/read"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(data["id"].as_str().unwrap(), conv_id);
+    assert!(data["unread_count"].is_number());
+    assert_eq!(data["unread_count"].as_i64().unwrap(), 0);
+    assert!(data["last_read_at"].is_string());
+}
+
+#[tokio::test]
+async fn test_mark_as_read_unauthorized() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let user = unique_user();
+    let conv_id = create_test_conversation(&client, &base, &user, &influencer_id).await;
+
+    let resp = client
+        .post(format!("{base}/api/v1/chat/conversations/{conv_id}/read"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+}
+
+#[tokio::test]
+async fn test_mark_as_read_not_found() {
+    let base = base_url();
+    let client = http_client();
+    let auth = auth_header("someone");
+    let fake = "00000000-0000-0000-0000-000000000000";
+
+    let resp = client
+        .post(format!("{base}/api/v1/chat/conversations/{fake}/read"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(data["error"], "not_found");
+}
+
+#[tokio::test]
+async fn test_mark_as_read_forbidden() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let owner = unique_user();
+    let conv_id = create_test_conversation(&client, &base, &owner, &influencer_id).await;
+
+    // Try to mark as read as a different user
+    let other = unique_user();
+    let resp = client
+        .post(format!("{base}/api/v1/chat/conversations/{conv_id}/read"))
+        .header("Authorization", auth_header(&other))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 403);
+}
+
+// --- Generate Image ---
+
+#[tokio::test]
+async fn test_generate_image_unauthorized() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let user = unique_user();
+    let conv_id = create_test_conversation(&client, &base, &user, &influencer_id).await;
+
+    let resp = client
+        .post(format!("{base}/api/v1/chat/conversations/{conv_id}/images"))
+        .json(&json!({"prompt": "A sunset over the ocean"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+}
+
+#[tokio::test]
+async fn test_generate_image_not_found() {
+    let base = base_url();
+    let client = http_client();
+    let auth = auth_header("someone");
+    let fake = "00000000-0000-0000-0000-000000000000";
+
+    let resp = client
+        .post(format!("{base}/api/v1/chat/conversations/{fake}/images"))
+        .header("Authorization", &auth)
+        .json(&json!({"prompt": "A sunset"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(data["error"], "not_found");
+}
+
+#[tokio::test]
+async fn test_generate_image_forbidden() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let owner = unique_user();
+    let conv_id = create_test_conversation(&client, &base, &owner, &influencer_id).await;
+
+    let other = unique_user();
+    let resp = client
+        .post(format!("{base}/api/v1/chat/conversations/{conv_id}/images"))
+        .header("Authorization", auth_header(&other))
+        .json(&json!({"prompt": "A sunset"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 403);
+}
+
+#[tokio::test]
+async fn test_generate_image_success() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let user = unique_user();
+    let auth = auth_header(&user);
+    let conv_id = create_test_conversation(&client, &base, &user, &influencer_id).await;
+
+    let resp = client
+        .post(format!("{base}/api/v1/chat/conversations/{conv_id}/images"))
+        .header("Authorization", &auth)
+        .json(&json!({"prompt": "A simple test image of a red circle on white background"}))
+        .send()
+        .await
+        .unwrap();
+
+    // Could be 201 (success) or 503 (replicate not configured / failed)
+    let status = resp.status().as_u16();
+    assert!(
+        status == 201 || status == 503,
+        "Expected 201 or 503, got {status}"
+    );
+
+    if status == 201 {
+        let data: serde_json::Value = resp.json().await.unwrap();
+        assert!(data["id"].is_string());
+        assert_eq!(data["role"], "assistant");
+        assert_eq!(data["message_type"], "image");
+        assert!(data["media_urls"].is_array());
+    }
+}

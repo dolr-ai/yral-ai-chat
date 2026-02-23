@@ -58,7 +58,7 @@ pub async fn upload_media(
     let file_name = file_name.unwrap_or("upload".to_string());
 
     if media_type != "image" && media_type != "audio" {
-        return Err(AppError::bad_request(
+        return Err(AppError::validation_error(
             "Invalid type. Must be 'image' or 'audio'",
         ));
     }

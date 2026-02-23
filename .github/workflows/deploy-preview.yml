@@ -135,4 +135,4 @@ jobs:
       - name: Run integration tests
         env:
           TEST_API_URL: ${{ needs.preview.outputs.url }}
-        run: cargo test --test health --test auth --test influencers --test chat --test chat_v2 --test websocket --test rate_limit -- --test-threads=1
+        run: cargo test --test health --test auth --test influencers --test chat --test chat_v2 --test websocket --test rate_limit --test media -- --test-threads=1

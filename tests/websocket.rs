@@ -113,3 +113,16 @@ async fn test_websocket_authorized_success() {
 
     let _ = ws.close(None).await;
 }
+
+#[tokio::test]
+async fn test_ws_docs_returns_418() {
+    let base = base_url();
+    let client = http_client();
+
+    let resp = client
+        .get(format!("{base}/api/v1/chat/ws/docs"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 418);
+}

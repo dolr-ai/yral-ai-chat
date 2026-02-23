@@ -131,7 +131,7 @@ async fn main() {
 
     // Build router
     use axum::routing::{delete, get, patch, post};
-    use routes::{chat, chat_v2, health, influencers, media, sentry, websocket};
+    use routes::{chat, chat_v2, health, influencers, media, websocket};
 
     let app = Router::new()
         // Health
@@ -193,8 +193,6 @@ async fn main() {
         // WebSocket
         .route("/api/v1/chat/ws/inbox/{user_id}", get(websocket::ws_inbox))
         .route("/api/v1/chat/ws/docs", get(websocket::ws_docs))
-        // Sentry
-        .route("/v1/sentry/webhook", post(sentry::sentry_webhook))
         // Media
         .route("/api/v1/media/upload", post(media::upload_media))
         .layer(middleware::RateLimitLayer::new(
