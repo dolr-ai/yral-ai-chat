@@ -5,6 +5,7 @@ pub struct Settings {
     // App
     pub app_name: String,
     pub app_version: String,
+    pub environment: String,
     pub debug: bool,
     pub host: String,
     pub port: u16,
@@ -81,6 +82,7 @@ impl Settings {
         Self {
             app_name: env::var("APP_NAME").unwrap_or("Yral AI Chat API".into()),
             app_version: env::var("APP_VERSION").unwrap_or("1.0.0".into()),
+            environment: env::var("ENVIRONMENT").unwrap_or("development".into()),
             debug: env::var("DEBUG")
                 .unwrap_or("false".into())
                 .parse()

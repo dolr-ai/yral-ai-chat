@@ -5,7 +5,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 
-use crate::auth::AuthenticatedUser;
+use crate::middleware::AuthenticatedUser;
 use crate::db::repositories::{ConversationRepository, InfluencerRepository, MessageRepository};
 use crate::error::AppError;
 use crate::models::entities::{AIInfluencer, InfluencerStatus, Message, MessageRole, MessageType};
@@ -122,7 +122,7 @@ pub async fn create_conversation(
         conv.message_count = Some(count);
 
         return Ok((
-            StatusCode::OK,
+            StatusCode::CREATED,
             Json(conversation_to_response(conv, Some(messages), true)),
         ));
     }
@@ -476,11 +476,17 @@ pub async fn send_message(
         StatusCode::OK
     };
 
+    // Presign media URLs in response messages so clients get usable URLs
+    let mut user_resp = MessageResponse::from(user_message);
+    let mut asst_resp = MessageResponse::from(assistant_message);
+    presign_message_urls(&state.storage, &mut user_resp);
+    presign_message_urls(&state.storage, &mut asst_resp);
+
     Ok((
         status,
         Json(SendMessageResponse {
-            user_message: MessageResponse::from(user_message),
-            assistant_message: MessageResponse::from(assistant_message),
+            user_message: user_resp,
+            assistant_message: asst_resp,
         }),
     ))
 }
@@ -662,6 +668,29 @@ pub async fn delete_conversation(
         deleted_conversation_id: conversation_id,
         deleted_messages_count: deleted_messages,
     }))
+}
+
+// ── Helpers ──
+
+/// Presign S3 storage keys in a MessageResponse so clients receive usable URLs.
+fn presign_message_urls(storage: &crate::services::storage::StorageService, msg: &mut MessageResponse) {
+    let s3_keys: Vec<String> = msg
+        .media_urls
+        .iter()
+        .chain(msg.audio_url.iter())
+        .filter(|u| !u.starts_with("http"))
+        .cloned()
+        .collect();
+
+    if s3_keys.is_empty() {
+        return;
+    }
+
+    let url_map = storage.generate_presigned_urls_batch(&s3_keys);
+    let presign = |key: &str| url_map.get(key).cloned().unwrap_or_else(|| key.to_string());
+
+    msg.media_urls = msg.media_urls.iter().map(|u| presign(u)).collect();
+    msg.audio_url = msg.audio_url.as_ref().map(|u| presign(u));
 }
 
 // ── Background task helpers ──

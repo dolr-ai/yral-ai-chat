@@ -1,7 +1,12 @@
+use std::sync::LazyLock;
+
+use regex::Regex;
 use serde::Deserialize;
 use validator::Validate;
 
 use super::entities::MessageType;
+
+static NAME_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9]+$").unwrap());
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateConversationRequest {
@@ -129,7 +134,8 @@ pub struct ValidateMetadataRequest {
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateInfluencerRequest {
-    #[validate(length(min = 3, max = 12, message = "name must be 3-12 characters"))]
+    #[validate(length(min = 3, max = 15, message = "name must be 3-15 characters"))]
+    #[validate(regex(path = *NAME_REGEX, message = "name must be alphanumeric"))]
     pub name: String,
     #[validate(length(min = 1, max = 100, message = "display_name must be 1-100 characters"))]
     pub display_name: String,

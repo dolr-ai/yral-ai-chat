@@ -45,9 +45,7 @@ pub struct ConversationResponse {
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
     pub message_count: i64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_message: Option<LastMessageInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub recent_messages: Option<Vec<MessageResponse>>,
 }
 
@@ -105,12 +103,9 @@ pub struct InfluencerResponse {
     pub is_active: InfluencerStatus,
     pub parent_principal_id: Option<String>,
     pub source: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
     pub created_at: NaiveDateTime,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation_count: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub message_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub starter_video_prompt: Option<String>,
@@ -154,23 +149,14 @@ pub struct SystemPromptResponse {
 #[derive(Debug, Serialize)]
 pub struct GeneratedMetadataResponse {
     pub is_valid: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub avatar_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_greeting: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub suggested_messages: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub personality_traits: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
 }
 
@@ -192,6 +178,8 @@ pub struct ServiceHealth {
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pool_size: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pool_free: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -216,6 +204,7 @@ pub struct StatusResponse {
 pub struct DatabaseStats {
     pub connected: bool,
     pub pool_size: Option<u32>,
+    pub active_connections: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -244,4 +233,3 @@ pub struct DeleteConversationResponse {
     pub deleted_conversation_id: String,
     pub deleted_messages_count: i64,
 }
-

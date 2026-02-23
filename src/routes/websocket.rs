@@ -1,16 +1,61 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::ws::{Message, WebSocket};
-use axum::extract::{Path, State, WebSocketUpgrade};
+use axum::extract::ws::{CloseFrame, Message, WebSocket};
+use axum::extract::{Path, Query, State, WebSocketUpgrade};
+use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
+use crate::middleware;
 use crate::AppState;
 
 pub async fn ws_inbox(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
+    // Validate JWT from ?token= query param
+    let token = match params.get("token") {
+        Some(t) if !t.is_empty() => t.clone(),
+        _ => {
+            return ws.on_upgrade(|mut socket| async move {
+                let _ = socket
+                    .send(Message::Close(Some(CloseFrame {
+                        code: 4001,
+                        reason: "Missing authentication token".into(),
+                    })))
+                    .await;
+            });
+        }
+    };
+
+    let claims = match middleware::decode_jwt(&token) {
+        Ok(c) => c,
+        Err(_) => {
+            return ws.on_upgrade(|mut socket| async move {
+                let _ = socket
+                    .send(Message::Close(Some(CloseFrame {
+                        code: 4001,
+                        reason: "Invalid or expired token".into(),
+                    })))
+                    .await;
+            });
+        }
+    };
+
+    // Verify path user_id matches JWT subject
+    if claims.sub != user_id {
+        return ws.on_upgrade(|mut socket| async move {
+            let _ = socket
+                .send(Message::Close(Some(CloseFrame {
+                    code: 4003,
+                    reason: "Forbidden".into(),
+                })))
+                .await;
+        });
+    }
+
     ws.on_upgrade(move |socket| handle_socket(state, user_id, socket))
 }
 
@@ -50,4 +95,9 @@ async fn handle_socket(state: Arc<AppState>, user_id: String, mut socket: WebSoc
 
     state.ws_manager.disconnect(&user_id, conn_id);
     tracing::info!(user_id = %user_id, conn_id = conn_id, "WebSocket disconnected");
+}
+
+/// Dummy endpoint that returns 418 to expose WebSocket event schemas (matches Python).
+pub async fn ws_docs() -> (StatusCode, &'static str) {
+    (StatusCode::IM_A_TEAPOT, "WebSocket documentation endpoint")
 }

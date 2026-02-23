@@ -1,7 +1,7 @@
-mod auth;
 mod config;
 mod db;
 mod error;
+mod middleware;
 mod models;
 mod routes;
 mod services;
@@ -26,6 +26,7 @@ pub struct AppState {
     pub db: Database,
     pub settings: Settings,
     pub start_time: Instant,
+    pub http_client: reqwest::Client,
     pub storage: StorageService,
     pub gemini: AiClient,
     pub openrouter: AiClient,
@@ -64,6 +65,9 @@ async fn main() {
     db::run_migrations(&database.pool, migrations_dir)
         .await
         .expect("Failed to run migrations");
+
+    // Eager WAL checkpoint on startup to drain any existing WAL
+    database.run_checkpoint().await;
 
     // Build shared HTTP client
     let http_client = reqwest::Client::new();
@@ -109,6 +113,7 @@ async fn main() {
         db: database,
         settings: settings.clone(),
         start_time: Instant::now(),
+        http_client: http_client.clone(),
         storage,
         gemini,
         openrouter,
@@ -117,12 +122,15 @@ async fn main() {
         ws_manager,
     });
 
+    // Start periodic WAL checkpoint (every 5 minutes)
+    Database::spawn_periodic_checkpoint(state.db.pool.clone(), 300);
+
     // Build CORS layer
     let cors = build_cors(&settings);
 
     // Build router
     use axum::routing::{delete, get, patch, post};
-    use routes::{chat, chat_v2, health, influencers, media, websocket};
+    use routes::{chat, chat_v2, health, influencers, media, sentry, websocket};
 
     let app = Router::new()
         // Health
@@ -147,8 +155,15 @@ async fn main() {
         .route("/api/v2/chat/conversations", get(chat_v2::list_conversations_v2))
         // WebSocket
         .route("/api/v1/chat/ws/inbox/{user_id}", get(websocket::ws_inbox))
+        .route("/api/v1/chat/ws/docs", get(websocket::ws_docs))
+        // Sentry
+        .route("/v1/sentry/webhook", post(sentry::sentry_webhook))
         // Media
         .route("/api/v1/media/upload", post(media::upload_media))
+        .layer(middleware::RateLimitLayer::new(
+            settings.rate_limit_per_minute,
+            settings.rate_limit_per_hour,
+        ))
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(cors)

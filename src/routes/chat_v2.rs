@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract::{Query, State};
 use axum::Json;
 
-use crate::auth::AuthenticatedUser;
+use crate::middleware::AuthenticatedUser;
 use crate::db::repositories::ConversationRepository;
 use crate::error::AppError;
 use crate::models::entities::InfluencerStatus;

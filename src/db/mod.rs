@@ -31,10 +31,17 @@ impl Database {
             .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
             .busy_timeout(std::time::Duration::from_secs(settings.database_pool_timeout))
             .pragma("foreign_keys", "ON")
-            .pragma("wal_autocheckpoint", "10000")
+            // CRITICAL: Disable autocheckpoint. Litestream holds continuous read locks
+            // on the WAL during replication; SQLite's TRUNCATE checkpoint requires ZERO
+            // active readers. With pool connections + Litestream, autocheckpoint silently
+            // fails, causing unbounded WAL growth (600MB+).
+            .pragma("wal_autocheckpoint", "0")
             .pragma("journal_size_limit", "67108864")
-            .pragma("mmap_size", "268435456")
-            .pragma("cache_size", "-64000")
+            // Reduced from 256MB to 32MB: the 256MB mmap per connection multiplied
+            // across pool connections was a major OOM contributor.
+            .pragma("mmap_size", "33554432")
+            // Reduced from 64MB to 16MB for the same OOM reason.
+            .pragma("cache_size", "-16000")
             .pragma("temp_store", "MEMORY")
             .disable_statement_logging();
 
@@ -61,6 +68,53 @@ impl Database {
         );
 
         Ok(db)
+    }
+
+    /// Run an immediate PASSIVE WAL checkpoint (e.g., on startup to drain existing WAL).
+    pub async fn run_checkpoint(&self) {
+        match sqlx::query_as::<_, (i32, i32, i32)>("PRAGMA wal_checkpoint(PASSIVE)")
+            .fetch_one(&self.pool)
+            .await
+        {
+            Ok((busy, log, checkpointed)) => {
+                tracing::info!(
+                    busy = busy,
+                    log_pages = log,
+                    checkpointed_pages = checkpointed,
+                    "WAL checkpoint completed"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "WAL checkpoint failed (non-fatal)");
+            }
+        }
+    }
+
+    /// Spawn a background task that runs PASSIVE WAL checkpoint every `interval_secs` seconds.
+    /// Safety net for when wal_autocheckpoint=0 is set.
+    pub fn spawn_periodic_checkpoint(pool: SqlitePool, interval_secs: u64) {
+        tokio::spawn(async move {
+            let interval = std::time::Duration::from_secs(interval_secs);
+            loop {
+                tokio::time::sleep(interval).await;
+                match sqlx::query_as::<_, (i32, i32, i32)>("PRAGMA wal_checkpoint(PASSIVE)")
+                    .fetch_one(&pool)
+                    .await
+                {
+                    Ok((busy, log, checkpointed)) => {
+                        tracing::info!(
+                            busy = busy,
+                            log_pages = log,
+                            checkpointed_pages = checkpointed,
+                            "Periodic WAL checkpoint completed"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Periodic WAL checkpoint failed (non-fatal)");
+                    }
+                }
+            }
+        });
     }
 
     pub async fn health_check(&self) -> HealthCheckResult {

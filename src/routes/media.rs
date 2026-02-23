@@ -4,7 +4,7 @@ use axum::extract::{Multipart, State};
 use axum::Json;
 use chrono::Utc;
 
-use crate::auth::AuthenticatedUser;
+use crate::middleware::AuthenticatedUser;
 use crate::error::AppError;
 use crate::models::responses::MediaUploadResponse;
 use crate::services::storage::{file_extension, mime_from_extension};
