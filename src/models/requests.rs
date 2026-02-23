@@ -1,7 +1,12 @@
+use std::sync::LazyLock;
+
+use regex::Regex;
 use serde::Deserialize;
 use validator::Validate;
 
 use super::entities::MessageType;
+
+static NAME_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9]+$").unwrap());
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateConversationRequest {
@@ -28,13 +33,11 @@ pub struct SendMessageRequest {
 
 impl SendMessageRequest {
     pub fn parsed_message_type(&self) -> Option<MessageType> {
-        MessageType::from_str(&self.message_type)
+        self.message_type.parse().ok()
     }
 
     pub fn validate_content(&self) -> Result<(), String> {
-        let msg_type = self
-            .parsed_message_type()
-            .ok_or("Invalid message type")?;
+        let msg_type = self.parsed_message_type().ok_or("Invalid message type")?;
         let content = self.content.as_deref().unwrap_or("").trim();
         let media_urls = self.media_urls.as_deref().unwrap_or(&[]);
 
@@ -78,10 +81,9 @@ pub struct PaginationParams {
 }
 
 impl PaginationParams {
-    pub fn limit(&self) -> i64 {
-        self.limit.unwrap_or(50).clamp(1, 100)
+    pub fn limit(&self, default: i64, max: i64) -> i64 {
+        self.limit.unwrap_or(default).clamp(1, max)
     }
-
     pub fn offset(&self) -> i64 {
         self.offset.unwrap_or(0).max(0)
     }
@@ -98,7 +100,6 @@ impl ListConversationsParams {
     pub fn limit(&self) -> i64 {
         self.limit.unwrap_or(20).clamp(1, 100)
     }
-
     pub fn offset(&self) -> i64 {
         self.offset.unwrap_or(0).max(0)
     }
@@ -115,11 +116,9 @@ impl ListMessagesParams {
     pub fn limit(&self) -> i64 {
         self.limit.unwrap_or(50).clamp(1, 200)
     }
-
     pub fn offset(&self) -> i64 {
         self.offset.unwrap_or(0).max(0)
     }
-
     pub fn order(&self) -> &str {
         match self.order.as_deref() {
             Some("asc") => "asc",
@@ -141,7 +140,8 @@ pub struct ValidateMetadataRequest {
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateInfluencerRequest {
-    #[validate(length(min = 3, max = 12, message = "name must be 3-12 characters"))]
+    #[validate(length(min = 3, max = 15, message = "name must be 3-15 characters"))]
+    #[validate(regex(path = *NAME_REGEX, message = "name must be alphanumeric"))]
     pub name: String,
     #[validate(length(min = 1, max = 100, message = "display_name must be 1-100 characters"))]
     pub display_name: String,
@@ -155,8 +155,6 @@ pub struct CreateInfluencerRequest {
     pub personality_traits: serde_json::Value,
     pub category: Option<String>,
     pub avatar_url: Option<String>,
-    #[serde(default)]
-    pub is_nsfw: bool,
     pub bot_principal_id: String,
     pub parent_principal_id: Option<String>,
 }
@@ -174,20 +172,4 @@ pub struct GenerateImageRequest {
 #[derive(Debug, Deserialize)]
 pub struct UpdateSystemPromptRequest {
     pub system_instructions: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ListTrendingParams {
-    pub limit: Option<i64>,
-    pub offset: Option<i64>,
-}
-
-impl ListTrendingParams {
-    pub fn limit(&self) -> i64 {
-        self.limit.unwrap_or(50).clamp(1, 100)
-    }
-
-    pub fn offset(&self) -> i64 {
-        self.offset.unwrap_or(0).max(0)
-    }
 }

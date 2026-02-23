@@ -79,12 +79,7 @@ impl WsManager {
         self.send_to_user(user_id, &event.to_string());
     }
 
-    pub fn broadcast_conversation_read(
-        &self,
-        user_id: &str,
-        conversation_id: &str,
-        read_at: &str,
-    ) {
+    pub fn broadcast_conversation_read(&self, user_id: &str, conversation_id: &str, read_at: &str) {
         let event = serde_json::json!({
             "event": "conversation_read",
             "data": {

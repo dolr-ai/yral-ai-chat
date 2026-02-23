@@ -1,0 +1,51 @@
+name: Build and Check
+
+on:
+  workflow_call:
+    inputs:
+      publish-artifact:
+        default: false
+        required: false
+        type: boolean
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Rust Setup
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: "x86_64-unknown-linux-gnu"
+          components: "clippy,rustfmt"
+
+      - name: Use rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clippy check
+        run: cargo clippy --no-deps --release -- --deny warnings --allow deprecated --allow dead-code
+
+      - name: Formatting check
+        run: cargo fmt --check
+
+      - name: Build
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - run: touch .empty
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ inputs.publish-artifact }}
+        with:
+          name: build-glibc
+          path: |
+            target/x86_64-unknown-linux-gnu/release/yral-ai-chat
+            .empty

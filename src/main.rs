@@ -1,7 +1,7 @@
-mod auth;
 mod config;
 mod db;
 mod error;
+mod middleware;
 mod models;
 mod routes;
 mod services;
@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use axum::Router;
+use axum::http::header;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -26,6 +27,7 @@ pub struct AppState {
     pub db: Database,
     pub settings: Settings,
     pub start_time: Instant,
+    pub http_client: reqwest::Client,
     pub storage: StorageService,
     pub gemini: AiClient,
     pub openrouter: AiClient,
@@ -64,6 +66,9 @@ async fn main() {
     db::run_migrations(&database.pool, migrations_dir)
         .await
         .expect("Failed to run migrations");
+
+    // Eager WAL checkpoint on startup to drain any existing WAL
+    database.run_checkpoint().await;
 
     // Build shared HTTP client
     let http_client = reqwest::Client::new();
@@ -109,6 +114,7 @@ async fn main() {
         db: database,
         settings: settings.clone(),
         start_time: Instant::now(),
+        http_client: http_client.clone(),
         storage,
         gemini,
         openrouter,
@@ -117,82 +123,82 @@ async fn main() {
         ws_manager,
     });
 
+    // Start periodic WAL checkpoint (every 5 minutes)
+    Database::spawn_periodic_checkpoint(state.db.pool.clone(), 300);
+
     // Build CORS layer
     let cors = build_cors(&settings);
 
     // Build router
+    use axum::routing::{delete, get, patch, post};
+    use routes::{chat, chat_v2, health, influencers, media, websocket};
+
     let app = Router::new()
         // Health
-        .route("/", axum::routing::get(routes::health::root))
-        .route("/health", axum::routing::get(routes::health::health))
-        .route("/status", axum::routing::get(routes::health::status))
+        .route("/", get(health::root))
+        .route("/health", get(health::health))
+        .route("/status", get(health::status))
         // Influencers
-        .route(
-            "/api/v1/influencers",
-            axum::routing::get(routes::influencers::list_influencers),
-        )
+        .route("/api/v1/influencers", get(influencers::list_influencers))
         .route(
             "/api/v1/influencers/trending",
-            axum::routing::get(routes::influencers::list_trending),
+            get(influencers::list_trending),
         )
         .route(
             "/api/v1/influencers/generate-prompt",
-            axum::routing::post(routes::influencers::generate_prompt),
+            post(influencers::generate_prompt),
         )
         .route(
             "/api/v1/influencers/validate-and-generate-metadata",
-            axum::routing::post(routes::influencers::validate_and_generate_metadata),
+            post(influencers::validate_and_generate_metadata),
         )
         .route(
             "/api/v1/influencers/create",
-            axum::routing::post(routes::influencers::create_influencer),
+            post(influencers::create_influencer),
         )
         .route(
             "/api/v1/influencers/{influencer_id}",
-            axum::routing::get(routes::influencers::get_influencer)
-                .delete(routes::influencers::delete_influencer),
+            get(influencers::get_influencer).delete(influencers::delete_influencer),
         )
         .route(
             "/api/v1/influencers/{influencer_id}/system-prompt",
-            axum::routing::patch(routes::influencers::update_system_prompt),
+            patch(influencers::update_system_prompt),
         )
         // Chat V1
         .route(
             "/api/v1/chat/conversations",
-            axum::routing::post(routes::chat::create_conversation)
-                .get(routes::chat::list_conversations),
+            post(chat::create_conversation).get(chat::list_conversations),
         )
         .route(
             "/api/v1/chat/conversations/{conversation_id}/messages",
-            axum::routing::get(routes::chat::list_messages).post(routes::chat::send_message),
+            get(chat::list_messages).post(chat::send_message),
         )
         .route(
             "/api/v1/chat/conversations/{conversation_id}",
-            axum::routing::delete(routes::chat::delete_conversation),
+            delete(chat::delete_conversation),
         )
         .route(
             "/api/v1/chat/conversations/{conversation_id}/read",
-            axum::routing::post(routes::chat::mark_as_read),
+            post(chat::mark_as_read),
         )
         .route(
             "/api/v1/chat/conversations/{conversation_id}/images",
-            axum::routing::post(routes::chat::generate_image),
+            post(chat::generate_image),
         )
         // Chat V2
         .route(
             "/api/v2/chat/conversations",
-            axum::routing::get(routes::chat_v2::list_conversations_v2),
+            get(chat_v2::list_conversations_v2),
         )
         // WebSocket
-        .route(
-            "/api/v1/chat/ws/inbox/{user_id}",
-            axum::routing::get(routes::websocket::ws_inbox),
-        )
+        .route("/api/v1/chat/ws/inbox/{user_id}", get(websocket::ws_inbox))
+        .route("/api/v1/chat/ws/docs", get(websocket::ws_docs))
         // Media
-        .route(
-            "/api/v1/media/upload",
-            axum::routing::post(routes::media::upload_media),
-        )
+        .route("/api/v1/media/upload", post(media::upload_media))
+        .layer(middleware::RateLimitLayer::new(
+            settings.rate_limit_per_minute,
+            settings.rate_limit_per_hour,
+        ))
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(cors)
@@ -206,16 +212,14 @@ async fn main() {
         .await
         .expect("Failed to bind address");
 
-    axum::serve(listener, app)
-        .await
-        .expect("Server error");
+    axum::serve(listener, app).await.expect("Server error");
 }
 
 fn init_tracing(settings: &Settings) {
-    use tracing_subscriber::{fmt, EnvFilter};
+    use tracing_subscriber::{EnvFilter, fmt};
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&settings.log_level));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&settings.log_level));
 
     if settings.log_format == "json" {
         fmt()
@@ -227,10 +231,7 @@ fn init_tracing(settings: &Settings) {
             .with_line_number(false)
             .init();
     } else {
-        fmt()
-            .with_env_filter(filter)
-            .with_target(true)
-            .init();
+        fmt().with_env_filter(filter).with_target(true).init();
     }
 }
 
@@ -243,14 +244,25 @@ fn build_cors(settings: &Settings) -> CorsLayer {
             .allow_methods(Any)
             .allow_headers(Any)
     } else {
-        let allowed: Vec<_> = origins
-            .iter()
-            .filter_map(|o| o.parse().ok())
-            .collect();
+        let allowed: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
+        use axum::http::Method;
         CorsLayer::new()
             .allow_origin(allowed)
-            .allow_methods(Any)
-            .allow_headers(Any)
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
+            .allow_headers([
+                header::AUTHORIZATION,
+                header::CONTENT_TYPE,
+                header::ACCEPT,
+                header::ORIGIN,
+                header::HeaderName::from_static("x-requested-with"),
+            ])
             .allow_credentials(true)
     }
 }

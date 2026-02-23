@@ -1,25 +1,25 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
 use axum::Json;
+use axum::extract::{Path, Query, State};
+use axum::http::header;
+use validator::Validate;
 
-use crate::auth::AuthenticatedUser;
+use crate::AppState;
 use crate::db::repositories::InfluencerRepository;
 use crate::error::AppError;
+use crate::middleware::AuthenticatedUser;
 use crate::models::entities::{AIInfluencer, InfluencerStatus};
 use crate::models::requests::{
-    CreateInfluencerRequest, GeneratePromptRequest, ListTrendingParams, PaginationParams,
-    UpdateSystemPromptRequest, ValidateMetadataRequest,
+    CreateInfluencerRequest, GeneratePromptRequest, PaginationParams, UpdateSystemPromptRequest,
+    ValidateMetadataRequest,
 };
 use crate::models::responses::{
-    GeneratedMetadataResponse, InfluencerCreateResponse, InfluencerResponse,
-    ListInfluencersResponse, ListTrendingInfluencersResponse, SystemPromptResponse,
-    TrendingInfluencerResponse,
+    GeneratedMetadataResponse, InfluencerResponse, ListInfluencersResponse,
+    ListTrendingInfluencersResponse, SystemPromptResponse, TrendingInfluencerResponse,
 };
 use crate::services::character_generator::CharacterGeneratorService;
 use crate::services::moderation;
-use crate::AppState;
 
 impl From<AIInfluencer> for InfluencerResponse {
     fn from(i: AIInfluencer) -> Self {
@@ -37,42 +37,47 @@ impl From<AIInfluencer> for InfluencerResponse {
             created_at: i.created_at,
             conversation_count: i.conversation_count,
             message_count: i.message_count,
+            starter_video_prompt: None,
         }
     }
 }
+
+type CachedJson<T> = ([(header::HeaderName, &'static str); 1], Json<T>);
 
 // GET /api/v1/influencers
 pub async fn list_influencers(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PaginationParams>,
-) -> Result<Json<ListInfluencersResponse>, AppError> {
+) -> Result<CachedJson<ListInfluencersResponse>, AppError> {
     let repo = InfluencerRepository::new(state.db.pool.clone());
 
-    let limit = params.limit();
+    let limit = params.limit(50, 100);
     let offset = params.offset();
 
-    let (influencers, total) =
-        tokio::try_join!(repo.list_all(limit, offset), repo.count_all(),)?;
+    let (influencers, total) = tokio::try_join!(repo.list_all(limit, offset), repo.count_all(),)?;
 
-    Ok(Json(ListInfluencersResponse {
-        influencers: influencers
-            .into_iter()
-            .map(InfluencerResponse::from)
-            .collect(),
-        total,
-        limit,
-        offset,
-    }))
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=300")],
+        Json(ListInfluencersResponse {
+            influencers: influencers
+                .into_iter()
+                .map(InfluencerResponse::from)
+                .collect(),
+            total,
+            limit,
+            offset,
+        }),
+    ))
 }
 
 // GET /api/v1/influencers/trending
 pub async fn list_trending(
     State(state): State<Arc<AppState>>,
-    Query(params): Query<ListTrendingParams>,
-) -> Result<Json<ListTrendingInfluencersResponse>, AppError> {
+    Query(params): Query<PaginationParams>,
+) -> Result<CachedJson<ListTrendingInfluencersResponse>, AppError> {
     let repo = InfluencerRepository::new(state.db.pool.clone());
 
-    let limit = params.limit();
+    let limit = params.limit(50, 100);
     let offset = params.offset();
 
     let (influencers, total) =
@@ -94,19 +99,22 @@ pub async fn list_trending(
         })
         .collect();
 
-    Ok(Json(ListTrendingInfluencersResponse {
-        influencers,
-        total,
-        limit,
-        offset,
-    }))
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=300")],
+        Json(ListTrendingInfluencersResponse {
+            influencers,
+            total,
+            limit,
+            offset,
+        }),
+    ))
 }
 
 // GET /api/v1/influencers/{influencer_id}
 pub async fn get_influencer(
     State(state): State<Arc<AppState>>,
     Path(influencer_id): Path<String>,
-) -> Result<Json<InfluencerResponse>, AppError> {
+) -> Result<CachedJson<InfluencerResponse>, AppError> {
     let repo = InfluencerRepository::new(state.db.pool.clone());
 
     let influencer = repo
@@ -114,12 +122,16 @@ pub async fn get_influencer(
         .await?
         .ok_or_else(|| AppError::not_found(format!("Influencer '{influencer_id}' not found")))?;
 
-    Ok(Json(InfluencerResponse::from(influencer)))
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=300")],
+        Json(InfluencerResponse::from(influencer)),
+    ))
 }
 
 // POST /api/v1/influencers/generate-prompt
 pub async fn generate_prompt(
     State(state): State<Arc<AppState>>,
+    _user: AuthenticatedUser,
     Json(body): Json<GeneratePromptRequest>,
 ) -> Result<Json<SystemPromptResponse>, AppError> {
     let instructions =
@@ -134,6 +146,7 @@ pub async fn generate_prompt(
 // POST /api/v1/influencers/validate-and-generate-metadata
 pub async fn validate_and_generate_metadata(
     State(state): State<Arc<AppState>>,
+    _user: AuthenticatedUser,
     Json(body): Json<ValidateMetadataRequest>,
 ) -> Result<Json<GeneratedMetadataResponse>, AppError> {
     let result = CharacterGeneratorService::validate_and_generate_metadata(
@@ -149,8 +162,13 @@ pub async fn validate_and_generate_metadata(
 // POST /api/v1/influencers/create
 pub async fn create_influencer(
     State(state): State<Arc<AppState>>,
+    user: AuthenticatedUser,
     Json(body): Json<CreateInfluencerRequest>,
-) -> Result<(StatusCode, Json<InfluencerCreateResponse>), AppError> {
+) -> Result<Json<InfluencerResponse>, AppError> {
+    // Validate request body
+    body.validate()
+        .map_err(|e| AppError::validation_error(format!("{e}")))?;
+
     let repo = InfluencerRepository::new(state.db.pool.clone());
 
     // Check name uniqueness
@@ -164,17 +182,11 @@ pub async fn create_influencer(
     // Append moderation guardrails
     let system_instructions = moderation::with_guardrails(&body.system_instructions);
 
-    // Generate greeting if not provided
-    let (initial_greeting, suggested_messages) = if body.initial_greeting.is_some() {
-        (
-            body.initial_greeting.clone(),
-            if body.suggested_messages.is_empty() {
-                vec![]
-            } else {
-                body.suggested_messages.clone()
-            },
-        )
-    } else {
+    // Generate greeting/suggestions if either is missing (matches Python behavior)
+    let mut initial_greeting = body.initial_greeting.clone();
+    let mut suggested_messages = body.suggested_messages.clone();
+
+    if initial_greeting.is_none() || suggested_messages.is_empty() {
         match CharacterGeneratorService::generate_initial_greeting(
             &state.gemini,
             &body.display_name,
@@ -182,25 +194,28 @@ pub async fn create_influencer(
         )
         .await
         {
-            Ok((greeting, suggestions)) => (Some(greeting), suggestions),
+            Ok((gen_greeting, gen_suggestions)) => {
+                if initial_greeting.is_none() {
+                    initial_greeting = Some(gen_greeting);
+                }
+                if suggested_messages.is_empty() {
+                    suggested_messages = gen_suggestions;
+                }
+            }
             Err(e) => {
                 tracing::error!(error = %e, "Failed to generate greeting");
-                (
-                    Some(format!(
+                if initial_greeting.is_none() {
+                    initial_greeting = Some(format!(
                         "Hey! I'm {}! How can I help you today?",
                         body.display_name
-                    )),
-                    vec![],
-                )
+                    ));
+                }
             }
         }
-    };
+    }
 
-    let source = if body.parent_principal_id.is_some() {
-        "user-created-influencer"
-    } else {
-        "admin-created-influencer"
-    };
+    // Always use the authenticated user's ID (security: prevent override)
+    let parent_principal_id = user.user_id.clone();
 
     let now = chrono::Utc::now().naive_utc();
     let influencer = AIInfluencer {
@@ -216,8 +231,8 @@ pub async fn create_influencer(
         suggested_messages,
         is_active: InfluencerStatus::Active,
         is_nsfw: false, // enforced
-        parent_principal_id: body.parent_principal_id,
-        source: Some(source.to_string()),
+        parent_principal_id: Some(parent_principal_id),
+        source: Some("user-created-influencer".to_string()),
         created_at: now,
         updated_at: now,
         metadata: serde_json::json!({}),
@@ -242,25 +257,10 @@ pub async fn create_influencer(
         }
     };
 
-    Ok((
-        StatusCode::CREATED,
-        Json(InfluencerCreateResponse {
-            id: influencer.id,
-            name: influencer.name,
-            display_name: influencer.display_name,
-            avatar_url: influencer.avatar_url,
-            description: influencer.description,
-            category: influencer.category,
-            is_active: influencer.is_active,
-            parent_principal_id: influencer.parent_principal_id,
-            source: influencer.source,
-            system_prompt: Some(moderation::strip_guardrails(
-                &influencer.system_instructions,
-            )),
-            created_at: influencer.created_at,
-            starter_video_prompt,
-        }),
-    ))
+    let mut resp = InfluencerResponse::from(influencer);
+    resp.starter_video_prompt = starter_video_prompt;
+
+    Ok(Json(resp))
 }
 
 // PATCH /api/v1/influencers/{influencer_id}/system-prompt
@@ -311,7 +311,9 @@ pub async fn delete_influencer(
 
     // Only the owner can delete
     if influencer.parent_principal_id.as_deref() != Some(&user.user_id) {
-        return Err(AppError::forbidden("Only the bot owner can delete this bot"));
+        return Err(AppError::forbidden(
+            "Only the bot owner can delete this bot",
+        ));
     }
 
     repo.soft_delete(&influencer_id).await?;

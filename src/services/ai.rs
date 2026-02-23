@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 
+use async_openai::Client;
 use async_openai::config::OpenAIConfig;
 use async_openai::types::chat::{
     ChatCompletionRequestAssistantMessage, ChatCompletionRequestMessage,
-    ChatCompletionRequestMessageContentPartImage,
-    ChatCompletionRequestMessageContentPartText, ChatCompletionRequestSystemMessage,
-    ChatCompletionRequestUserMessage, ChatCompletionRequestUserMessageContent,
-    ChatCompletionRequestUserMessageContentPart, CreateChatCompletionRequestArgs, ImageUrl,
+    ChatCompletionRequestMessageContentPartImage, ChatCompletionRequestMessageContentPartText,
+    ChatCompletionRequestSystemMessage, ChatCompletionRequestUserMessage,
+    ChatCompletionRequestUserMessageContent, ChatCompletionRequestUserMessageContentPart,
+    CreateChatCompletionRequestArgs, ImageUrl,
 };
-use async_openai::Client;
 use base64::Engine;
 use serde::Deserialize;
 
@@ -114,10 +114,8 @@ impl AiClient {
         for msg in conversation_history {
             match msg.role {
                 MessageRole::User => {
-                    let content = build_user_content(
-                        msg.content.as_deref().unwrap_or(""),
-                        &msg.media_urls,
-                    );
+                    let content =
+                        build_user_content(msg.content.as_deref().unwrap_or(""), &msg.media_urls);
                     messages.push(ChatCompletionRequestMessage::User(
                         ChatCompletionRequestUserMessage {
                             content,
@@ -138,10 +136,7 @@ impl AiClient {
         }
 
         // Current user message
-        let current_content = build_user_content(
-            user_message,
-            media_urls.unwrap_or(&[]),
-        );
+        let current_content = build_user_content(user_message, media_urls.unwrap_or(&[]));
         messages.push(ChatCompletionRequestMessage::User(
             ChatCompletionRequestUserMessage {
                 content: current_content,
@@ -169,11 +164,7 @@ impl AiClient {
             .first()
             .ok_or_else(|| AppError::service_unavailable("Empty response from AI"))?;
 
-        let text = choice
-            .message
-            .content
-            .clone()
-            .unwrap_or_default();
+        let text = choice.message.content.clone().unwrap_or_default();
 
         let token_count = response
             .usage
@@ -238,7 +229,9 @@ impl AiClient {
             .json(&request_body)
             .send()
             .await
-            .map_err(|e| AppError::service_unavailable(format!("Gemini transcription error: {e}")))?;
+            .map_err(|e| {
+                AppError::service_unavailable(format!("Gemini transcription error: {e}"))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -374,8 +367,7 @@ fn parse_memory_json(
         _ => return Ok(existing.clone()),
     };
 
-    let new_memories: HashMap<String, String> =
-        serde_json::from_str(json_str).unwrap_or_default();
+    let new_memories: HashMap<String, String> = serde_json::from_str(json_str).unwrap_or_default();
 
     if new_memories.is_empty() {
         return Ok(existing.clone());

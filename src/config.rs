@@ -5,6 +5,7 @@ pub struct Settings {
     // App
     pub app_name: String,
     pub app_version: String,
+    pub environment: String,
     pub debug: bool,
     pub host: String,
     pub port: u16,
@@ -81,6 +82,7 @@ impl Settings {
         Self {
             app_name: env::var("APP_NAME").unwrap_or("Yral AI Chat API".into()),
             app_version: env::var("APP_VERSION").unwrap_or("1.0.0".into()),
+            environment: env::var("ENVIRONMENT").unwrap_or("development".into()),
             debug: env::var("DEBUG")
                 .unwrap_or("false".into())
                 .parse()
@@ -181,8 +183,7 @@ impl Settings {
             replicate_model: env::var("REPLICATE_MODEL")
                 .unwrap_or("black-forest-labs/flux-dev".into()),
 
-            metadata_url: env::var("METADATA_URL")
-                .unwrap_or("https://metadata.yral.com".into()),
+            metadata_url: env::var("METADATA_URL").unwrap_or("https://metadata.yral.com".into()),
             metadata_auth_token: env::var("YRAL_METADATA_NOTIFICATION_API_KEY")
                 .ok()
                 .filter(|s| !s.is_empty()),
@@ -200,9 +201,7 @@ impl Settings {
                 .ok()
                 .filter(|s| !s.is_empty()),
 
-            google_chat_webhook_url: env::var("GOOGLE_CHAT")
-                .ok()
-                .filter(|s| !s.is_empty()),
+            google_chat_webhook_url: env::var("GOOGLE_CHAT").ok().filter(|s| !s.is_empty()),
         }
     }
 

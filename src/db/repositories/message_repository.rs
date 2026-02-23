@@ -1,6 +1,7 @@
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+use super::parse_dt;
 use crate::models::entities::{Message, MessageRole, MessageType};
 
 pub struct MessageRepository {
@@ -25,36 +26,27 @@ struct MessageRow {
     is_read: Option<i32>,
 }
 
-const SELECT_COLS: &str =
-    "id, conversation_id, role, content, message_type, media_urls, audio_url,
+const SELECT_COLS: &str = "id, conversation_id, role, content, message_type, media_urls, audio_url,
      audio_duration_seconds, token_count, client_message_id, created_at, metadata,
      status, is_read";
 
 impl From<MessageRow> for Message {
     fn from(row: MessageRow) -> Self {
-        let media_urls: Vec<String> = serde_json::from_str(&row.media_urls).unwrap_or_default();
-        let metadata: serde_json::Value = serde_json::from_str(&row.metadata)
-            .unwrap_or(serde_json::Value::Object(Default::default()));
-        let role = MessageRole::from_str(&row.role).unwrap_or(MessageRole::User);
-        let message_type = MessageType::from_str(&row.message_type).unwrap_or(MessageType::Text);
-        let created_at =
-            chrono::NaiveDateTime::parse_from_str(&row.created_at, "%Y-%m-%d %H:%M:%S")
-                .unwrap_or_default();
-
         Self {
             id: row.id,
             conversation_id: row.conversation_id,
-            role,
+            role: row.role.parse().unwrap_or(MessageRole::User),
             content: row.content,
-            message_type,
-            media_urls,
+            message_type: row.message_type.parse().unwrap_or(MessageType::Text),
+            media_urls: serde_json::from_str(&row.media_urls).unwrap_or_default(),
             audio_url: row.audio_url,
             audio_duration_seconds: row.audio_duration_seconds,
             token_count: row.token_count,
             client_message_id: row.client_message_id,
-            created_at,
-            metadata,
-            status: row.status.unwrap_or_else(|| "delivered".to_string()),
+            created_at: parse_dt(&row.created_at),
+            metadata: serde_json::from_str(&row.metadata)
+                .unwrap_or(serde_json::Value::Object(Default::default())),
+            status: row.status.unwrap_or("delivered".to_string()),
             is_read: row.is_read.unwrap_or(0) != 0,
         }
     }
@@ -65,6 +57,7 @@ impl MessageRepository {
         Self { pool }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         &self,
         conversation_id: &str,
@@ -78,7 +71,7 @@ impl MessageRepository {
         client_message_id: Option<&str>,
     ) -> Result<Message, sqlx::Error> {
         let message_id = Uuid::new_v4().to_string();
-        let media_urls_json = serde_json::to_string(media_urls).unwrap_or_else(|_| "[]".to_string());
+        let media_urls_json = serde_json::to_string(media_urls).unwrap_or("[]".to_string());
 
         sqlx::query(
             "INSERT INTO messages (
@@ -89,9 +82,9 @@ impl MessageRepository {
         )
         .bind(&message_id)
         .bind(conversation_id)
-        .bind(role.as_str())
+        .bind(role.as_ref())
         .bind(content)
-        .bind(message_type.as_str())
+        .bind(message_type.as_ref())
         .bind(&media_urls_json)
         .bind(audio_url)
         .bind(audio_duration_seconds)
@@ -276,13 +269,6 @@ impl MessageRepository {
                 .bind(conversation_id)
                 .fetch_one(&self.pool)
                 .await?;
-        Ok(count.0)
-    }
-
-    pub async fn count_all(&self) -> Result<i64, sqlx::Error> {
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM messages")
-            .fetch_one(&self.pool)
-            .await?;
         Ok(count.0)
     }
 

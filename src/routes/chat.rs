@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 
-use crate::auth::AuthenticatedUser;
+use crate::AppState;
 use crate::db::repositories::{ConversationRepository, InfluencerRepository, MessageRepository};
 use crate::error::AppError;
+use crate::middleware::AuthenticatedUser;
 use crate::models::entities::{AIInfluencer, InfluencerStatus, Message, MessageRole, MessageType};
 use crate::models::requests::{
     CreateConversationRequest, GenerateImageRequest, ListConversationsParams, ListMessagesParams,
@@ -18,7 +19,6 @@ use crate::models::responses::{
     ListConversationsResponse, ListMessagesResponse, MarkConversationAsReadResponse,
     MessageResponse, SendMessageResponse,
 };
-use crate::AppState;
 
 const FALLBACK_ERROR_MESSAGE: &str =
     "I'm having trouble generating a response right now. Please try again.";
@@ -51,11 +51,8 @@ fn influencer_to_basic_info(
         display_name: influencer.display_name.clone(),
         avatar_url: influencer.avatar_url.clone(),
         is_online: influencer.is_active == InfluencerStatus::Active,
-        suggested_messages: if include_suggested_messages {
-            Some(influencer.suggested_messages.clone())
-        } else {
-            None
-        },
+        suggested_messages: include_suggested_messages
+            .then(|| influencer.suggested_messages.clone()),
     }
 }
 
@@ -122,44 +119,35 @@ pub async fn create_conversation(
         conv.message_count = Some(count);
 
         return Ok((
-            StatusCode::OK,
+            StatusCode::CREATED,
             Json(conversation_to_response(conv, Some(messages), true)),
         ));
     }
 
     // Create new conversation
-    let conv = conv_repo
-        .create(&user.user_id, &body.influencer_id)
-        .await?;
+    let conv = conv_repo.create(&user.user_id, &body.influencer_id).await?;
 
     // Generate initial greeting if the influencer has one
-    let initial_messages = if let Some(ref greeting) = influencer.initial_greeting {
-        if !greeting.is_empty() {
-            match msg_repo
-                .create(
-                    &conv.id,
-                    &MessageRole::Assistant,
-                    Some(greeting),
-                    &MessageType::Text,
-                    &[],
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-                .await
-            {
-                Ok(msg) => vec![msg],
-                Err(e) => {
-                    tracing::error!(error = %e, "Failed to create initial greeting");
-                    vec![]
-                }
-            }
-        } else {
-            vec![]
-        }
-    } else {
-        vec![]
+    let initial_messages = match influencer.initial_greeting.as_deref() {
+        Some(greeting) if !greeting.is_empty() => msg_repo
+            .create(
+                &conv.id,
+                &MessageRole::Assistant,
+                Some(greeting),
+                &MessageType::Text,
+                &[],
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .map(|msg| vec![msg])
+            .unwrap_or_else(|e| {
+                tracing::error!(error = %e, "Failed to create initial greeting");
+                vec![]
+            }),
+        _ => vec![],
     };
 
     Ok((
@@ -260,11 +248,11 @@ pub async fn send_message(
 
     // Validate
     body.validate_content()
-        .map_err(|e| AppError::bad_request(e))?;
+        .map_err(AppError::validation_error)?;
 
     let message_type = body
         .parsed_message_type()
-        .ok_or_else(|| AppError::bad_request("Invalid message type"))?;
+        .ok_or_else(|| AppError::validation_error("Invalid message type"))?;
 
     // Verify conversation
     let conv = conv_repo
@@ -277,21 +265,19 @@ pub async fn send_message(
     }
 
     // Deduplication
-    if let Some(ref client_id) = body.client_message_id {
-        if let Some(existing) = msg_repo
+    if let Some(ref client_id) = body.client_message_id
+        && let Some(existing) = msg_repo
             .get_by_client_id(&conversation_id, client_id)
             .await?
-        {
-            if let Some(reply) = msg_repo.get_assistant_reply(&existing.id).await? {
-                return Ok((
-                    StatusCode::OK,
-                    Json(SendMessageResponse {
-                        user_message: MessageResponse::from(existing),
-                        assistant_message: MessageResponse::from(reply),
-                    }),
-                ));
-            }
-        }
+        && let Some(reply) = msg_repo.get_assistant_reply(&existing.id).await?
+    {
+        return Ok((
+            StatusCode::OK,
+            Json(SendMessageResponse {
+                user_message: MessageResponse::from(existing),
+                assistant_message: MessageResponse::from(reply),
+            }),
+        ));
     }
 
     let influencer = inf_repo
@@ -309,7 +295,7 @@ pub async fn send_message(
     // Transcribe audio if needed
     let transcribed_content = if message_type == MessageType::Audio {
         if let Some(ref audio_key) = body.audio_url {
-            let presigned = state.storage.generate_presigned_url(audio_key);
+            let presigned = state.storage.generate_presigned_url(audio_key).await;
             match state.gemini.transcribe_audio(&presigned).await {
                 Ok(text) => Some(format!("[Transcribed: {text}]")),
                 Err(e) => {
@@ -339,62 +325,38 @@ pub async fn send_message(
         )
         .await?;
 
-    // Get conversation history (11 to exclude current, keep last 10)
+    // Get conversation history (last 10 excluding current message)
     let all_recent = msg_repo
         .get_recent_for_context(&conversation_id, 11)
         .await?;
-    let history: Vec<Message> = all_recent
+    let mut history: Vec<Message> = all_recent
         .into_iter()
         .filter(|m| m.id != user_message.id)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .take(10)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
         .collect();
+    let skip = history.len().saturating_sub(10);
+    history.drain(..skip);
 
-    // Presign media URLs in history
-    let mut all_keys: Vec<String> = Vec::new();
-    for msg in &history {
-        for url in &msg.media_urls {
-            if !url.starts_with("http://") && !url.starts_with("https://") {
-                all_keys.push(url.clone());
-            }
-        }
-        if let Some(ref audio) = msg.audio_url {
-            if !audio.starts_with("http://") && !audio.starts_with("https://") {
-                all_keys.push(audio.clone());
-            }
-        }
-    }
-    let url_map = if !all_keys.is_empty() {
-        state.storage.generate_presigned_urls_batch(&all_keys)
-    } else {
-        HashMap::new()
-    };
-
-    // Update history with presigned URLs
-    let history: Vec<Message> = history
-        .into_iter()
-        .map(|mut msg| {
-            msg.media_urls = msg
-                .media_urls
+    // Presign S3 keys in history
+    let s3_keys: Vec<String> = history
+        .iter()
+        .flat_map(|m| {
+            m.media_urls
                 .iter()
-                .map(|u| url_map.get(u).cloned().unwrap_or_else(|| u.clone()))
-                .collect();
-            if let Some(ref audio) = msg.audio_url {
-                msg.audio_url = Some(
-                    url_map
-                        .get(audio)
-                        .cloned()
-                        .unwrap_or_else(|| audio.clone()),
-                );
-            }
-            msg
+                .chain(m.audio_url.iter())
+                .filter(|u| !u.starts_with("http"))
+                .cloned()
         })
         .collect();
+    let url_map = if s3_keys.is_empty() {
+        HashMap::new()
+    } else {
+        state.storage.generate_presigned_urls_batch(&s3_keys).await
+    };
+    let presign = |key: &str| url_map.get(key).cloned().unwrap_or_else(|| key.to_string());
+    for msg in &mut history {
+        msg.media_urls = msg.media_urls.iter().map(|u| presign(u)).collect();
+        msg.audio_url = msg.audio_url.as_ref().map(|u| presign(u));
+    }
 
     // Enhance system instructions with memories
     let memories: HashMap<String, String> = conv
@@ -414,12 +376,16 @@ pub async fn send_message(
     // Presign current media URLs for AI
     let media_urls_for_ai: Option<Vec<String>> =
         if matches!(message_type, MessageType::Image | MessageType::Multimodal) {
-            body.media_urls.as_ref().map(|urls| {
-                let batch = state.storage.generate_presigned_urls_batch(urls);
-                urls.iter()
-                    .map(|u| batch.get(u).cloned().unwrap_or_else(|| u.clone()))
-                    .collect()
-            })
+            if let Some(urls) = body.media_urls.as_ref() {
+                let batch = state.storage.generate_presigned_urls_batch(urls).await;
+                Some(
+                    urls.iter()
+                        .map(|u| batch.get(u).cloned().unwrap_or_else(|| u.clone()))
+                        .collect(),
+                )
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -492,97 +458,24 @@ pub async fn send_message(
         )
         .await?;
 
-    // Background: extract and update memories
-    {
-        let pool = state.db.pool.clone();
-        let conv_id = conversation_id.clone();
-        let ai_input_owned = ai_input.to_string();
-        let response_owned = response_text.clone();
-        let memories_owned = memories.clone();
-        let is_nsfw = influencer.is_nsfw;
-        let gemini = state.gemini.clone();
-        let openrouter = state.openrouter.clone();
-        tokio::spawn(async move {
-            let result = if is_nsfw && openrouter.is_configured() {
-                openrouter
-                    .extract_memories(&ai_input_owned, &response_owned, &memories_owned)
-                    .await
-            } else {
-                gemini
-                    .extract_memories(&ai_input_owned, &response_owned, &memories_owned)
-                    .await
-            };
-
-            match result {
-                Ok(updated) if updated != memories_owned => {
-                    let conv_repo = ConversationRepository::new(pool);
-                    let mut metadata = serde_json::json!({});
-                    metadata["memories"] = serde_json::to_value(&updated).unwrap_or_default();
-                    if let Err(e) = conv_repo.update_metadata(&conv_id, &metadata).await {
-                        tracing::error!(error = %e, "Failed to update conversation memories");
-                    }
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, "Memory extraction failed");
-                }
-                _ => {}
-            }
-        });
-    }
-
-    // Background: push notification + WebSocket broadcast
-    {
-        let push = state.push_notifications.clone();
-        let ws = state.ws_manager.clone();
-        let user_id = user.user_id.clone();
-        let conv_id = conversation_id.clone();
-        let influencer_id = conv.influencer_id.clone();
-        let influencer_name = influencer.display_name.clone();
-        let influencer_avatar = influencer.avatar_url.clone();
-        let msg_content = response_text.clone();
-        let msg_json = serde_json::to_value(&MessageResponse::from(assistant_message.clone()))
-            .unwrap_or_default();
-        let pool = state.db.pool.clone();
-
-        tokio::spawn(async move {
-            // Get unread count for WS broadcast
-            let unread_count = MessageRepository::new(pool)
-                .count_unread(&conv_id)
-                .await
-                .unwrap_or(0);
-
-            // WebSocket broadcast
-            let influencer_json = serde_json::json!({
-                "id": influencer_id,
-                "display_name": influencer_name,
-                "avatar_url": influencer_avatar,
-                "is_online": true,
-            });
-            ws.broadcast_new_message(
-                &user_id,
-                &conv_id,
-                &msg_json,
-                &influencer_json,
-                unread_count,
-            );
-
-            // Push notification
-            let truncated = if msg_content.len() > 100 {
-                format!("{}...", &msg_content[..100])
-            } else {
-                msg_content
-            };
-
-            let data = serde_json::json!({
-                "conversation_id": conv_id,
-                "influencer_id": influencer_id,
-                "type": "new_message",
-            });
-
-            push.send_push_notification(&user_id, &influencer_name, &truncated, Some(&data))
-                .await;
-        });
-    }
+    // Background tasks: memory extraction + notifications
+    spawn_memory_extraction(
+        &state,
+        &conversation_id,
+        ai_input,
+        &response_text,
+        &memories,
+        influencer.is_nsfw,
+    );
+    spawn_notifications(
+        &state,
+        &user.user_id,
+        &conversation_id,
+        &conv.influencer_id,
+        &influencer,
+        &response_text,
+        &assistant_message,
+    );
 
     let status = if is_fallback {
         StatusCode::SERVICE_UNAVAILABLE
@@ -590,11 +483,17 @@ pub async fn send_message(
         StatusCode::OK
     };
 
+    // Presign media URLs in response messages so clients get usable URLs
+    let mut user_resp = MessageResponse::from(user_message);
+    let mut asst_resp = MessageResponse::from(assistant_message);
+    presign_message_urls(&state.storage, &mut user_resp).await;
+    presign_message_urls(&state.storage, &mut asst_resp).await;
+
     Ok((
         status,
         Json(SendMessageResponse {
-            user_message: MessageResponse::from(user_message),
-            assistant_message: MessageResponse::from(assistant_message),
+            user_message: user_resp,
+            assistant_message: asst_resp,
         }),
     ))
 }
@@ -674,38 +573,33 @@ pub async fn generate_image(
     }
 
     // 1. Determine prompt
-    let final_prompt = if let Some(ref prompt) = body.prompt {
-        if !prompt.trim().is_empty() {
-            prompt.trim().to_string()
-        } else {
-            generate_image_prompt_from_context(&state, &msg_repo, &conversation_id).await?
-        }
-    } else {
-        generate_image_prompt_from_context(&state, &msg_repo, &conversation_id).await?
+    let final_prompt = match body.prompt.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => p.to_string(),
+        _ => generate_image_prompt_from_context(&state, &msg_repo, &conversation_id).await?,
     };
 
     tracing::info!(prompt = %final_prompt, "Generating image");
 
     // 2. Generate image using flux-kontext-dev with influencer avatar
-    let avatar_url = influencer.avatar_url.as_deref().unwrap_or("");
-    let input_image = if !avatar_url.is_empty() {
-        // Presign if it's an S3 key
-        if !avatar_url.starts_with("http://") && !avatar_url.starts_with("https://") {
-            Some(state.storage.generate_presigned_url(avatar_url))
-        } else {
-            Some(avatar_url.to_string())
-        }
-    } else {
-        None
+    let input_image = match influencer.avatar_url.as_deref().filter(|u| !u.is_empty()) {
+        Some(url) if url.starts_with("http") => Some(url.to_string()),
+        Some(url) => Some(state.storage.generate_presigned_url(url).await),
+        None => None,
     };
 
-    let image_url = if let Some(ref input_img) = input_image {
-        state
-            .replicate
-            .generate_image_via_image(&final_prompt, input_img, "9:16")
-            .await?
-    } else {
-        state.replicate.generate_image(&final_prompt, "9:16").await?
+    let image_url = match &input_image {
+        Some(img) => {
+            state
+                .replicate
+                .generate_image_via_image(&final_prompt, img, "9:16")
+                .await?
+        }
+        None => {
+            state
+                .replicate
+                .generate_image(&final_prompt, "9:16")
+                .await?
+        }
     };
 
     let image_url = image_url.ok_or_else(|| {
@@ -744,42 +638,32 @@ async fn generate_image_prompt_from_context(
     msg_repo: &MessageRepository,
     conversation_id: &str,
 ) -> Result<String, AppError> {
-    tracing::info!("No prompt provided, generating from context...");
-
-    let messages = msg_repo
+    let mut messages = msg_repo
         .list_by_conversation(conversation_id, 10, 0, "desc")
         .await?;
+    messages.reverse();
 
-    let mut context_msgs = messages;
-    context_msgs.reverse();
-
-    let context_str: String = context_msgs
+    let context_str: String = messages
         .iter()
         .filter_map(|m| {
             m.content
                 .as_ref()
-                .map(|c| format!("{}: {c}", m.role.as_str()))
+                .map(|c| format!("{}: {c}", m.role.as_ref()))
         })
         .collect::<Vec<_>>()
         .join("\n");
 
-    let extract_prompt_system = concat!(
-        "You are an AI assistant helping to visualize a scene. ",
-        "Based on the recent conversation, generate a detailed image generation prompt ",
-        "that captures the current context, action, or requested visual. ",
-        "Output ONLY the prompt, no other text."
-    );
-
-    let user_msg = format!("Conversation Context:\n{context_str}\n\nGenerate an image prompt:");
-
-    let (generated_prompt, _) = state
+    let (prompt, _) = state
         .gemini
-        .generate_response(&user_msg, extract_prompt_system, &[], None)
+        .generate_response(
+            &format!("Conversation Context:\n{context_str}\n\nGenerate an image prompt:"),
+            "You are an AI assistant helping to visualize a scene. Based on the recent conversation, generate a detailed image generation prompt that captures the current context, action, or requested visual. Output ONLY the prompt, no other text.",
+            &[],
+            None,
+        )
         .await?;
 
-    let prompt = generated_prompt.trim().to_string();
-    tracing::info!(prompt = %prompt, "Generated image prompt from context");
-    Ok(prompt)
+    Ok(prompt.trim().to_string())
 }
 
 // DELETE /api/v1/chat/conversations/:conversation_id
@@ -809,4 +693,130 @@ pub async fn delete_conversation(
         deleted_conversation_id: conversation_id,
         deleted_messages_count: deleted_messages,
     }))
+}
+
+// ── Helpers ──
+
+/// Presign S3 storage keys in a MessageResponse so clients receive usable URLs.
+async fn presign_message_urls(
+    storage: &crate::services::storage::StorageService,
+    msg: &mut MessageResponse,
+) {
+    let s3_keys: Vec<String> = msg
+        .media_urls
+        .iter()
+        .chain(msg.audio_url.iter())
+        .filter(|u| !u.starts_with("http"))
+        .cloned()
+        .collect();
+
+    if s3_keys.is_empty() {
+        return;
+    }
+
+    let url_map = storage.generate_presigned_urls_batch(&s3_keys).await;
+    let presign = |key: &str| url_map.get(key).cloned().unwrap_or_else(|| key.to_string());
+
+    msg.media_urls = msg.media_urls.iter().map(|u| presign(u)).collect();
+    msg.audio_url = msg.audio_url.as_ref().map(|u| presign(u));
+}
+
+// ── Background task helpers ──
+
+fn spawn_memory_extraction(
+    state: &Arc<AppState>,
+    conversation_id: &str,
+    user_input: &str,
+    response_text: &str,
+    memories: &HashMap<String, String>,
+    is_nsfw: bool,
+) {
+    let pool = state.db.pool.clone();
+    let conv_id = conversation_id.to_string();
+    let ai_input = user_input.to_string();
+    let response = response_text.to_string();
+    let memories = memories.clone();
+    let gemini = state.gemini.clone();
+    let openrouter = state.openrouter.clone();
+
+    tokio::spawn(async move {
+        let result = if is_nsfw && openrouter.is_configured() {
+            openrouter
+                .extract_memories(&ai_input, &response, &memories)
+                .await
+        } else {
+            gemini
+                .extract_memories(&ai_input, &response, &memories)
+                .await
+        };
+
+        match result {
+            Ok(updated) if updated != memories => {
+                let conv_repo = ConversationRepository::new(pool);
+                let mut metadata = serde_json::json!({});
+                metadata["memories"] = serde_json::to_value(&updated).unwrap_or_default();
+                if let Err(e) = conv_repo.update_metadata(&conv_id, &metadata).await {
+                    tracing::error!(error = %e, "Failed to update conversation memories");
+                }
+            }
+            Err(e) => tracing::error!(error = %e, "Memory extraction failed"),
+            _ => {}
+        }
+    });
+}
+
+fn spawn_notifications(
+    state: &Arc<AppState>,
+    user_id: &str,
+    conversation_id: &str,
+    influencer_id: &str,
+    influencer: &AIInfluencer,
+    response_text: &str,
+    assistant_message: &Message,
+) {
+    let push = state.push_notifications.clone();
+    let ws = state.ws_manager.clone();
+    let pool = state.db.pool.clone();
+    let user_id = user_id.to_string();
+    let conv_id = conversation_id.to_string();
+    let influencer_id = influencer_id.to_string();
+    let influencer_name = influencer.display_name.clone();
+    let influencer_avatar = influencer.avatar_url.clone();
+    let msg_content = response_text.to_string();
+    let msg_json =
+        serde_json::to_value(MessageResponse::from(assistant_message.clone())).unwrap_or_default();
+
+    tokio::spawn(async move {
+        let unread_count = MessageRepository::new(pool)
+            .count_unread(&conv_id)
+            .await
+            .unwrap_or(0);
+
+        let influencer_json = serde_json::json!({
+            "id": influencer_id,
+            "display_name": influencer_name,
+            "avatar_url": influencer_avatar,
+            "is_online": true,
+        });
+        ws.broadcast_new_message(
+            &user_id,
+            &conv_id,
+            &msg_json,
+            &influencer_json,
+            unread_count,
+        );
+
+        let truncated = if msg_content.len() > 100 {
+            format!("{}...", &msg_content[..100])
+        } else {
+            msg_content
+        };
+        let data = serde_json::json!({
+            "conversation_id": conv_id,
+            "influencer_id": influencer_id,
+            "type": "new_message",
+        });
+        push.send_push_notification(&user_id, &influencer_name, &truncated, Some(&data))
+            .await;
+    });
 }

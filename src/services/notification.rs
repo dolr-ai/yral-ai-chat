@@ -38,13 +38,12 @@ impl PushNotificationService {
             }
         });
 
-        if let Some(extra) = data {
-            if let Some(obj) = extra.as_object() {
-                if let Some(data_obj) = payload["data"].as_object_mut() {
-                    for (k, v) in obj {
-                        data_obj.insert(k.clone(), v.clone());
-                    }
-                }
+        if let Some(extra) = data
+            && let Some(obj) = extra.as_object()
+            && let Some(data_obj) = payload["data"].as_object_mut()
+        {
+            for (k, v) in obj {
+                data_obj.insert(k.clone(), v.clone());
             }
         }
 

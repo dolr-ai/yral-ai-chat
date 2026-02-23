@@ -1,10 +1,14 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+use strum::{AsRefStr, Display, EnumString};
 
 // ── Enums ──
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type, Display, EnumString, AsRefStr,
+)]
 #[sqlx(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum MessageType {
     #[serde(rename = "text")]
     Text,
@@ -16,29 +20,11 @@ pub enum MessageType {
     Audio,
 }
 
-impl MessageType {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Text => "text",
-            Self::Multimodal => "multimodal",
-            Self::Image => "image",
-            Self::Audio => "audio",
-        }
-    }
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "text" => Some(Self::Text),
-            "multimodal" => Some(Self::Multimodal),
-            "image" => Some(Self::Image),
-            "audio" => Some(Self::Audio),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type, Display, EnumString, AsRefStr,
+)]
 #[sqlx(rename_all = "lowercase")]
+#[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum MessageRole {
     #[serde(rename = "user")]
     User,
@@ -46,24 +32,8 @@ pub enum MessageRole {
     Assistant,
 }
 
-impl MessageRole {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::User => "user",
-            Self::Assistant => "assistant",
-        }
-    }
-
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "user" => Some(Self::User),
-            "assistant" => Some(Self::Assistant),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Display, EnumString, AsRefStr)]
+#[strum(serialize_all = "snake_case")]
 pub enum InfluencerStatus {
     #[serde(rename = "active")]
     Active,
@@ -71,25 +41,6 @@ pub enum InfluencerStatus {
     ComingSoon,
     #[serde(rename = "discontinued")]
     Discontinued,
-}
-
-impl InfluencerStatus {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Active => "active",
-            Self::ComingSoon => "coming_soon",
-            Self::Discontinued => "discontinued",
-        }
-    }
-
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "active" => Self::Active,
-            "coming_soon" => Self::ComingSoon,
-            "discontinued" => Self::Discontinued,
-            _ => Self::Active,
-        }
-    }
 }
 
 // ── Entities ──

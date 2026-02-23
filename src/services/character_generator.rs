@@ -74,6 +74,26 @@ const SAFETY_REFUSALS: &[&str] = &[
     "harmful",
 ];
 
+fn contains_safety_refusal(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    SAFETY_REFUSALS.iter().any(|r| lower.contains(r))
+}
+
+fn invalid_metadata(reason: &str) -> GeneratedMetadataResponse {
+    GeneratedMetadataResponse {
+        is_valid: false,
+        reason: Some(reason.to_string()),
+        name: None,
+        display_name: None,
+        description: None,
+        avatar_url: None,
+        initial_greeting: None,
+        suggested_messages: None,
+        personality_traits: None,
+        category: None,
+    }
+}
+
 #[derive(Deserialize)]
 struct ValidationResult {
     is_valid: Option<bool>,
@@ -112,83 +132,42 @@ impl CharacterGeneratorService {
         replicate: &ReplicateClient,
         system_instructions: &str,
     ) -> Result<GeneratedMetadataResponse, AppError> {
-        // Check for safety refusals in the input
-        let lower = system_instructions.to_lowercase();
-        for refusal in SAFETY_REFUSALS {
-            if lower.contains(refusal) {
-                return Ok(GeneratedMetadataResponse {
-                    is_valid: false,
-                    reason: Some("Content failed safety validation".to_string()),
-                    name: None,
-                    display_name: None,
-                    description: None,
-                    avatar_url: None,
-                    initial_greeting: None,
-                    suggested_messages: None,
-                    personality_traits: None,
-                    category: None,
-                });
-            }
+        if contains_safety_refusal(system_instructions) {
+            return Ok(invalid_metadata("Content failed safety validation"));
         }
 
         let (text, _) = gemini
             .generate_response(system_instructions, VALIDATE_PROMPT, &[], None)
             .await?;
 
-        // Check response for safety refusals
-        let lower_resp = text.to_lowercase();
-        for refusal in SAFETY_REFUSALS {
-            if lower_resp.contains(refusal) {
-                return Ok(GeneratedMetadataResponse {
-                    is_valid: false,
-                    reason: Some("Content failed safety validation".to_string()),
-                    name: None,
-                    display_name: None,
-                    description: None,
-                    avatar_url: None,
-                    initial_greeting: None,
-                    suggested_messages: None,
-                    personality_traits: None,
-                    category: None,
-                });
-            }
+        if contains_safety_refusal(&text) {
+            return Ok(invalid_metadata("Content failed safety validation"));
         }
 
-        // Parse JSON from response
-        let result: ValidationResult = parse_json_from_response(&text).unwrap_or(ValidationResult {
-            is_valid: Some(false),
-            reason: Some("Failed to parse validation response".to_string()),
-            name: None,
-            display_name: None,
-            description: None,
-            initial_greeting: None,
-            suggested_messages: None,
-            personality_traits: None,
-            category: None,
-            image_prompt: None,
-        });
-
-        if !result.is_valid.unwrap_or(false) {
-            return Ok(GeneratedMetadataResponse {
-                is_valid: false,
-                reason: result.reason,
+        let result: ValidationResult =
+            parse_json_from_response(&text).unwrap_or(ValidationResult {
+                is_valid: Some(false),
+                reason: Some("Failed to parse validation response".to_string()),
                 name: None,
                 display_name: None,
                 description: None,
-                avatar_url: None,
                 initial_greeting: None,
                 suggested_messages: None,
                 personality_traits: None,
                 category: None,
+                image_prompt: None,
             });
+
+        if !result.is_valid.unwrap_or(false) {
+            return Ok(invalid_metadata(
+                result.reason.as_deref().unwrap_or("Validation failed"),
+            ));
         }
 
         // Generate avatar via Replicate if image_prompt available
         let avatar_url = if let Some(ref img_prompt) = result.image_prompt {
             if replicate.is_configured() {
-                let enhanced = format!(
-                    "Professional avatar portrait, high quality, {img_prompt}"
-                );
+                let enhanced = format!("Professional avatar portrait, high quality, {img_prompt}");
                 match replicate.generate_image(&enhanced, "1:1").await {
                     Ok(url) => url,
                     Err(e) => {
@@ -227,7 +206,12 @@ impl CharacterGeneratorService {
             .replace("{system_instructions}", system_instructions);
 
         let (text, _) = gemini
-            .generate_response(&prompt, "You are a helpful assistant that returns valid JSON.", &[], None)
+            .generate_response(
+                &prompt,
+                "You are a helpful assistant that returns valid JSON.",
+                &[],
+                None,
+            )
             .await?;
 
         let result: GreetingResult = parse_json_from_response(&text).unwrap_or(GreetingResult {

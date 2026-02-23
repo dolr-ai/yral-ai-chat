@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use axum::extract::{Multipart, State};
 use axum::Json;
+use axum::extract::{Multipart, State};
 use chrono::Utc;
 
-use crate::auth::AuthenticatedUser;
+use crate::AppState;
 use crate::error::AppError;
+use crate::middleware::AuthenticatedUser;
 use crate::models::responses::MediaUploadResponse;
 use crate::services::storage::{file_extension, mime_from_extension};
-use crate::AppState;
 
 // POST /api/v1/media/upload
 pub async fn upload_media(
@@ -55,10 +55,10 @@ pub async fn upload_media(
         file_bytes.ok_or_else(|| AppError::bad_request("Missing 'file' field in upload"))?;
     let media_type =
         media_type.ok_or_else(|| AppError::bad_request("Missing 'type' field in upload"))?;
-    let file_name = file_name.unwrap_or_else(|| "upload".to_string());
+    let file_name = file_name.unwrap_or("upload".to_string());
 
     if media_type != "image" && media_type != "audio" {
-        return Err(AppError::bad_request(
+        return Err(AppError::validation_error(
             "Invalid type. Must be 'image' or 'audio'",
         ));
     }
@@ -83,7 +83,7 @@ pub async fn upload_media(
         .await?;
 
     // Generate presigned URL for immediate access
-    let presigned_url = state.storage.generate_presigned_url(&storage_key);
+    let presigned_url = state.storage.generate_presigned_url(&storage_key).await;
 
     Ok(Json(MediaUploadResponse {
         url: presigned_url,

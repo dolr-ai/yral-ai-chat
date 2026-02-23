@@ -1,15 +1,17 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use rusty_s3::{Bucket as S3Bucket, Credentials as S3Credentials, S3Action, UrlStyle};
-use url::Url;
+use aws_sdk_s3::Client;
+use aws_sdk_s3::config::{Credentials, Region};
+use aws_sdk_s3::presigning::PresigningConfig;
+use aws_sdk_s3::primitives::ByteStream;
 
 use crate::config::Settings;
 use crate::error::AppError;
 
 pub struct StorageService {
-    bucket: S3Bucket,
-    credentials: S3Credentials,
+    client: Client,
+    bucket: String,
     http_client: reqwest::Client,
     public_url_base: String,
     url_expires_seconds: u32,
@@ -22,19 +24,27 @@ const AUDIO_EXTENSIONS: &[&str] = &[".mp3", ".m4a", ".wav", ".ogg"];
 
 impl StorageService {
     pub fn new(settings: &Settings, http_client: reqwest::Client) -> Result<Self, anyhow::Error> {
-        let endpoint = Url::parse(&settings.s3_endpoint_url)?;
-        let bucket = S3Bucket::new(
-            endpoint,
-            UrlStyle::Path,
-            settings.aws_s3_bucket.clone(),
-            settings.aws_region.clone(),
-        )?;
-        let credentials =
-            S3Credentials::new(&settings.aws_access_key_id, &settings.aws_secret_access_key);
+        let creds = Credentials::new(
+            &settings.aws_access_key_id,
+            &settings.aws_secret_access_key,
+            None,
+            None,
+            "yral_ai_chat",
+        );
+
+        let config = aws_sdk_s3::Config::builder()
+            .behavior_version_latest()
+            .region(Region::new(settings.aws_region.clone()))
+            .endpoint_url(&settings.s3_endpoint_url)
+            .credentials_provider(creds)
+            .force_path_style(true)
+            .build();
+
+        let client = Client::from_conf(config);
 
         Ok(Self {
-            bucket,
-            credentials,
+            client,
+            bucket: settings.aws_s3_bucket.clone(),
             http_client,
             public_url_base: settings.s3_public_url_base.clone(),
             url_expires_seconds: settings.s3_url_expires_seconds,
@@ -54,40 +64,52 @@ impl StorageService {
         let key = format!("{user_id}/{filename}");
         let size = file_bytes.len() as u64;
 
-        let mut action = self.bucket.put_object(Some(&self.credentials), &key);
-        action
-            .headers_mut()
-            .insert("Content-Type", content_type);
-        let url = action.sign(Duration::from_secs(300));
-
-        self.http_client
-            .put(url.as_str())
-            .header("Content-Type", content_type)
-            .body(file_bytes)
+        self.client
+            .put_object()
+            .bucket(&self.bucket)
+            .key(&key)
+            .body(ByteStream::from(file_bytes))
+            .content_type(content_type)
+            .content_length(size as i64)
             .send()
             .await
-            .map_err(|e| AppError::service_unavailable(format!("S3 upload failed: {e}")))?
-            .error_for_status()
-            .map_err(|e| AppError::service_unavailable(format!("S3 upload rejected: {e}")))?;
+            .map_err(|e| AppError::service_unavailable(format!("S3 upload failed: {e}")))?;
 
         Ok((key, size))
     }
 
-    pub fn generate_presigned_url(&self, key: &str) -> String {
+    pub async fn generate_presigned_url(&self, key: &str) -> String {
         if key.starts_with("http://") || key.starts_with("https://") {
             return key.to_string();
         }
 
-        let action = self.bucket.get_object(Some(&self.credentials), key);
-        action
-            .sign(Duration::from_secs(self.url_expires_seconds as u64))
-            .to_string()
+        let expires =
+            PresigningConfig::expires_in(Duration::from_secs(self.url_expires_seconds as u64))
+                .expect("valid presigning config");
+
+        match self
+            .client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .presigned(expires)
+            .await
+        {
+            Ok(presigned) => presigned.uri().to_string(),
+            Err(e) => {
+                tracing::error!(error = %e, key = key, "Failed to generate presigned URL");
+                key.to_string()
+            }
+        }
     }
 
-    pub fn generate_presigned_urls_batch(&self, keys: &[String]) -> HashMap<String, String> {
-        keys.iter()
-            .map(|key| (key.clone(), self.generate_presigned_url(key)))
-            .collect()
+    pub async fn generate_presigned_urls_batch(&self, keys: &[String]) -> HashMap<String, String> {
+        let mut map = HashMap::with_capacity(keys.len());
+        for key in keys {
+            let url = self.generate_presigned_url(key).await;
+            map.insert(key.clone(), url);
+        }
+        map
     }
 
     pub fn extract_key_from_url(&self, url_or_key: &str) -> String {

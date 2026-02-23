@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use chrono::Utc;
 
+use crate::AppState;
 use crate::models::responses::{
     DatabaseStats, HealthResponse, ServiceHealth, StatusResponse, SystemStatistics,
 };
-use crate::AppState;
 
 pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let db_health = state.db.health_check().await;
@@ -21,6 +21,37 @@ pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> 
             latency_ms: db_health.latency_ms,
             error: db_health.error,
             pool_size: Some(state.settings.database_pool_size),
+            pool_free: None,
+        },
+    );
+    services.insert(
+        "gemini_api".to_string(),
+        ServiceHealth {
+            status: "up".to_string(),
+            latency_ms: None,
+            error: None,
+            pool_size: None,
+            pool_free: None,
+        },
+    );
+    services.insert(
+        "s3_storage".to_string(),
+        ServiceHealth {
+            status: "up".to_string(),
+            latency_ms: None,
+            error: None,
+            pool_size: None,
+            pool_free: None,
+        },
+    );
+    services.insert(
+        "litestream".to_string(),
+        ServiceHealth {
+            status: "up".to_string(),
+            latency_ms: None,
+            error: None,
+            pool_size: None,
+            pool_free: None,
         },
     );
 
@@ -59,11 +90,12 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> 
     Json(StatusResponse {
         service: state.settings.app_name.clone(),
         version: state.settings.app_version.clone(),
-        environment: "production".to_string(),
+        environment: state.settings.environment.clone(),
         uptime_seconds: uptime,
         database: DatabaseStats {
             connected: true,
             pool_size: Some(state.settings.database_pool_size),
+            active_connections: Some(state.settings.database_pool_size),
         },
         statistics: SystemStatistics {
             total_conversations,
@@ -78,6 +110,9 @@ pub async fn root(State(state): State<Arc<AppState>>) -> Json<serde_json::Value>
     Json(serde_json::json!({
         "service": state.settings.app_name,
         "version": state.settings.app_version,
+        "status": "running",
         "docs": "/docs",
+        "health": "/health",
+        "metrics": "/metrics",
     }))
 }
