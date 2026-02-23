@@ -2,9 +2,12 @@
 Unit tests for LRU cache with TTL support
 """
 
+import asyncio
 import time
 
-from src.core.cache import LRUCache, cache_key
+import pytest
+
+from src.core.cache import LRUCache, cache, cache_key, cached
 
 
 class TestLRUCache:
@@ -247,9 +250,6 @@ class TestCacheIntegration:
         assert stats.total_items == 0
 
 
-import asyncio
-import pytest
-from src.core.cache import cached, cache
 
 @pytest.mark.asyncio
 class TestCacheStampedeProtection:
