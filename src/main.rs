@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use axum::Router;
+use axum::http::header;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -249,7 +250,13 @@ fn build_cors(settings: &Settings) -> CorsLayer {
         CorsLayer::new()
             .allow_origin(allowed)
             .allow_methods(Any)
-            .allow_headers(Any)
+            .allow_headers([
+                header::AUTHORIZATION,
+                header::CONTENT_TYPE,
+                header::ACCEPT,
+                header::ORIGIN,
+                header::HeaderName::from_static("x-requested-with"),
+            ])
             .allow_credentials(true)
     }
 }
