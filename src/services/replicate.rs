@@ -121,17 +121,11 @@ impl ReplicateClient {
 
         // If "Prefer: wait" didn't resolve, poll
         if prediction.status == "starting" || prediction.status == "processing" {
-            if let Some(urls) = &prediction.urls
-                && let Some(get_url) = &urls.get
-            {
-                return self.poll_prediction(get_url).await;
-            }
-            return self
-                .poll_prediction(&format!(
-                    "https://api.replicate.com/v1/predictions/{}",
-                    prediction.id
-                ))
-                .await;
+            let poll_url = match &prediction.urls {
+                Some(PredictionUrls { get: Some(url) }) => url.clone(),
+                _ => format!("https://api.replicate.com/v1/predictions/{}", prediction.id),
+            };
+            return self.poll_prediction(&poll_url).await;
         }
 
         Ok(extract_output_url(&prediction.output))

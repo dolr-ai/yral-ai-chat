@@ -40,16 +40,10 @@ jobs:
       - name: Build
         run: cargo build --release --target x86_64-unknown-linux-gnu
 
-      - name: Prepare artifact
-        if: ${{ inputs.publish-artifact }}
-        run: |
-          mkdir -p artifact/target/x86_64-unknown-linux-gnu/release
-          cp target/x86_64-unknown-linux-gnu/release/yral-ai-chat artifact/target/x86_64-unknown-linux-gnu/release/
-
       - name: Archive production artifacts
         uses: actions/upload-artifact@v4
         if: ${{ inputs.publish-artifact }}
         with:
           name: build-glibc
           path: |
-            artifact/target/x86_64-unknown-linux-gnu/release/yral-ai-chat
+            target/x86_64-unknown-linux-gnu/release/yral-ai-chat
