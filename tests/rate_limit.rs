@@ -33,11 +33,7 @@ async fn test_rate_limit_excluded_paths() {
     let base = base_url();
     let client = http_client();
 
-    let resp = client
-        .get(format!("{base}/health"))
-        .send()
-        .await
-        .unwrap();
+    let resp = client.get(format!("{base}/health")).send().await.unwrap();
     assert_eq!(resp.status(), 200);
 
     // Health endpoints should not have rate limit headers

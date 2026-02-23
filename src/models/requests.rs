@@ -37,9 +37,7 @@ impl SendMessageRequest {
     }
 
     pub fn validate_content(&self) -> Result<(), String> {
-        let msg_type = self
-            .parsed_message_type()
-            .ok_or("Invalid message type")?;
+        let msg_type = self.parsed_message_type().ok_or("Invalid message type")?;
         let content = self.content.as_deref().unwrap_or("").trim();
         let media_urls = self.media_urls.as_deref().unwrap_or(&[]);
 
@@ -99,8 +97,12 @@ pub struct ListConversationsParams {
 }
 
 impl ListConversationsParams {
-    pub fn limit(&self) -> i64 { self.limit.unwrap_or(20).clamp(1, 100) }
-    pub fn offset(&self) -> i64 { self.offset.unwrap_or(0).max(0) }
+    pub fn limit(&self) -> i64 {
+        self.limit.unwrap_or(20).clamp(1, 100)
+    }
+    pub fn offset(&self) -> i64 {
+        self.offset.unwrap_or(0).max(0)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -111,8 +113,12 @@ pub struct ListMessagesParams {
 }
 
 impl ListMessagesParams {
-    pub fn limit(&self) -> i64 { self.limit.unwrap_or(50).clamp(1, 200) }
-    pub fn offset(&self) -> i64 { self.offset.unwrap_or(0).max(0) }
+    pub fn limit(&self) -> i64 {
+        self.limit.unwrap_or(50).clamp(1, 200)
+    }
+    pub fn offset(&self) -> i64 {
+        self.offset.unwrap_or(0).max(0)
+    }
     pub fn order(&self) -> &str {
         match self.order.as_deref() {
             Some("asc") => "asc",
@@ -167,4 +173,3 @@ pub struct GenerateImageRequest {
 pub struct UpdateSystemPromptRequest {
     pub system_instructions: String,
 }
-

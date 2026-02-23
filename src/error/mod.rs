@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde::Serialize;
 
@@ -32,13 +32,27 @@ pub enum AppError {
 }
 
 impl AppError {
-    pub fn not_found(msg: impl Into<String>) -> Self { Self::NotFound(msg.into()) }
-    pub fn forbidden(msg: impl Into<String>) -> Self { Self::Forbidden(msg.into()) }
-    pub fn bad_request(msg: impl Into<String>) -> Self { Self::BadRequest(msg.into()) }
-    pub fn unauthorized(msg: impl Into<String>) -> Self { Self::Unauthorized(msg.into()) }
-    pub fn conflict(msg: impl Into<String>) -> Self { Self::Conflict(msg.into()) }
-    pub fn service_unavailable(msg: impl Into<String>) -> Self { Self::ServiceUnavailable(msg.into()) }
-    pub fn database(msg: impl Into<String>) -> Self { Self::Database(msg.into()) }
+    pub fn not_found(msg: impl Into<String>) -> Self {
+        Self::NotFound(msg.into())
+    }
+    pub fn forbidden(msg: impl Into<String>) -> Self {
+        Self::Forbidden(msg.into())
+    }
+    pub fn bad_request(msg: impl Into<String>) -> Self {
+        Self::BadRequest(msg.into())
+    }
+    pub fn unauthorized(msg: impl Into<String>) -> Self {
+        Self::Unauthorized(msg.into())
+    }
+    pub fn conflict(msg: impl Into<String>) -> Self {
+        Self::Conflict(msg.into())
+    }
+    pub fn service_unavailable(msg: impl Into<String>) -> Self {
+        Self::ServiceUnavailable(msg.into())
+    }
+    pub fn database(msg: impl Into<String>) -> Self {
+        Self::Database(msg.into())
+    }
 
     fn status_and_code(&self) -> (StatusCode, &'static str) {
         match self {
@@ -57,7 +71,10 @@ impl AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code) = self.status_and_code();
-        let body = ErrorBody { error: code, message: self.to_string() };
+        let body = ErrorBody {
+            error: code,
+            message: self.to_string(),
+        };
         (status, Json(body)).into_response()
     }
 }

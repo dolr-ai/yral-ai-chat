@@ -8,15 +8,13 @@ async fn test_upload_endpoint_requires_auth() {
     let base = base_url();
     let client = http_client();
 
-    let form = multipart::Form::new()
-        .text("type", "image")
-        .part(
-            "file",
-            multipart::Part::bytes(b"test content".to_vec())
-                .file_name("test.jpg")
-                .mime_str("image/jpeg")
-                .unwrap(),
-        );
+    let form = multipart::Form::new().text("type", "image").part(
+        "file",
+        multipart::Part::bytes(b"test content".to_vec())
+            .file_name("test.jpg")
+            .mime_str("image/jpeg")
+            .unwrap(),
+    );
 
     let resp = client
         .post(format!("{base}/api/v1/media/upload"))
@@ -32,15 +30,13 @@ async fn test_upload_image_invalid_format() {
     let base = base_url();
     let client = http_client();
 
-    let form = multipart::Form::new()
-        .text("type", "image")
-        .part(
-            "file",
-            multipart::Part::bytes(b"This is not an image".to_vec())
-                .file_name("test.txt")
-                .mime_str("text/plain")
-                .unwrap(),
-        );
+    let form = multipart::Form::new().text("type", "image").part(
+        "file",
+        multipart::Part::bytes(b"This is not an image".to_vec())
+            .file_name("test.txt")
+            .mime_str("text/plain")
+            .unwrap(),
+    );
 
     let resp = client
         .post(format!("{base}/api/v1/media/upload"))
@@ -60,15 +56,13 @@ async fn test_upload_with_invalid_type() {
     let base = base_url();
     let client = http_client();
 
-    let form = multipart::Form::new()
-        .text("type", "invalid_type")
-        .part(
-            "file",
-            multipart::Part::bytes(b"fake image content".to_vec())
-                .file_name("test.jpg")
-                .mime_str("image/jpeg")
-                .unwrap(),
-        );
+    let form = multipart::Form::new().text("type", "invalid_type").part(
+        "file",
+        multipart::Part::bytes(b"fake image content".to_vec())
+            .file_name("test.jpg")
+            .mime_str("image/jpeg")
+            .unwrap(),
+    );
 
     let resp = client
         .post(format!("{base}/api/v1/media/upload"))

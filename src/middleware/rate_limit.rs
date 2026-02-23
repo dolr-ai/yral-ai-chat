@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use axum::body::Body;
@@ -81,10 +81,12 @@ impl RateLimitState {
     }
 
     fn get_or_create(&self, key: &str) -> dashmap::mapref::one::RefMut<'_, String, Buckets> {
-        self.buckets.entry(key.to_string()).or_insert_with(|| Buckets {
-            minute: TokenBucket::new(self.per_minute as f64, self.per_minute as f64 / 60.0),
-            hour: TokenBucket::new(self.per_hour as f64, self.per_hour as f64 / 3600.0),
-        })
+        self.buckets
+            .entry(key.to_string())
+            .or_insert_with(|| Buckets {
+                minute: TokenBucket::new(self.per_minute as f64, self.per_minute as f64 / 60.0),
+                hour: TokenBucket::new(self.per_hour as f64, self.per_hour as f64 / 3600.0),
+            })
     }
 
     fn cleanup(&self) {
@@ -98,9 +100,8 @@ impl RateLimitState {
         self.last_cleanup.store(now, Ordering::Relaxed);
 
         let threshold = Instant::now() - std::time::Duration::from_secs(3600);
-        self.buckets.retain(|_, v| {
-            v.minute.last_refill > threshold || v.hour.last_refill > threshold
-        });
+        self.buckets
+            .retain(|_, v| v.minute.last_refill > threshold || v.hour.last_refill > threshold);
     }
 }
 
@@ -243,16 +244,10 @@ fn rate_limit_response(retry_after: u64, limit_type: &str, limit: u32) -> Respon
         "limit": limit,
     });
 
-    let mut resp = (
-        StatusCode::TOO_MANY_REQUESTS,
-        axum::Json(body),
-    )
-        .into_response();
+    let mut resp = (StatusCode::TOO_MANY_REQUESTS, axum::Json(body)).into_response();
 
-    resp.headers_mut().insert(
-        "Retry-After",
-        retry_after.to_string().parse().unwrap(),
-    );
+    resp.headers_mut()
+        .insert("Retry-After", retry_after.to_string().parse().unwrap());
 
     resp
 }

@@ -55,9 +55,7 @@ impl StorageService {
         let size = file_bytes.len() as u64;
 
         let mut action = self.bucket.put_object(Some(&self.credentials), &key);
-        action
-            .headers_mut()
-            .insert("Content-Type", content_type);
+        action.headers_mut().insert("Content-Type", content_type);
         let url = action.sign(Duration::from_secs(300));
 
         self.http_client

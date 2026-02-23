@@ -139,20 +139,56 @@ async fn main() {
         .route("/status", get(health::status))
         // Influencers
         .route("/api/v1/influencers", get(influencers::list_influencers))
-        .route("/api/v1/influencers/trending", get(influencers::list_trending))
-        .route("/api/v1/influencers/generate-prompt", post(influencers::generate_prompt))
-        .route("/api/v1/influencers/validate-and-generate-metadata", post(influencers::validate_and_generate_metadata))
-        .route("/api/v1/influencers/create", post(influencers::create_influencer))
-        .route("/api/v1/influencers/{influencer_id}", get(influencers::get_influencer).delete(influencers::delete_influencer))
-        .route("/api/v1/influencers/{influencer_id}/system-prompt", patch(influencers::update_system_prompt))
+        .route(
+            "/api/v1/influencers/trending",
+            get(influencers::list_trending),
+        )
+        .route(
+            "/api/v1/influencers/generate-prompt",
+            post(influencers::generate_prompt),
+        )
+        .route(
+            "/api/v1/influencers/validate-and-generate-metadata",
+            post(influencers::validate_and_generate_metadata),
+        )
+        .route(
+            "/api/v1/influencers/create",
+            post(influencers::create_influencer),
+        )
+        .route(
+            "/api/v1/influencers/{influencer_id}",
+            get(influencers::get_influencer).delete(influencers::delete_influencer),
+        )
+        .route(
+            "/api/v1/influencers/{influencer_id}/system-prompt",
+            patch(influencers::update_system_prompt),
+        )
         // Chat V1
-        .route("/api/v1/chat/conversations", post(chat::create_conversation).get(chat::list_conversations))
-        .route("/api/v1/chat/conversations/{conversation_id}/messages", get(chat::list_messages).post(chat::send_message))
-        .route("/api/v1/chat/conversations/{conversation_id}", delete(chat::delete_conversation))
-        .route("/api/v1/chat/conversations/{conversation_id}/read", post(chat::mark_as_read))
-        .route("/api/v1/chat/conversations/{conversation_id}/images", post(chat::generate_image))
+        .route(
+            "/api/v1/chat/conversations",
+            post(chat::create_conversation).get(chat::list_conversations),
+        )
+        .route(
+            "/api/v1/chat/conversations/{conversation_id}/messages",
+            get(chat::list_messages).post(chat::send_message),
+        )
+        .route(
+            "/api/v1/chat/conversations/{conversation_id}",
+            delete(chat::delete_conversation),
+        )
+        .route(
+            "/api/v1/chat/conversations/{conversation_id}/read",
+            post(chat::mark_as_read),
+        )
+        .route(
+            "/api/v1/chat/conversations/{conversation_id}/images",
+            post(chat::generate_image),
+        )
         // Chat V2
-        .route("/api/v2/chat/conversations", get(chat_v2::list_conversations_v2))
+        .route(
+            "/api/v2/chat/conversations",
+            get(chat_v2::list_conversations_v2),
+        )
         // WebSocket
         .route("/api/v1/chat/ws/inbox/{user_id}", get(websocket::ws_inbox))
         .route("/api/v1/chat/ws/docs", get(websocket::ws_docs))
@@ -177,16 +213,14 @@ async fn main() {
         .await
         .expect("Failed to bind address");
 
-    axum::serve(listener, app)
-        .await
-        .expect("Server error");
+    axum::serve(listener, app).await.expect("Server error");
 }
 
 fn init_tracing(settings: &Settings) {
-    use tracing_subscriber::{fmt, EnvFilter};
+    use tracing_subscriber::{EnvFilter, fmt};
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&settings.log_level));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&settings.log_level));
 
     if settings.log_format == "json" {
         fmt()
@@ -198,10 +232,7 @@ fn init_tracing(settings: &Settings) {
             .with_line_number(false)
             .init();
     } else {
-        fmt()
-            .with_env_filter(filter)
-            .with_target(true)
-            .init();
+        fmt().with_env_filter(filter).with_target(true).init();
     }
 }
 
@@ -214,10 +245,7 @@ fn build_cors(settings: &Settings) -> CorsLayer {
             .allow_methods(Any)
             .allow_headers(Any)
     } else {
-        let allowed: Vec<_> = origins
-            .iter()
-            .filter_map(|o| o.parse().ok())
-            .collect();
+        let allowed: Vec<_> = origins.iter().filter_map(|o| o.parse().ok()).collect();
         CorsLayer::new()
             .allow_origin(allowed)
             .allow_methods(Any)

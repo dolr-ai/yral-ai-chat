@@ -1,10 +1,10 @@
 use axum::{
-    extract::FromRequestParts,
-    http::{header::AUTHORIZATION, request::Parts, StatusCode},
-    response::{IntoResponse, Response},
     Json,
+    extract::FromRequestParts,
+    http::{StatusCode, header::AUTHORIZATION, request::Parts},
+    response::{IntoResponse, Response},
 };
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 
 const EXPECTED_ISSUERS: &[&str] = &["https://auth.yral.com", "https://auth.dolr.ai"];
@@ -81,10 +81,11 @@ where
                 )
             })?;
 
-        let claims = decode_jwt(token).map_err(|msg| {
-            AuthRejection(StatusCode::UNAUTHORIZED, msg)
-        })?;
+        let claims =
+            decode_jwt(token).map_err(|msg| AuthRejection(StatusCode::UNAUTHORIZED, msg))?;
 
-        Ok(Self { user_id: claims.sub })
+        Ok(Self {
+            user_id: claims.sub,
+        })
     }
 }

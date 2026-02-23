@@ -144,18 +144,19 @@ impl CharacterGeneratorService {
             return Ok(invalid_metadata("Content failed safety validation"));
         }
 
-        let result: ValidationResult = parse_json_from_response(&text).unwrap_or(ValidationResult {
-            is_valid: Some(false),
-            reason: Some("Failed to parse validation response".to_string()),
-            name: None,
-            display_name: None,
-            description: None,
-            initial_greeting: None,
-            suggested_messages: None,
-            personality_traits: None,
-            category: None,
-            image_prompt: None,
-        });
+        let result: ValidationResult =
+            parse_json_from_response(&text).unwrap_or(ValidationResult {
+                is_valid: Some(false),
+                reason: Some("Failed to parse validation response".to_string()),
+                name: None,
+                display_name: None,
+                description: None,
+                initial_greeting: None,
+                suggested_messages: None,
+                personality_traits: None,
+                category: None,
+                image_prompt: None,
+            });
 
         if !result.is_valid.unwrap_or(false) {
             return Ok(invalid_metadata(
@@ -166,9 +167,7 @@ impl CharacterGeneratorService {
         // Generate avatar via Replicate if image_prompt available
         let avatar_url = if let Some(ref img_prompt) = result.image_prompt {
             if replicate.is_configured() {
-                let enhanced = format!(
-                    "Professional avatar portrait, high quality, {img_prompt}"
-                );
+                let enhanced = format!("Professional avatar portrait, high quality, {img_prompt}");
                 match replicate.generate_image(&enhanced, "1:1").await {
                     Ok(url) => url,
                     Err(e) => {
@@ -207,7 +206,12 @@ impl CharacterGeneratorService {
             .replace("{system_instructions}", system_instructions);
 
         let (text, _) = gemini
-            .generate_response(&prompt, "You are a helpful assistant that returns valid JSON.", &[], None)
+            .generate_response(
+                &prompt,
+                "You are a helpful assistant that returns valid JSON.",
+                &[],
+                None,
+            )
             .await?;
 
         let result: GreetingResult = parse_json_from_response(&text).unwrap_or(GreetingResult {

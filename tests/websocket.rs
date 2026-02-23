@@ -4,7 +4,7 @@ use common::*;
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::protocol::{frame::coding::CloseCode, Message},
+    tungstenite::protocol::{Message, frame::coding::CloseCode},
 };
 
 /// Convert HTTP base URL to WebSocket URL.

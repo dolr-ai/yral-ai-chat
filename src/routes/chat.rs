@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::Json;
 
-use crate::middleware::AuthenticatedUser;
+use crate::AppState;
 use crate::db::repositories::{ConversationRepository, InfluencerRepository, MessageRepository};
 use crate::error::AppError;
+use crate::middleware::AuthenticatedUser;
 use crate::models::entities::{AIInfluencer, InfluencerStatus, Message, MessageRole, MessageType};
 use crate::models::requests::{
     CreateConversationRequest, GenerateImageRequest, ListConversationsParams, ListMessagesParams,
@@ -18,7 +19,6 @@ use crate::models::responses::{
     ListConversationsResponse, ListMessagesResponse, MarkConversationAsReadResponse,
     MessageResponse, SendMessageResponse,
 };
-use crate::AppState;
 
 const FALLBACK_ERROR_MESSAGE: &str =
     "I'm having trouble generating a response right now. Please try again.";
@@ -128,14 +128,22 @@ pub async fn create_conversation(
     }
 
     // Create new conversation
-    let conv = conv_repo
-        .create(&user.user_id, &body.influencer_id)
-        .await?;
+    let conv = conv_repo.create(&user.user_id, &body.influencer_id).await?;
 
     // Generate initial greeting if the influencer has one
     let initial_messages = match influencer.initial_greeting.as_deref() {
         Some(greeting) if !greeting.is_empty() => msg_repo
-            .create(&conv.id, &MessageRole::Assistant, Some(greeting), &MessageType::Text, &[], None, None, None, None)
+            .create(
+                &conv.id,
+                &MessageRole::Assistant,
+                Some(greeting),
+                &MessageType::Text,
+                &[],
+                None,
+                None,
+                None,
+                None,
+            )
             .await
             .map(|msg| vec![msg])
             .unwrap_or_else(|e| {
@@ -574,13 +582,31 @@ pub async fn generate_image(
     tracing::info!(prompt = %final_prompt, "Generating image");
 
     // 2. Generate image using flux-kontext-dev with influencer avatar
-    let input_image = influencer.avatar_url.as_deref().filter(|u| !u.is_empty()).map(|url| {
-        if url.starts_with("http") { url.to_string() } else { state.storage.generate_presigned_url(url) }
-    });
+    let input_image = influencer
+        .avatar_url
+        .as_deref()
+        .filter(|u| !u.is_empty())
+        .map(|url| {
+            if url.starts_with("http") {
+                url.to_string()
+            } else {
+                state.storage.generate_presigned_url(url)
+            }
+        });
 
     let image_url = match &input_image {
-        Some(img) => state.replicate.generate_image_via_image(&final_prompt, img, "9:16").await?,
-        None => state.replicate.generate_image(&final_prompt, "9:16").await?,
+        Some(img) => {
+            state
+                .replicate
+                .generate_image_via_image(&final_prompt, img, "9:16")
+                .await?
+        }
+        None => {
+            state
+                .replicate
+                .generate_image(&final_prompt, "9:16")
+                .await?
+        }
     };
 
     let image_url = image_url.ok_or_else(|| {
@@ -619,12 +645,18 @@ async fn generate_image_prompt_from_context(
     msg_repo: &MessageRepository,
     conversation_id: &str,
 ) -> Result<String, AppError> {
-    let mut messages = msg_repo.list_by_conversation(conversation_id, 10, 0, "desc").await?;
+    let mut messages = msg_repo
+        .list_by_conversation(conversation_id, 10, 0, "desc")
+        .await?;
     messages.reverse();
 
     let context_str: String = messages
         .iter()
-        .filter_map(|m| m.content.as_ref().map(|c| format!("{}: {c}", m.role.as_ref())))
+        .filter_map(|m| {
+            m.content
+                .as_ref()
+                .map(|c| format!("{}: {c}", m.role.as_ref()))
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -673,7 +705,10 @@ pub async fn delete_conversation(
 // ── Helpers ──
 
 /// Presign S3 storage keys in a MessageResponse so clients receive usable URLs.
-fn presign_message_urls(storage: &crate::services::storage::StorageService, msg: &mut MessageResponse) {
+fn presign_message_urls(
+    storage: &crate::services::storage::StorageService,
+    msg: &mut MessageResponse,
+) {
     let s3_keys: Vec<String> = msg
         .media_urls
         .iter()
@@ -713,9 +748,13 @@ fn spawn_memory_extraction(
 
     tokio::spawn(async move {
         let result = if is_nsfw && openrouter.is_configured() {
-            openrouter.extract_memories(&ai_input, &response, &memories).await
+            openrouter
+                .extract_memories(&ai_input, &response, &memories)
+                .await
         } else {
-            gemini.extract_memories(&ai_input, &response, &memories).await
+            gemini
+                .extract_memories(&ai_input, &response, &memories)
+                .await
         };
 
         match result {
@@ -751,8 +790,8 @@ fn spawn_notifications(
     let influencer_name = influencer.display_name.clone();
     let influencer_avatar = influencer.avatar_url.clone();
     let msg_content = response_text.to_string();
-    let msg_json = serde_json::to_value(&MessageResponse::from(assistant_message.clone()))
-        .unwrap_or_default();
+    let msg_json =
+        serde_json::to_value(&MessageResponse::from(assistant_message.clone())).unwrap_or_default();
 
     tokio::spawn(async move {
         let unread_count = MessageRepository::new(pool)
@@ -766,7 +805,13 @@ fn spawn_notifications(
             "avatar_url": influencer_avatar,
             "is_online": true,
         });
-        ws.broadcast_new_message(&user_id, &conv_id, &msg_json, &influencer_json, unread_count);
+        ws.broadcast_new_message(
+            &user_id,
+            &conv_id,
+            &msg_json,
+            &influencer_json,
+            unread_count,
+        );
 
         let truncated = if msg_content.len() > 100 {
             format!("{}...", &msg_content[..100])

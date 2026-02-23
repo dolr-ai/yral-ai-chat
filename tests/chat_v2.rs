@@ -34,9 +34,7 @@ async fn test_list_conversations_v2_with_pagination() {
     let auth = auth_header("test_user_default");
 
     let resp = client
-        .get(format!(
-            "{base}/api/v2/chat/conversations?limit=5&offset=0"
-        ))
+        .get(format!("{base}/api/v2/chat/conversations?limit=5&offset=0"))
         .header("Authorization", &auth)
         .send()
         .await

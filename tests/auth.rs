@@ -57,10 +57,12 @@ async fn test_missing_authorization_header() {
     assert_eq!(resp.status(), 401);
 
     let data: serde_json::Value = resp.json().await.unwrap();
-    assert!(data["detail"]
-        .as_str()
-        .unwrap()
-        .contains("Missing authorization header"));
+    assert!(
+        data["detail"]
+            .as_str()
+            .unwrap()
+            .contains("Missing authorization header")
+    );
 }
 
 #[tokio::test]
@@ -79,10 +81,12 @@ async fn test_invalid_authorization_format() {
     assert_eq!(resp.status(), 401);
 
     let data: serde_json::Value = resp.json().await.unwrap();
-    assert!(data["detail"]
-        .as_str()
-        .unwrap()
-        .contains("Invalid authorization header format"));
+    assert!(
+        data["detail"]
+            .as_str()
+            .unwrap()
+            .contains("Invalid authorization header format")
+    );
 }
 
 #[tokio::test]

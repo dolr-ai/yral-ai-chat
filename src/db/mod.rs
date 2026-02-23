@@ -29,7 +29,9 @@ impl Database {
             .create_if_missing(true)
             .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
             .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
-            .busy_timeout(std::time::Duration::from_secs(settings.database_pool_timeout))
+            .busy_timeout(std::time::Duration::from_secs(
+                settings.database_pool_timeout,
+            ))
             .pragma("foreign_keys", "ON")
             // CRITICAL: Disable autocheckpoint. Litestream holds continuous read locks
             // on the WAL during replication; SQLite's TRUNCATE checkpoint requires ZERO
@@ -47,7 +49,9 @@ impl Database {
 
         let pool = SqlitePoolOptions::new()
             .max_connections(settings.database_pool_size)
-            .acquire_timeout(std::time::Duration::from_secs(settings.database_pool_timeout))
+            .acquire_timeout(std::time::Duration::from_secs(
+                settings.database_pool_timeout,
+            ))
             .connect_with(connect_options)
             .await?;
 
@@ -182,7 +186,5 @@ fn resolve_db_path(db_path: &str) -> String {
         std::env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf())
     };
 
-    base.join(db_path)
-        .to_string_lossy()
-        .into_owned()
+    base.join(db_path).to_string_lossy().into_owned()
 }

@@ -1,14 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::State;
 use axum::Json;
+use axum::extract::State;
 use chrono::Utc;
 
+use crate::AppState;
 use crate::models::responses::{
     DatabaseStats, HealthResponse, ServiceHealth, StatusResponse, SystemStatistics,
 };
-use crate::AppState;
 
 pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let db_health = state.db.health_check().await;

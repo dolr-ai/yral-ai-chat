@@ -6,8 +6,8 @@ use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
-use crate::middleware;
 use crate::AppState;
+use crate::middleware;
 
 pub async fn ws_inbox(
     State(state): State<Arc<AppState>>,

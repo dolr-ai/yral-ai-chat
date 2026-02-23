@@ -101,9 +101,7 @@ async fn test_list_conversations_with_pagination() {
     let auth = auth_header("test_user_default");
 
     let resp = client
-        .get(format!(
-            "{base}/api/v1/chat/conversations?limit=5&offset=0"
-        ))
+        .get(format!("{base}/api/v1/chat/conversations?limit=5&offset=0"))
         .header("Authorization", &auth)
         .send()
         .await
@@ -330,9 +328,7 @@ async fn test_send_message_to_nonexistent_conversation() {
     let fake = "00000000-0000-0000-0000-000000000000";
 
     let resp = client
-        .post(format!(
-            "{base}/api/v1/chat/conversations/{fake}/messages"
-        ))
+        .post(format!("{base}/api/v1/chat/conversations/{fake}/messages"))
         .header("Authorization", &auth)
         .json(&json!({"content": "Test", "message_type": "text"}))
         .send()

@@ -4,7 +4,6 @@ use uuid::Uuid;
 use super::parse_dt;
 use crate::models::entities::{Message, MessageRole, MessageType};
 
-
 pub struct MessageRepository {
     pool: SqlitePool,
 }
@@ -27,8 +26,7 @@ struct MessageRow {
     is_read: Option<i32>,
 }
 
-const SELECT_COLS: &str =
-    "id, conversation_id, role, content, message_type, media_urls, audio_url,
+const SELECT_COLS: &str = "id, conversation_id, role, content, message_type, media_urls, audio_url,
      audio_duration_seconds, token_count, client_message_id, created_at, metadata,
      status, is_read";
 
@@ -72,7 +70,8 @@ impl MessageRepository {
         client_message_id: Option<&str>,
     ) -> Result<Message, sqlx::Error> {
         let message_id = Uuid::new_v4().to_string();
-        let media_urls_json = serde_json::to_string(media_urls).unwrap_or_else(|_| "[]".to_string());
+        let media_urls_json =
+            serde_json::to_string(media_urls).unwrap_or_else(|_| "[]".to_string());
 
         sqlx::query(
             "INSERT INTO messages (

@@ -1,17 +1,18 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::header;
-use axum::Json;
 use validator::Validate;
 
-use crate::middleware::AuthenticatedUser;
+use crate::AppState;
 use crate::db::repositories::InfluencerRepository;
 use crate::error::AppError;
+use crate::middleware::AuthenticatedUser;
 use crate::models::entities::{AIInfluencer, InfluencerStatus};
 use crate::models::requests::{
-    CreateInfluencerRequest, GeneratePromptRequest, PaginationParams,
-    UpdateSystemPromptRequest, ValidateMetadataRequest,
+    CreateInfluencerRequest, GeneratePromptRequest, PaginationParams, UpdateSystemPromptRequest,
+    ValidateMetadataRequest,
 };
 use crate::models::responses::{
     GeneratedMetadataResponse, InfluencerResponse, ListInfluencersResponse,
@@ -19,7 +20,6 @@ use crate::models::responses::{
 };
 use crate::services::character_generator::CharacterGeneratorService;
 use crate::services::moderation;
-use crate::AppState;
 
 impl From<AIInfluencer> for InfluencerResponse {
     fn from(i: AIInfluencer) -> Self {
@@ -54,8 +54,7 @@ pub async fn list_influencers(
     let limit = params.limit(50, 100);
     let offset = params.offset();
 
-    let (influencers, total) =
-        tokio::try_join!(repo.list_all(limit, offset), repo.count_all(),)?;
+    let (influencers, total) = tokio::try_join!(repo.list_all(limit, offset), repo.count_all(),)?;
 
     Ok((
         [(header::CACHE_CONTROL, "public, max-age=300")],
@@ -312,7 +311,9 @@ pub async fn delete_influencer(
 
     // Only the owner can delete
     if influencer.parent_principal_id.as_deref() != Some(&user.user_id) {
-        return Err(AppError::forbidden("Only the bot owner can delete this bot"));
+        return Err(AppError::forbidden(
+            "Only the bot owner can delete this bot",
+        ));
     }
 
     repo.soft_delete(&influencer_id).await?;

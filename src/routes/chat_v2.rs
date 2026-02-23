@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
 use axum::Json;
+use axum::extract::{Query, State};
 
-use crate::middleware::AuthenticatedUser;
+use crate::AppState;
 use crate::db::repositories::ConversationRepository;
 use crate::error::AppError;
+use crate::middleware::AuthenticatedUser;
 use crate::models::entities::InfluencerStatus;
 use crate::models::requests::ListConversationsParams;
 use crate::models::responses::{
     ConversationResponseV2, InfluencerBasicInfoV2, ListConversationsResponseV2,
 };
-use crate::AppState;
 
 // GET /api/v2/chat/conversations
 pub async fn list_conversations_v2(

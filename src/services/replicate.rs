@@ -148,9 +148,7 @@ impl ReplicateClient {
                 .timeout(std::time::Duration::from_secs(10))
                 .send()
                 .await
-                .map_err(|e| {
-                    AppError::service_unavailable(format!("Replicate poll error: {e}"))
-                })?;
+                .map_err(|e| AppError::service_unavailable(format!("Replicate poll error: {e}")))?;
 
             let prediction: PredictionResponse = resp.json().await.map_err(|e| {
                 AppError::service_unavailable(format!("Replicate poll parse error: {e}"))
@@ -165,15 +163,15 @@ impl ReplicateClient {
             }
         }
 
-        Err(AppError::service_unavailable(
-            "Image generation timed out",
-        ))
+        Err(AppError::service_unavailable("Image generation timed out"))
     }
 }
 
 fn extract_output_url(output: &Option<serde_json::Value>) -> Option<String> {
     match output {
-        Some(serde_json::Value::Array(arr)) => arr.first().and_then(|v| v.as_str().map(String::from)),
+        Some(serde_json::Value::Array(arr)) => {
+            arr.first().and_then(|v| v.as_str().map(String::from))
+        }
         Some(serde_json::Value::String(s)) => Some(s.clone()),
         _ => None,
     }

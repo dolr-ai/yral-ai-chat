@@ -6,7 +6,6 @@ use crate::models::entities::{
     AIInfluencer, Conversation, InfluencerStatus, LastMessageInfo, MessageRole,
 };
 
-
 pub struct ConversationRepository {
     pool: SqlitePool,
 }
@@ -110,21 +109,22 @@ impl ConversationRepository {
     ) -> Result<Conversation, sqlx::Error> {
         let conversation_id = Uuid::new_v4().to_string();
 
-        sqlx::query(
-            "INSERT INTO conversations (id, user_id, influencer_id) VALUES (?, ?, ?)",
-        )
-        .bind(&conversation_id)
-        .bind(user_id)
-        .bind(influencer_id)
-        .execute(&self.pool)
-        .await?;
+        sqlx::query("INSERT INTO conversations (id, user_id, influencer_id) VALUES (?, ?, ?)")
+            .bind(&conversation_id)
+            .bind(user_id)
+            .bind(influencer_id)
+            .execute(&self.pool)
+            .await?;
 
         self.get_by_id(&conversation_id)
             .await?
             .ok_or(sqlx::Error::RowNotFound)
     }
 
-    pub async fn get_by_id(&self, conversation_id: &str) -> Result<Option<Conversation>, sqlx::Error> {
+    pub async fn get_by_id(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<Conversation>, sqlx::Error> {
         let row = sqlx::query_as::<_, ConversationRow>(
             "SELECT c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
                     i.id as inf_id, i.name, i.display_name, i.avatar_url, i.suggested_messages

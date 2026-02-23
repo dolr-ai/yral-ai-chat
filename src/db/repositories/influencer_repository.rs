@@ -73,8 +73,7 @@ impl InfluencerRepository {
             serde_json::to_string(&influencer.personality_traits).unwrap_or_else(|_| "{}".into());
         let suggested_messages =
             serde_json::to_string(&influencer.suggested_messages).unwrap_or_else(|_| "[]".into());
-        let metadata =
-            serde_json::to_string(&influencer.metadata).unwrap_or_else(|_| "{}".into());
+        let metadata = serde_json::to_string(&influencer.metadata).unwrap_or_else(|_| "{}".into());
 
         sqlx::query(
             "INSERT INTO ai_influencers (
@@ -98,8 +97,18 @@ impl InfluencerRepository {
         .bind(influencer.is_nsfw as i32)
         .bind(&influencer.parent_principal_id)
         .bind(&influencer.source)
-        .bind(influencer.created_at.format("%Y-%m-%d %H:%M:%S").to_string())
-        .bind(influencer.updated_at.format("%Y-%m-%d %H:%M:%S").to_string())
+        .bind(
+            influencer
+                .created_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+        )
+        .bind(
+            influencer
+                .updated_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+        )
         .bind(&metadata)
         .execute(&self.pool)
         .await?;
@@ -132,10 +141,11 @@ impl InfluencerRepository {
         Ok(rows.into_iter().map(AIInfluencer::from).collect())
     }
 
-    pub async fn get_by_id(&self, influencer_id: &str) -> Result<Option<AIInfluencer>, sqlx::Error> {
-        let sql = format!(
-            "SELECT {SELECT_COLS} FROM ai_influencers WHERE id = ?"
-        );
+    pub async fn get_by_id(
+        &self,
+        influencer_id: &str,
+    ) -> Result<Option<AIInfluencer>, sqlx::Error> {
+        let sql = format!("SELECT {SELECT_COLS} FROM ai_influencers WHERE id = ?");
 
         let row = sqlx::query_as::<_, InfluencerRow>(&sql)
             .bind(influencer_id)
@@ -146,9 +156,7 @@ impl InfluencerRepository {
     }
 
     pub async fn get_by_name(&self, name: &str) -> Result<Option<AIInfluencer>, sqlx::Error> {
-        let sql = format!(
-            "SELECT {SELECT_COLS} FROM ai_influencers WHERE name = ?"
-        );
+        let sql = format!("SELECT {SELECT_COLS} FROM ai_influencers WHERE name = ?");
 
         let row = sqlx::query_as::<_, InfluencerRow>(&sql)
             .bind(name)
@@ -250,5 +258,4 @@ impl InfluencerRepository {
                 .await?;
         Ok(count.0)
     }
-
 }

@@ -183,8 +183,7 @@ impl Settings {
             replicate_model: env::var("REPLICATE_MODEL")
                 .unwrap_or("black-forest-labs/flux-dev".into()),
 
-            metadata_url: env::var("METADATA_URL")
-                .unwrap_or("https://metadata.yral.com".into()),
+            metadata_url: env::var("METADATA_URL").unwrap_or("https://metadata.yral.com".into()),
             metadata_auth_token: env::var("YRAL_METADATA_NOTIFICATION_API_KEY")
                 .ok()
                 .filter(|s| !s.is_empty()),
@@ -202,9 +201,7 @@ impl Settings {
                 .ok()
                 .filter(|s| !s.is_empty()),
 
-            google_chat_webhook_url: env::var("GOOGLE_CHAT")
-                .ok()
-                .filter(|s| !s.is_empty()),
+            google_chat_webhook_url: env::var("GOOGLE_CHAT").ok().filter(|s| !s.is_empty()),
         }
     }
 

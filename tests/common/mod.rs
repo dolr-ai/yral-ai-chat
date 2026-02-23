@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use reqwest::Client;
 use serde_json::json;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -110,10 +110,7 @@ pub async fn get_test_influencer_id(client: &Client, base: &str) -> String {
     assert_eq!(resp.status(), 200);
     let data: serde_json::Value = resp.json().await.unwrap();
     assert!(data["total"].as_i64().unwrap() > 0, "No influencers in DB");
-    data["influencers"][0]["id"]
-        .as_str()
-        .unwrap()
-        .to_string()
+    data["influencers"][0]["id"].as_str().unwrap().to_string()
 }
 
 /// Create a test conversation and return its ID.

@@ -4,7 +4,9 @@ use strum::{AsRefStr, Display, EnumString};
 
 // ── Enums ──
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type, Display, EnumString, AsRefStr)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type, Display, EnumString, AsRefStr,
+)]
 #[sqlx(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum MessageType {
@@ -18,7 +20,9 @@ pub enum MessageType {
     Audio,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type, Display, EnumString, AsRefStr)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type, Display, EnumString, AsRefStr,
+)]
 #[sqlx(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum MessageRole {
