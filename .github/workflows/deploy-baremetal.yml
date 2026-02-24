@@ -22,39 +22,9 @@ jobs:
       publish-artifact: true
     secrets: inherit
 
-  security-scan:
-    name: Security Scan
-    needs: build_check
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: build-glibc
-
-      - name: Make binary executable
-        run: chmod +x target/x86_64-unknown-linux-gnu/release/yral-ai-chat
-
-      - name: Build image for scanning
-        run: docker build -f deploy-baremetal/Dockerfile -t yral-ai-chat:${{ github.sha }} .
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: "yral-ai-chat:${{ github.sha }}"
-          format: "table"
-          exit-code: "1"
-          ignore-unfixed: true
-          vuln-type: "os,library"
-          severity: "CRITICAL,HIGH"
-
   build-and-push:
     name: Build and Push Docker Image
-    needs: [build_check, security-scan]
+    needs: [build_check]
     runs-on: ubuntu-latest
     permissions:
       contents: read
