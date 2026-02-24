@@ -17,7 +17,7 @@ class InfluencerService:
         self.influencer_repo = influencer_repo
 
     @validate_call
-    @cached(ttl=600, key_prefix="influencers")  # Cache for 10 minutes
+    @cached(ttl=120, key_prefix="influencers")  # Reduced from 600 to 120 to mitigate multi-worker staleness
     async def list_influencers(
         self,
         limit: int = 50,
@@ -30,7 +30,7 @@ class InfluencerService:
         return influencers, total
 
     @validate_call
-    @cached(ttl=300, key_prefix="influencer")  # Cache for 5 minutes
+    @cached(ttl=120, key_prefix="influencer")  # Reduced from 300 to 120 to mitigate multi-worker staleness
     async def get_influencer(self, influencer_id: str) -> AIInfluencer:
         """Get influencer by ID with conversation count (cached)"""
         influencer = await self.influencer_repo.get_with_conversation_count(influencer_id)
