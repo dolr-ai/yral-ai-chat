@@ -612,3 +612,305 @@ async fn test_generate_image_success() {
         assert!(data["media_urls"].is_array());
     }
 }
+
+// --- Send Image Message ---
+
+#[tokio::test]
+async fn test_send_image_message() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let user = unique_user();
+    let auth = auth_header(&user);
+    let conv_id = create_test_conversation(&client, &base, &user, &influencer_id).await;
+
+    // First upload an image to get a storage_key
+    let storage_key = match upload_test_image(&client, &base, &user).await {
+        Some(key) => key,
+        None => {
+            eprintln!("Skipping test_send_image_message: S3 not available");
+            return;
+        }
+    };
+
+    let resp = client
+        .post(format!(
+            "{base}/api/v1/chat/conversations/{conv_id}/messages"
+        ))
+        .header("Authorization", &auth)
+        .json(&json!({
+            "content": "Check out this image",
+            "message_type": "image",
+            "media_urls": [storage_key]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    let user_msg = &data["user_message"];
+    assert_eq!(user_msg["role"], "user");
+    assert_eq!(user_msg["message_type"], "image");
+    assert!(user_msg["media_urls"].is_array());
+    assert!(!user_msg["media_urls"].as_array().unwrap().is_empty());
+
+    let assistant_msg = &data["assistant_message"];
+    assert_eq!(assistant_msg["role"], "assistant");
+    assert!(assistant_msg["content"].as_str().unwrap().len() > 0);
+}
+
+#[tokio::test]
+async fn test_send_image_message_missing_media_urls() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let user = unique_user();
+    let auth = auth_header(&user);
+    let conv_id = create_test_conversation(&client, &base, &user, &influencer_id).await;
+
+    let resp = client
+        .post(format!(
+            "{base}/api/v1/chat/conversations/{conv_id}/messages"
+        ))
+        .header("Authorization", &auth)
+        .json(&json!({
+            "content": "Image without URLs",
+            "message_type": "image"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 422);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(data["error"], "validation_error");
+}
+
+// --- Send Audio Message ---
+
+#[tokio::test]
+async fn test_send_audio_message() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let user = unique_user();
+    let auth = auth_header(&user);
+    let conv_id = create_test_conversation(&client, &base, &user, &influencer_id).await;
+
+    // First upload an audio file to get a storage_key
+    let storage_key = match upload_test_audio(&client, &base, &user).await {
+        Some(key) => key,
+        None => {
+            eprintln!("Skipping test_send_audio_message: S3 not available");
+            return;
+        }
+    };
+
+    let resp = client
+        .post(format!(
+            "{base}/api/v1/chat/conversations/{conv_id}/messages"
+        ))
+        .header("Authorization", &auth)
+        .json(&json!({
+            "message_type": "audio",
+            "audio_url": storage_key,
+            "audio_duration_seconds": 5
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    let user_msg = &data["user_message"];
+    assert_eq!(user_msg["role"], "user");
+    assert_eq!(user_msg["message_type"], "audio");
+    assert!(user_msg["audio_url"].is_string());
+
+    let assistant_msg = &data["assistant_message"];
+    assert_eq!(assistant_msg["role"], "assistant");
+    assert!(assistant_msg["content"].as_str().unwrap().len() > 0);
+}
+
+#[tokio::test]
+async fn test_send_audio_message_missing_audio_url() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let user = unique_user();
+    let auth = auth_header(&user);
+    let conv_id = create_test_conversation(&client, &base, &user, &influencer_id).await;
+
+    let resp = client
+        .post(format!(
+            "{base}/api/v1/chat/conversations/{conv_id}/messages"
+        ))
+        .header("Authorization", &auth)
+        .json(&json!({
+            "message_type": "audio"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 422);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(data["error"], "validation_error");
+}
+
+// --- Send Multimodal Message ---
+
+#[tokio::test]
+async fn test_send_multimodal_message() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let user = unique_user();
+    let auth = auth_header(&user);
+    let conv_id = create_test_conversation(&client, &base, &user, &influencer_id).await;
+
+    let storage_key = match upload_test_image(&client, &base, &user).await {
+        Some(key) => key,
+        None => {
+            eprintln!("Skipping test_send_multimodal_message: S3 not available");
+            return;
+        }
+    };
+
+    let resp = client
+        .post(format!(
+            "{base}/api/v1/chat/conversations/{conv_id}/messages"
+        ))
+        .header("Authorization", &auth)
+        .json(&json!({
+            "content": "What do you see in this image?",
+            "message_type": "multimodal",
+            "media_urls": [storage_key]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    let user_msg = &data["user_message"];
+    assert_eq!(user_msg["role"], "user");
+    assert_eq!(user_msg["message_type"], "multimodal");
+    assert!(user_msg["media_urls"].is_array());
+    assert!(!user_msg["media_urls"].as_array().unwrap().is_empty());
+
+    let assistant_msg = &data["assistant_message"];
+    assert_eq!(assistant_msg["role"], "assistant");
+    assert!(assistant_msg["content"].as_str().unwrap().len() > 0);
+}
+
+#[tokio::test]
+async fn test_send_multimodal_message_missing_media_urls() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let user = unique_user();
+    let auth = auth_header(&user);
+    let conv_id = create_test_conversation(&client, &base, &user, &influencer_id).await;
+
+    let resp = client
+        .post(format!(
+            "{base}/api/v1/chat/conversations/{conv_id}/messages"
+        ))
+        .header("Authorization", &auth)
+        .json(&json!({
+            "content": "Multimodal without images",
+            "message_type": "multimodal"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 422);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(data["error"], "validation_error");
+}
+
+// --- Send Message Forbidden (wrong user) ---
+
+#[tokio::test]
+async fn test_send_message_forbidden() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let owner = unique_user();
+    let conv_id = create_test_conversation(&client, &base, &owner, &influencer_id).await;
+
+    let other = unique_user();
+    let resp = client
+        .post(format!(
+            "{base}/api/v1/chat/conversations/{conv_id}/messages"
+        ))
+        .header("Authorization", auth_header(&other))
+        .json(&json!({"content": "Hacking!", "message_type": "text"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 403);
+}
+
+// --- Delete Conversation Forbidden (wrong user) ---
+
+#[tokio::test]
+async fn test_delete_conversation_forbidden() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let owner = unique_user();
+    let conv_id = create_test_conversation(&client, &base, &owner, &influencer_id).await;
+
+    let other = unique_user();
+    let resp = client
+        .delete(format!("{base}/api/v1/chat/conversations/{conv_id}"))
+        .header("Authorization", auth_header(&other))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 403);
+}
+
+// --- List Messages Forbidden (wrong user) ---
+
+#[tokio::test]
+async fn test_list_messages_forbidden() {
+    let base = base_url();
+    let client = http_client();
+    let influencer_id = get_test_influencer_id(&client, &base).await;
+    let owner = unique_user();
+    let conv_id = create_test_conversation(&client, &base, &owner, &influencer_id).await;
+
+    let other = unique_user();
+    let resp = client
+        .get(format!(
+            "{base}/api/v1/chat/conversations/{conv_id}/messages"
+        ))
+        .header("Authorization", auth_header(&other))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 403);
+}
+
+// --- List Messages Not Found ---
+
+#[tokio::test]
+async fn test_list_messages_not_found() {
+    let base = base_url();
+    let client = http_client();
+    let auth = auth_header("someone");
+    let fake = "00000000-0000-0000-0000-000000000000";
+
+    let resp = client
+        .get(format!("{base}/api/v1/chat/conversations/{fake}/messages"))
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+}

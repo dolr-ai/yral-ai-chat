@@ -189,3 +189,77 @@ async fn test_upload_image_success() {
         assert!(data["uploaded_at"].is_string());
     }
 }
+
+#[tokio::test]
+async fn test_upload_audio_success() {
+    let base = base_url();
+    let client = http_client();
+
+    // Minimal MP3 frame
+    let mp3_bytes: Vec<u8> = vec![
+        0xFF, 0xFB, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+
+    let form = multipart::Form::new().text("type", "audio").part(
+        "file",
+        multipart::Part::bytes(mp3_bytes)
+            .file_name("test.mp3")
+            .mime_str("audio/mpeg")
+            .unwrap(),
+    );
+
+    let resp = client
+        .post(format!("{base}/api/v1/media/upload"))
+        .header("Authorization", auth_header("test_audio_user"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+
+    // 200 if S3 is configured, 503 if not
+    let status = resp.status().as_u16();
+    assert!(
+        status == 200 || status == 503,
+        "Expected 200 or 503, got {status}"
+    );
+
+    if status == 200 {
+        let data: serde_json::Value = resp.json().await.unwrap();
+        assert!(data["url"].is_string());
+        assert!(data["storage_key"].is_string());
+        assert_eq!(data["type"], "audio");
+        assert!(data["size"].is_number());
+        assert_eq!(data["mime_type"], "audio/mpeg");
+        assert!(data["uploaded_at"].is_string());
+    }
+}
+
+#[tokio::test]
+async fn test_upload_audio_invalid_format() {
+    let base = base_url();
+    let client = http_client();
+
+    let form = multipart::Form::new().text("type", "audio").part(
+        "file",
+        multipart::Part::bytes(b"not audio data".to_vec())
+            .file_name("test.txt")
+            .mime_str("text/plain")
+            .unwrap(),
+    );
+
+    let resp = client
+        .post(format!("{base}/api/v1/media/upload"))
+        .header("Authorization", auth_header("test_user"))
+        .multipart(form)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(data["error"], "bad_request");
+}
