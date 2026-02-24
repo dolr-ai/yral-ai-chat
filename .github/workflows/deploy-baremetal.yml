@@ -84,7 +84,7 @@ jobs:
       - name: Parse server IPs
         id: parse
         run: |
-          IPS="${{ secrets.BAREMETAL_SERVER_IPS }}"
+          IPS="${{ vars.BAREMETAL_SERVER_IPS }}"
           JSON=$(echo "$IPS" | tr ',' '\n' | jq -R . | jq -s -c .)
           echo "servers=$JSON" >> $GITHUB_OUTPUT
 
