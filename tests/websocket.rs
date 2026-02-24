@@ -125,7 +125,7 @@ async fn test_websocket_authorized_success() {
 }
 
 #[tokio::test]
-async fn test_ws_docs_returns_418() {
+async fn test_ws_docs_returns_event_schemas() {
     let base = base_url();
     let client = http_client();
 
@@ -134,5 +134,13 @@ async fn test_ws_docs_returns_418() {
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 418);
+    assert_eq!(resp.status(), 200);
+
+    let data: serde_json::Value = resp.json().await.unwrap();
+    assert!(data["new_message"].is_object());
+    assert!(data["conversation_read"].is_object());
+    assert!(data["typing_status"].is_object());
+    assert_eq!(data["new_message"]["event"], "new_message");
+    assert_eq!(data["conversation_read"]["event"], "conversation_read");
+    assert_eq!(data["typing_status"]["event"], "typing_status");
 }
