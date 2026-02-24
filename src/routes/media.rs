@@ -10,7 +10,14 @@ use crate::middleware::AuthenticatedUser;
 use crate::models::responses::MediaUploadResponse;
 use crate::services::storage::{file_extension, mime_from_extension};
 
-// POST /api/v1/media/upload
+/// Upload a media file (image or audio) via multipart form
+#[utoipa::path(
+    post,
+    path = "/api/v1/media/upload",
+    responses((status = 200, body = MediaUploadResponse)),
+    tag = "Media",
+    security(("BearerAuth" = []))
+)]
 pub async fn upload_media(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,

@@ -7,7 +7,7 @@ use validator::Validate;
 
 use crate::AppState;
 use crate::db::repositories::InfluencerRepository;
-use crate::error::AppError;
+use crate::error::{AppError, ErrorBody};
 use crate::middleware::AuthenticatedUser;
 use crate::models::entities::{AIInfluencer, InfluencerStatus};
 use crate::models::requests::{
@@ -44,7 +44,14 @@ impl From<AIInfluencer> for InfluencerResponse {
 
 type CachedJson<T> = ([(header::HeaderName, &'static str); 1], Json<T>);
 
-// GET /api/v1/influencers
+/// List all influencers
+#[utoipa::path(
+    get,
+    path = "/api/v1/influencers",
+    params(PaginationParams),
+    responses((status = 200, body = ListInfluencersResponse)),
+    tag = "Influencers"
+)]
 pub async fn list_influencers(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PaginationParams>,
@@ -70,7 +77,14 @@ pub async fn list_influencers(
     ))
 }
 
-// GET /api/v1/influencers/trending
+/// List trending influencers
+#[utoipa::path(
+    get,
+    path = "/api/v1/influencers/trending",
+    params(PaginationParams),
+    responses((status = 200, body = ListTrendingInfluencersResponse)),
+    tag = "Influencers"
+)]
 pub async fn list_trending(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PaginationParams>,
@@ -110,7 +124,17 @@ pub async fn list_trending(
     ))
 }
 
-// GET /api/v1/influencers/{influencer_id}
+/// Get an influencer by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/influencers/{influencer_id}",
+    params(("influencer_id" = String, Path, description = "Influencer ID")),
+    responses(
+        (status = 200, body = InfluencerResponse),
+        (status = 404, body = ErrorBody)
+    ),
+    tag = "Influencers"
+)]
 pub async fn get_influencer(
     State(state): State<Arc<AppState>>,
     Path(influencer_id): Path<String>,
@@ -128,7 +152,15 @@ pub async fn get_influencer(
     ))
 }
 
-// POST /api/v1/influencers/generate-prompt
+/// Generate a system prompt from a user description
+#[utoipa::path(
+    post,
+    path = "/api/v1/influencers/generate-prompt",
+    request_body = GeneratePromptRequest,
+    responses((status = 200, body = SystemPromptResponse)),
+    tag = "Influencers",
+    security(("BearerAuth" = []))
+)]
 pub async fn generate_prompt(
     State(state): State<Arc<AppState>>,
     _user: AuthenticatedUser,
@@ -143,7 +175,15 @@ pub async fn generate_prompt(
     }))
 }
 
-// POST /api/v1/influencers/validate-and-generate-metadata
+/// Validate system instructions and generate influencer metadata
+#[utoipa::path(
+    post,
+    path = "/api/v1/influencers/validate-and-generate-metadata",
+    request_body = ValidateMetadataRequest,
+    responses((status = 200, body = GeneratedMetadataResponse)),
+    tag = "Influencers",
+    security(("BearerAuth" = []))
+)]
 pub async fn validate_and_generate_metadata(
     State(state): State<Arc<AppState>>,
     _user: AuthenticatedUser,
@@ -159,7 +199,15 @@ pub async fn validate_and_generate_metadata(
     Ok(Json(result))
 }
 
-// POST /api/v1/influencers/create
+/// Create a new AI influencer
+#[utoipa::path(
+    post,
+    path = "/api/v1/influencers/create",
+    request_body = CreateInfluencerRequest,
+    responses((status = 200, body = InfluencerResponse)),
+    tag = "Influencers",
+    security(("BearerAuth" = []))
+)]
 pub async fn create_influencer(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,
@@ -263,7 +311,16 @@ pub async fn create_influencer(
     Ok(Json(resp))
 }
 
-// PATCH /api/v1/influencers/{influencer_id}/system-prompt
+/// Update an influencer's system prompt
+#[utoipa::path(
+    patch,
+    path = "/api/v1/influencers/{influencer_id}/system-prompt",
+    params(("influencer_id" = String, Path, description = "Influencer ID")),
+    request_body = UpdateSystemPromptRequest,
+    responses((status = 200, body = InfluencerResponse)),
+    tag = "Influencers",
+    security(("BearerAuth" = []))
+)]
 pub async fn update_system_prompt(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,
@@ -296,7 +353,15 @@ pub async fn update_system_prompt(
     Ok(Json(InfluencerResponse::from(updated)))
 }
 
-// DELETE /api/v1/influencers/{influencer_id}
+/// Delete an influencer (soft delete)
+#[utoipa::path(
+    delete,
+    path = "/api/v1/influencers/{influencer_id}",
+    params(("influencer_id" = String, Path, description = "Influencer ID")),
+    responses((status = 200, body = InfluencerResponse)),
+    tag = "Influencers",
+    security(("BearerAuth" = []))
+)]
 pub async fn delete_influencer(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,

@@ -9,6 +9,16 @@ use axum::response::IntoResponse;
 use crate::AppState;
 use crate::middleware;
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/chat/ws/inbox/{user_id}",
+    params(
+        ("user_id" = String, Path, description = "User ID"),
+        ("token" = String, Query, description = "JWT auth token")
+    ),
+    responses((status = 101, description = "WebSocket upgrade")),
+    tag = "WebSocket"
+)]
 pub async fn ws_inbox(
     State(state): State<Arc<AppState>>,
     Path(user_id): Path<String>,
@@ -98,6 +108,12 @@ async fn handle_socket(state: Arc<AppState>, user_id: String, mut socket: WebSoc
 }
 
 /// Dummy endpoint that returns 418 to expose WebSocket event schemas (matches Python).
+#[utoipa::path(
+    get,
+    path = "/api/v1/chat/ws/docs",
+    responses((status = 418, description = "WebSocket event schemas documentation")),
+    tag = "WebSocket"
+)]
 pub async fn ws_docs() -> (StatusCode, &'static str) {
     (StatusCode::IM_A_TEAPOT, "WebSocket documentation endpoint")
 }

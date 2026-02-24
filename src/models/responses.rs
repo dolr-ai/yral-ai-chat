@@ -1,9 +1,10 @@
 use chrono::NaiveDateTime;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use super::entities::{InfluencerStatus, LastMessageInfo, MessageRole, MessageType};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct InfluencerBasicInfo {
     pub id: String,
     pub name: String,
@@ -14,7 +15,7 @@ pub struct InfluencerBasicInfo {
     pub suggested_messages: Option<Vec<String>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct InfluencerBasicInfoV2 {
     pub id: String,
     pub display_name: String,
@@ -22,7 +23,7 @@ pub struct InfluencerBasicInfoV2 {
     pub is_online: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MessageResponse {
     pub id: String,
     pub role: MessageRole,
@@ -37,7 +38,7 @@ pub struct MessageResponse {
     pub is_read: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ConversationResponse {
     pub id: String,
     pub user_id: String,
@@ -49,7 +50,7 @@ pub struct ConversationResponse {
     pub recent_messages: Option<Vec<MessageResponse>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ConversationResponseV2 {
     pub id: String,
     pub user_id: String,
@@ -61,13 +62,13 @@ pub struct ConversationResponseV2 {
     pub last_message: Option<LastMessageInfo>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SendMessageResponse {
     pub user_message: MessageResponse,
     pub assistant_message: MessageResponse,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ListConversationsResponse {
     pub conversations: Vec<ConversationResponse>,
     pub total: i64,
@@ -75,7 +76,7 @@ pub struct ListConversationsResponse {
     pub offset: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ListConversationsResponseV2 {
     pub conversations: Vec<ConversationResponseV2>,
     pub total: i64,
@@ -83,7 +84,7 @@ pub struct ListConversationsResponseV2 {
     pub offset: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ListMessagesResponse {
     pub conversation_id: String,
     pub messages: Vec<MessageResponse>,
@@ -92,7 +93,7 @@ pub struct ListMessagesResponse {
     pub offset: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct InfluencerResponse {
     pub id: String,
     pub name: String,
@@ -111,7 +112,7 @@ pub struct InfluencerResponse {
     pub starter_video_prompt: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ListInfluencersResponse {
     pub influencers: Vec<InfluencerResponse>,
     pub total: i64,
@@ -119,7 +120,7 @@ pub struct ListInfluencersResponse {
     pub offset: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TrendingInfluencerResponse {
     pub id: String,
     pub name: String,
@@ -133,7 +134,7 @@ pub struct TrendingInfluencerResponse {
     pub message_count: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ListTrendingInfluencersResponse {
     pub influencers: Vec<TrendingInfluencerResponse>,
     pub total: i64,
@@ -141,12 +142,12 @@ pub struct ListTrendingInfluencersResponse {
     pub offset: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SystemPromptResponse {
     pub system_instructions: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct GeneratedMetadataResponse {
     pub is_valid: bool,
     pub reason: Option<String>,
@@ -156,11 +157,12 @@ pub struct GeneratedMetadataResponse {
     pub avatar_url: Option<String>,
     pub initial_greeting: Option<String>,
     pub suggested_messages: Option<Vec<String>>,
+    #[schema(value_type = Option<Object>)]
     pub personality_traits: Option<serde_json::Value>,
     pub category: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MarkConversationAsReadResponse {
     pub id: String,
     pub unread_count: i64,
@@ -169,7 +171,7 @@ pub struct MarkConversationAsReadResponse {
 
 // ── Health / Status ──
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ServiceHealth {
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -182,14 +184,14 @@ pub struct ServiceHealth {
     pub pool_free: Option<u32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HealthResponse {
     pub status: String,
     pub timestamp: NaiveDateTime,
     pub services: std::collections::HashMap<String, ServiceHealth>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct StatusResponse {
     pub service: String,
     pub version: String,
@@ -200,21 +202,21 @@ pub struct StatusResponse {
     pub timestamp: NaiveDateTime,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DatabaseStats {
     pub connected: bool,
     pub pool_size: Option<u32>,
     pub active_connections: Option<u32>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SystemStatistics {
     pub total_conversations: i64,
     pub total_messages: i64,
     pub active_influencers: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MediaUploadResponse {
     pub url: String,
     pub storage_key: String,
@@ -226,7 +228,7 @@ pub struct MediaUploadResponse {
     pub uploaded_at: NaiveDateTime,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DeleteConversationResponse {
     pub success: bool,
     pub message: String,

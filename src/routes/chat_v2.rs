@@ -13,7 +13,15 @@ use crate::models::responses::{
     ConversationResponseV2, InfluencerBasicInfoV2, ListConversationsResponseV2,
 };
 
-// GET /api/v2/chat/conversations
+/// List user's conversations (V2 with enriched influencer info)
+#[utoipa::path(
+    get,
+    path = "/api/v2/chat/conversations",
+    params(ListConversationsParams),
+    responses((status = 200, body = ListConversationsResponseV2)),
+    tag = "Chat V2",
+    security(("BearerAuth" = []))
+)]
 pub async fn list_conversations_v2(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,

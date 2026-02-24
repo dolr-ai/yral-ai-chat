@@ -195,6 +195,8 @@ async fn main() {
         .route("/api/v1/chat/ws/docs", get(websocket::ws_docs))
         // Media
         .route("/api/v1/media/upload", post(media::upload_media))
+        // OpenAPI / Swagger UI
+        .merge(routes::openapi::swagger_ui())
         .layer(middleware::RateLimitLayer::new(
             settings.rate_limit_per_minute,
             settings.rate_limit_per_hour,

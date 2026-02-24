@@ -10,6 +10,12 @@ use crate::models::responses::{
     DatabaseStats, HealthResponse, ServiceHealth, StatusResponse, SystemStatistics,
 };
 
+#[utoipa::path(
+    get,
+    path = "/health",
+    responses((status = 200, body = HealthResponse, description = "Service health check")),
+    tag = "Health"
+)]
 pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let db_health = state.db.health_check().await;
 
@@ -68,6 +74,12 @@ pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> 
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/status",
+    responses((status = 200, body = StatusResponse, description = "Detailed service status")),
+    tag = "Health"
+)]
 pub async fn status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> {
     let uptime = state.start_time.elapsed().as_secs();
 
@@ -106,12 +118,18 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> 
     })
 }
 
+#[utoipa::path(
+    get,
+    path = "/",
+    responses((status = 200, description = "Service info")),
+    tag = "Health"
+)]
 pub async fn root(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "service": state.settings.app_name,
         "version": state.settings.app_version,
         "status": "running",
-        "docs": "/docs",
+        "docs": "/explorer/",
         "health": "/health",
         "metrics": "/metrics",
     }))

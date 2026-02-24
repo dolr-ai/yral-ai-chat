@@ -2,19 +2,20 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::Deserialize;
+use utoipa::{IntoParams, ToSchema};
 use validator::Validate;
 
 use super::entities::MessageType;
 
 static NAME_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9]+$").unwrap());
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateConversationRequest {
     #[validate(length(min = 1, message = "influencer_id is required"))]
     pub influencer_id: String,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct SendMessageRequest {
     pub message_type: String,
 
@@ -74,7 +75,7 @@ impl SendMessageRequest {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct PaginationParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -89,7 +90,7 @@ impl PaginationParams {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListConversationsParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -105,7 +106,7 @@ impl ListConversationsParams {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListMessagesParams {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -127,18 +128,18 @@ impl ListMessagesParams {
     }
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct GeneratePromptRequest {
     #[validate(length(min = 1, max = 1000, message = "prompt must be 1-1000 characters"))]
     pub prompt: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ValidateMetadataRequest {
     pub system_instructions: String,
 }
 
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, ToSchema)]
 pub struct CreateInfluencerRequest {
     #[validate(length(min = 3, max = 15, message = "name must be 3-15 characters"))]
     #[validate(regex(path = *NAME_REGEX, message = "name must be alphanumeric"))]
@@ -152,6 +153,7 @@ pub struct CreateInfluencerRequest {
     #[serde(default)]
     pub suggested_messages: Vec<String>,
     #[serde(default = "default_personality_traits")]
+    #[schema(value_type = Object)]
     pub personality_traits: serde_json::Value,
     pub category: Option<String>,
     pub avatar_url: Option<String>,
@@ -163,13 +165,13 @@ fn default_personality_traits() -> serde_json::Value {
     serde_json::json!({})
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GenerateImageRequest {
     #[serde(default)]
     pub prompt: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateSystemPromptRequest {
     pub system_instructions: String,
 }

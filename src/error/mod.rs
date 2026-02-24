@@ -4,9 +4,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde::Serialize;
+use utoipa::ToSchema;
 
-#[derive(Debug, Serialize)]
-struct ErrorBody {
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ErrorBody {
     error: &'static str,
     message: String,
 }

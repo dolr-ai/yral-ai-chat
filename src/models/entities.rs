@@ -1,11 +1,21 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use strum::{AsRefStr, Display, EnumString};
+use utoipa::ToSchema;
 
 // ── Enums ──
 
 #[derive(
-    Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type, Display, EnumString, AsRefStr,
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    sqlx::Type,
+    Display,
+    EnumString,
+    AsRefStr,
+    ToSchema,
 )]
 #[sqlx(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase", ascii_case_insensitive)]
@@ -21,7 +31,16 @@ pub enum MessageType {
 }
 
 #[derive(
-    Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type, Display, EnumString, AsRefStr,
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    sqlx::Type,
+    Display,
+    EnumString,
+    AsRefStr,
+    ToSchema,
 )]
 #[sqlx(rename_all = "lowercase")]
 #[strum(serialize_all = "lowercase", ascii_case_insensitive)]
@@ -32,7 +51,9 @@ pub enum MessageRole {
     Assistant,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Display, EnumString, AsRefStr)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, PartialEq, Display, EnumString, AsRefStr, ToSchema,
+)]
 #[strum(serialize_all = "snake_case")]
 pub enum InfluencerStatus {
     #[serde(rename = "active")]
@@ -89,7 +110,7 @@ pub struct Conversation {
     pub recent_messages: Option<Vec<Message>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct LastMessageInfo {
     pub content: Option<String>,
     pub role: MessageRole,

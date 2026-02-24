@@ -87,7 +87,15 @@ fn conversation_to_response(
     }
 }
 
-// POST /api/v1/chat/conversations
+/// Create or get existing conversation with an influencer
+#[utoipa::path(
+    post,
+    path = "/api/v1/chat/conversations",
+    request_body = CreateConversationRequest,
+    responses((status = 201, body = ConversationResponse)),
+    tag = "Chat",
+    security(("BearerAuth" = []))
+)]
 pub async fn create_conversation(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,
@@ -156,7 +164,15 @@ pub async fn create_conversation(
     ))
 }
 
-// GET /api/v1/chat/conversations
+/// List user's conversations
+#[utoipa::path(
+    get,
+    path = "/api/v1/chat/conversations",
+    params(ListConversationsParams),
+    responses((status = 200, body = ListConversationsResponse)),
+    tag = "Chat",
+    security(("BearerAuth" = []))
+)]
 pub async fn list_conversations(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,
@@ -198,7 +214,18 @@ pub async fn list_conversations(
     }))
 }
 
-// GET /api/v1/chat/conversations/:conversation_id/messages
+/// List messages in a conversation
+#[utoipa::path(
+    get,
+    path = "/api/v1/chat/conversations/{conversation_id}/messages",
+    params(
+        ("conversation_id" = String, Path, description = "Conversation ID"),
+        ListMessagesParams
+    ),
+    responses((status = 200, body = ListMessagesResponse)),
+    tag = "Chat",
+    security(("BearerAuth" = []))
+)]
 pub async fn list_messages(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,
@@ -235,7 +262,16 @@ pub async fn list_messages(
     }))
 }
 
-// POST /api/v1/chat/conversations/:conversation_id/messages
+/// Send a message in a conversation and get AI response
+#[utoipa::path(
+    post,
+    path = "/api/v1/chat/conversations/{conversation_id}/messages",
+    params(("conversation_id" = String, Path, description = "Conversation ID")),
+    request_body = SendMessageRequest,
+    responses((status = 200, body = SendMessageResponse)),
+    tag = "Chat",
+    security(("BearerAuth" = []))
+)]
 pub async fn send_message(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,
@@ -498,7 +534,15 @@ pub async fn send_message(
     ))
 }
 
-// POST /api/v1/chat/conversations/:conversation_id/read
+/// Mark all messages in a conversation as read
+#[utoipa::path(
+    post,
+    path = "/api/v1/chat/conversations/{conversation_id}/read",
+    params(("conversation_id" = String, Path, description = "Conversation ID")),
+    responses((status = 200, body = MarkConversationAsReadResponse)),
+    tag = "Chat",
+    security(("BearerAuth" = []))
+)]
 pub async fn mark_as_read(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,
@@ -534,7 +578,16 @@ pub async fn mark_as_read(
     }))
 }
 
-// POST /api/v1/chat/conversations/:conversation_id/images
+/// Generate an image in a conversation
+#[utoipa::path(
+    post,
+    path = "/api/v1/chat/conversations/{conversation_id}/images",
+    params(("conversation_id" = String, Path, description = "Conversation ID")),
+    request_body = GenerateImageRequest,
+    responses((status = 201, body = MessageResponse)),
+    tag = "Chat",
+    security(("BearerAuth" = []))
+)]
 pub async fn generate_image(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,
@@ -666,7 +719,15 @@ async fn generate_image_prompt_from_context(
     Ok(prompt.trim().to_string())
 }
 
-// DELETE /api/v1/chat/conversations/:conversation_id
+/// Delete a conversation and all its messages
+#[utoipa::path(
+    delete,
+    path = "/api/v1/chat/conversations/{conversation_id}",
+    params(("conversation_id" = String, Path, description = "Conversation ID")),
+    responses((status = 200, body = DeleteConversationResponse)),
+    tag = "Chat",
+    security(("BearerAuth" = []))
+)]
 pub async fn delete_conversation(
     State(state): State<Arc<AppState>>,
     user: AuthenticatedUser,
