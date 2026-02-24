@@ -28,18 +28,14 @@ class TestGeminiMultimodal:
         
         # Verify structure
         assert len(contents) == 1
-        assert contents[0]["role"] == "user"
-        parts = contents[0]["parts"]
+        assert contents[0].role == "user"
+        parts = contents[0].parts
         
         # Should have text and file_data
         assert len(parts) == 2
-        assert parts[0] == {"text": user_message}
-        assert parts[1] == {
-            "file_data": {
-                "file_uri": "https://example.com/image.jpg",
-                "mime_type": "image/jpeg"
-            }
-        }
+        assert parts[0].text == user_message
+        assert parts[1].file_data.file_uri == "https://example.com/image.jpg"
+        assert parts[1].file_data.mime_type == "image/jpeg"
 
     @pytest.mark.asyncio
     async def test_build_contents_with_history(self, client):
@@ -63,17 +59,13 @@ class TestGeminiMultimodal:
         assert len(contents) == 2
         
         # Old message
-        assert contents[0]["role"] == "user"
-        assert contents[0]["parts"][1] == {
-            "file_data": {
-                "file_uri": "https://example.com/old.png",
-                "mime_type": "image/png"
-            }
-        }
+        assert contents[0].role == "user"
+        assert contents[0].parts[1].file_data.file_uri == "https://example.com/old.png"
+        assert contents[0].parts[1].file_data.mime_type == "image/png"
         
         # New message
-        assert contents[1]["role"] == "user"
-        assert contents[1]["parts"][1]["file_data"]["file_uri"] == "https://example.com/new.jpg"
+        assert contents[1].role == "user"
+        assert contents[1].parts[1].file_data.file_uri == "https://example.com/new.jpg"
 
     @pytest.mark.asyncio
     async def test_transcribe_audio_with_link(self, client):

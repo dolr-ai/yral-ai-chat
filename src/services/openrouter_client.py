@@ -21,7 +21,14 @@ from tenacity import (
 from src.config import settings
 from src.core.exceptions import AIServiceException, TranscriptionException
 from src.models.entities import Message, MessageRole, MessageType
-from src.models.internal import AIProviderHealth, AIResponse, LLMGenerateParams
+from src.models.internal import (
+    AIProviderHealth,
+    AIResponse,
+    LLMGenerateParams,
+    OpenRouterContent,
+    OpenRouterImageURL,
+    OpenRouterMessage,
+)
 from src.services.base_ai_client import BaseAIClient
 
 
@@ -114,7 +121,10 @@ class OpenRouterClient(BaseAIClient):
                 params.media_urls
             )
 
-            response_text, token_count = await self._generate_content(messages)
+            # Convert models to dicts for HTTP request
+            messages_payload = [m.model_dump(exclude_none=True) for m in messages]
+
+            response_text, token_count = await self._execute_api_call(messages_payload)
             return AIResponse(text=response_text, token_count=int(token_count))
 
         except AIServiceException:
@@ -123,12 +133,15 @@ class OpenRouterClient(BaseAIClient):
             logger.error(f"OpenRouter API error: {e}")
             raise AIServiceException(f"Failed to generate AI response: {e!s}") from e
 
-    def _build_image_content(self, image_url: str) -> dict:
-        """Build image content dict for OpenAI-compatible API"""
-        return {"type": "image_url", "image_url": {"url": image_url}}
+    def _build_image_content(self, image_url: str) -> OpenRouterContent:
+        """Build image content for OpenAI-compatible API"""
+        return OpenRouterContent(
+            type="image_url",
+            image_url=OpenRouterImageURL(url=image_url)
+        )
 
     @_openrouter_retry_decorator
-    async def _generate_content(self, messages: list[dict]) -> tuple[str, int]:
+    async def _execute_api_call(self, messages: list[dict]) -> tuple[str, int]:
         """Generate content using OpenRouter API with retry logic"""
         logger.info(f"Generating OpenRouter response with {len(messages)} messages")
 
@@ -253,12 +266,14 @@ class OpenRouterClient(BaseAIClient):
 
     def _construct_message_content(
         self, text_content: str, image_urls: list[str] | None, max_images: int = 3, warn_on_error: bool = True
-    ) -> str | list[dict]:
+    ) -> str | list[OpenRouterContent]:
         """Helper to construct message content with optional images"""
         if not image_urls:
             return text_content or ""
 
-        content_list = [{"type": "text", "text": text_content}] if text_content else []
+        content_list: list[OpenRouterContent] = []
+        if text_content:
+            content_list.append(OpenRouterContent(type="text", text=text_content))
 
         for image_url in image_urls[:max_images]:
             if image_url:
@@ -276,12 +291,12 @@ class OpenRouterClient(BaseAIClient):
         system_instructions: str,
         conversation_history: list[Message] | None,
         media_urls: list[str] | None,
-    ) -> list[dict]:
+    ) -> list[OpenRouterMessage]:
         """Build messages list for OpenRouter/OpenAI API"""
         messages = []
 
         # Add system instructions
-        messages.append({"role": "system", "content": f"{system_instructions}"})
+        messages.append(OpenRouterMessage(role="system", content=f"{system_instructions}"))
 
         # Add conversation history
         if conversation_history:
@@ -303,12 +318,12 @@ class OpenRouterClient(BaseAIClient):
                 message_content = self._construct_message_content(
                     str(content), msg_media_urls, max_images=3, warn_on_error=True
                 )
-                messages.append({"role": role, "content": message_content})
+                messages.append(OpenRouterMessage(role=role, content=message_content))
 
         # Add current message with optional images
         current_content = self._construct_message_content(
             user_message, media_urls, max_images=5, warn_on_error=False
         )
-        messages.append({"role": "user", "content": current_content})
+        messages.append(OpenRouterMessage(role="user", content=current_content))
 
         return messages

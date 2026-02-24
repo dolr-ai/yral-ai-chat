@@ -24,7 +24,14 @@ from tenacity import (
 from src.config import settings
 from src.core.exceptions import AIServiceException, TranscriptionException
 from src.models.entities import Message, MessageRole, MessageType
-from src.models.internal import AIProviderHealth, AIResponse, LLMGenerateParams
+from src.models.internal import (
+    AIProviderHealth,
+    AIResponse,
+    GeminiContent,
+    GeminiFileData,
+    GeminiPart,
+    LLMGenerateParams,
+)
 from src.services.base_ai_client import BaseAIClient
 
 
@@ -105,14 +112,13 @@ class GeminiClient(BaseAIClient):
             timings["build_contents"] = time.time() - t0
 
             t0 = time.time()
-            response_text, token_count = await self._generate_content(
-                contents,
+            response_text, token_count = await self._execute_api_call(
+                [c.model_dump(exclude_none=True) for c in contents],
                 params.system_instructions,
                 params.max_tokens,
                 response_mime_type=params.response_mime_type,
                 response_schema=params.response_schema
             )
-            timings["gemini_api_call"] = time.time() - t0
 
             timing_str = ", ".join(f"{k}={v*1000:.0f}ms" for k, v in timings.items())
             total_time = sum(timings.values())
@@ -135,44 +141,44 @@ class GeminiClient(BaseAIClient):
         mime_type, _ = mimetypes.guess_type(url_path)
         return mime_type or "image/jpeg"
 
-    def _get_media_part(self, url: str) -> dict:
-        """Helper to create a media part with file_uri"""
-        return {
-            "file_data": {
-                "file_uri": url,
-                "mime_type": self._get_mime_type_from_url(url)
-            }
-        }
+    def _get_media_part(self, url: str) -> GeminiPart:
+        """Helper to create a media part with file_uri for GenAI types"""
+        return GeminiPart(
+            file_data=GeminiFileData(
+                file_uri=url,
+                mime_type=self._get_mime_type_from_url(url)
+            )
+        )
 
     async def _build_contents(
         self, user_message: str, conversation_history: list[Message] | None, media_urls: list[str] | None
-    ) -> list[dict]:
+    ) -> list[GeminiContent]:
         """Build full contents for Gemini API"""
-        contents = []
+        contents: list[GeminiContent] = []
 
         # 1. Build conversation history
         if conversation_history:
             contents.extend(self._build_history_contents(conversation_history))
 
         # 2. Ensure we don't start with a 'model' role (Gemini requirement)
-        if contents and contents[0].get("role") == "model":
+        if contents and contents[0].role == "model":
             contents.pop(0)
 
         # 3. Add current message
         current_parts = self._build_current_parts(user_message, media_urls)
-        contents.append({"role": "user", "parts": current_parts})
+        contents.append(GeminiContent(role="user", parts=current_parts))
         return contents
 
-    def _build_history_contents(self, history: list[Message]) -> list[dict]:
+    def _build_history_contents(self, history: list[Message]) -> list[GeminiContent]:
         """Build contents from conversation history"""
-        history_contents = []
+        history_contents: list[GeminiContent] = []
         for msg in history[-10:]:  # Last 10 messages for context
             role = "user" if msg.role == MessageRole.USER else "model"
-            parts = []
+            parts: list[GeminiPart] = []
 
             if msg.content:
                 text_content = str(msg.content) if not isinstance(msg.content, str) else msg.content
-                parts.append({"text": text_content})
+                parts.append(GeminiPart(text=text_content))
 
             if msg.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and msg.media_urls:
                 for url in msg.media_urls[:3]:
@@ -180,15 +186,15 @@ class GeminiClient(BaseAIClient):
                         parts.append(self._get_media_part(url))
 
             if parts:
-                history_contents.append({"role": role, "parts": parts})
+                history_contents.append(GeminiContent(role=role, parts=parts))
         return history_contents
 
-    def _build_current_parts(self, user_message: str, media_urls: list[str] | None) -> list[dict]:
+    def _build_current_parts(self, user_message: str, media_urls: list[str] | None) -> list[GeminiPart]:
         """Build parts for the current message"""
-        parts = []
+        parts: list[GeminiPart] = []
         if user_message:
             text_content = str(user_message) if not isinstance(user_message, str) else user_message
-            parts.append({"text": text_content})
+            parts.append(GeminiPart(text=text_content))
 
         if media_urls:
             for url in media_urls[:5]:
@@ -197,7 +203,7 @@ class GeminiClient(BaseAIClient):
         return parts
 
     @_gemini_retry_decorator
-    async def _generate_content(
+    async def _execute_api_call(
         self,
         contents: list[dict],
         system_instructions: str | None = None,

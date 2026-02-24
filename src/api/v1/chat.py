@@ -41,47 +41,40 @@ async def _convert_message_to_response(
 ) -> MessageResponse:
     """Convert Message to MessageResponse with presigned URLs"""
     presigned_media_urls = []
-    
-    # Process media URLs
     if msg.media_urls:
-        for media_key in msg.media_urls:
-            if not media_key:
-                continue
-            
-            s3_key = storage_service.extract_key_from_url(media_key)
-            # Use batch-generated URL if available, otherwise generate on-demand
-            if presigned_urls and s3_key in presigned_urls:
-                presigned_media_urls.append(presigned_urls[s3_key])
-            else:
-                try:
-                    presigned_media_urls.append(await storage_service.generate_presigned_url(s3_key))
-                except Exception:
-                    presigned_media_urls.append(media_key)
+        for url in msg.media_urls:
+            key = storage_service.extract_key_from_url(url)
+            presigned_media_urls.append(presigned_urls.get(key, url) if presigned_urls else url)
 
-    presigned_audio_url = None
-    if msg.audio_url:
-        s3_key = storage_service.extract_key_from_url(msg.audio_url)
-        if presigned_urls and s3_key in presigned_urls:
-            presigned_audio_url = presigned_urls[s3_key]
-        else:
-            try:
-                presigned_audio_url = await storage_service.generate_presigned_url(s3_key)
-            except Exception:
-                presigned_audio_url = msg.audio_url
+    audio_url = msg.audio_url
+    if audio_url:
+        key = storage_service.extract_key_from_url(audio_url)
+        audio_url = presigned_urls.get(key, audio_url) if presigned_urls else audio_url
 
     return MessageResponse(
-        id=msg.id,
-        role=msg.role,
-        content=msg.content,
-        message_type=msg.message_type,
-        media_urls=presigned_media_urls,
-        audio_url=presigned_audio_url,
-        audio_duration_seconds=msg.audio_duration_seconds,
-        token_count=msg.token_count,
-        created_at=msg.created_at,
-        status=msg.status,
-        is_read=msg.is_read,
+        id=msg.id, role=msg.role, content=msg.content,
+        message_type=msg.message_type, media_urls=presigned_media_urls,
+        audio_url=audio_url, audio_duration_seconds=msg.audio_duration_seconds,
+        token_count=msg.token_count, created_at=msg.created_at,
+        status=msg.status, is_read=msg.is_read,
     )
+
+
+async def _convert_messages(
+    messages: list[Message],
+    storage_service: StorageService,
+    sort_newest: bool = True
+) -> list[MessageResponse]:
+    """Helper to batch convert messages with presigned URLs"""
+    if not messages:
+        return []
+        
+    presigned_map = await storage_service.get_presigned_urls_for_messages(messages)
+    
+    if sort_newest:
+        messages = sorted(messages, key=lambda m: m.created_at, reverse=True)
+        
+    return [await _convert_message_to_response(m, storage_service, presigned_map) for m in messages]
 
 
 @router.post(
@@ -145,34 +138,7 @@ async def create_conversation(
         influencer_id=request.influencer_id,
     )
 
-    # Batch generate presigned URLs for recent messages
-    recent_messages = []
-    if conversation.recent_messages:
-        all_keys = []
-        if storage_service:
-            for msg in conversation.recent_messages:
-                if msg.media_urls:
-                    for url in msg.media_urls:
-                        if url:
-                            all_keys.append(storage_service.extract_key_from_url(url))
-                if msg.audio_url:
-                    all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
-            
-            presigned_map = {}
-            if all_keys:
-                presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
-            
-            # Sort newest first for UI
-            sorted_messages = sorted(
-                conversation.recent_messages,
-                key=lambda m: m.created_at,
-                reverse=True
-            )
-            
-            recent_messages = [
-                await _convert_message_to_response(msg, storage_service, presigned_map)
-                for msg in sorted_messages
-            ]
+    recent_messages = await _convert_messages(conversation.recent_messages, storage_service) if conversation.recent_messages else []
 
     return ConversationResponse(
         id=conversation.id,
@@ -231,35 +197,33 @@ async def list_conversations(
 
     conversation_responses: list[ConversationResponse] = []
     
-    # Pre-calculate all presigned URLs for all recent messages across all conversations
-    # to avoid N+1 calls inside the loop
-    all_recent_messages = []
+    # Batch generate presigned URLs for all messages and avatars efficiently
+    all_messages = []
+    all_influencers = []
     for conv in conversations:
         if conv.recent_messages:
-            all_recent_messages.extend(conv.recent_messages)
+            all_messages.extend(conv.recent_messages)
+        if conv.influencer:
+            all_influencers.append(conv.influencer)
             
-    # Gather keys for batch processing
-    all_keys = []
-    presigned_map = {}
-    if storage_service:
-        for msg in all_recent_messages:
-            if msg.media_urls:
-                for url in msg.media_urls:
-                    if url:
-                        all_keys.append(storage_service.extract_key_from_url(url))
-            if msg.audio_url:
-                all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
-        if all_keys:
-            presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
+    # Combine everything for one single batch call to get all URLs needed
+    presigned_map = await storage_service.generate_presigned_urls_batch(
+        storage_service.collect_keys_from_messages(all_messages + all_influencers)
+    )
 
+    conversation_responses = []
     for conv in conversations:
-        recent_messages: list[MessageResponse] = []
-        if conv.recent_messages:
-            recent_messages = [
-                await _convert_message_to_response(msg, storage_service, presigned_map)
-                for msg in conv.recent_messages
-            ]
+        # Resolve influencer avatar URL using the map
+        if conv.influencer and conv.influencer.avatar_url:
+            key = storage_service.extract_key_from_url(conv.influencer.avatar_url)
+            conv.influencer.avatar_url = presigned_map.get(key, conv.influencer.avatar_url)
 
+        # Convert recent messages using the map
+        recent_messages = [
+            await _convert_message_to_response(msg, storage_service, presigned_map)
+            for msg in (conv.recent_messages or [])
+        ]
+        
         conversation_responses.append(
             ConversationResponse(
                 id=conv.id,
@@ -325,28 +289,7 @@ async def list_messages(
         order=order,
     )
 
-    # Batch generate presigned URLs to prevent N+1 S3 calls
-    all_keys = []
-    if storage_service:
-        for msg in messages:
-            # Collect media keys
-            if msg.media_urls:
-                for url in msg.media_urls:
-                    if url:
-                        all_keys.append(storage_service.extract_key_from_url(url))
-            # Collect audio keys
-            if msg.audio_url:
-                all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
-            
-    # Generate all URLs in one parallel batch operation
-    presigned_map = {}
-    if all_keys and storage_service:
-        presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
-
-    message_responses = [
-        await _convert_message_to_response(msg, storage_service, presigned_map)
-        for msg in messages
-    ]
+    message_responses = await _convert_messages(messages, storage_service, sort_newest=(order == "desc"))
 
     return ListMessagesResponse(
         conversation_id=conversation_id,
@@ -419,10 +362,11 @@ async def send_message(
         )
     )
 
-    # Check if we hit the fallback error message
+    # Handle status code for errors
     if assistant_msg.content == ChatService.FALLBACK_ERROR_MESSAGE:
         response.status_code = 503
 
+    # Log AI usage if needed
     if assistant_msg.token_count and not is_duplicate:
         background_tasks.add_task(
             log_ai_usage,
@@ -442,9 +386,13 @@ async def send_message(
         user_id=current_user.user_id,
     )
 
+    # Convert messages for response
+    # We use a batch convert for user and assistant message together
+    res_user, res_assistant = await _convert_messages([user_msg, assistant_msg], storage_service, sort_newest=False)
+
     return SendMessageResponse(
-        user_message=await _convert_message_to_response(user_msg, storage_service),
-        assistant_message=await _convert_message_to_response(assistant_msg, storage_service),
+        user_message=res_user,
+        assistant_message=res_assistant,
     )
 
 
@@ -484,7 +432,8 @@ async def generate_image(
             user_id=current_user.user_id,
             prompt=request.prompt,
         )
-        return await _convert_message_to_response(message, storage_service)
+        res = await _convert_messages([message], storage_service)
+        return res[0]
     except NotImplementedError:
         # 503 if service not configured
         return Response(status_code=503, content="Image generation service unavailable")

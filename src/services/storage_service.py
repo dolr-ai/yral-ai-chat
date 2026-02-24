@@ -133,6 +133,32 @@ class StorageService:
         
         return {k: u for k, u in zip(unique_keys, urls, strict=False) if u}
 
+    def collect_keys_from_messages(self, messages: list) -> list[str]:
+        """Extract all S3 storage keys from a list of messages or objects with media/audio fields"""
+        keys = []
+        for msg in messages:
+            # Check for media_urls (list)
+            media_urls = getattr(msg, "media_urls", None)
+            if media_urls and isinstance(media_urls, list):
+                keys.extend([self.extract_key_from_url(u) for u in media_urls if u])
+            
+            # Check for audio_url (str)
+            audio_url = getattr(msg, "audio_url", None)
+            if audio_url:
+                keys.append(self.extract_key_from_url(audio_url))
+                
+            # Check for avatar_url (str) - used in Influencer objects
+            avatar_url = getattr(msg, "avatar_url", None)
+            if avatar_url:
+                keys.append(self.extract_key_from_url(avatar_url))
+        
+        return [k for k in keys if k]
+
+    async def get_presigned_urls_for_messages(self, messages: list) -> dict[str, str]:
+        """One-stop shop to get presigned URLs for all media in a list of messages"""
+        keys = self.collect_keys_from_messages(messages)
+        return await self.generate_presigned_urls_batch(keys)
+
     def extract_key_from_url(self, url_or_key: str) -> str:
         """
         Extract S3 key from URL or return key as-is.

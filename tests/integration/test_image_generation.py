@@ -22,6 +22,8 @@ def mock_storage_service():
     mock.save_file.return_value = ("user/generated_image.jpg", "image/jpeg", 100)
     mock.extract_key_from_url.return_value = "user/generated_image.jpg"
     mock.generate_presigned_url.return_value = "https://s3.url/signed"
+    mock.get_presigned_urls_for_messages.return_value = {"user/generated_image.jpg": "https://s3.url/signed"}
+    mock.generate_presigned_urls_batch.return_value = {"user/generated_image.jpg": "https://s3.url/signed"}
     return mock
 
 @pytest.fixture

@@ -3,7 +3,6 @@ Chat service - Business logic for conversations and messages
 """
 
 import sqlite3
-import time
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -23,7 +22,8 @@ from src.models.entities import (
     MessageRole,
     MessageType,
 )
-from src.models.internal import LLMGenerateParams, SendMessageParams
+from src.models.internal import LLMGenerateParams, PushNotificationData, SendMessageParams
+from src.models.responses import InfluencerBasicInfo, MessageResponse
 from src.services.gemini_client import GeminiClient
 from src.services.notification_service import notification_service
 from src.services.openrouter_client import OpenRouterClient
@@ -71,41 +71,21 @@ class ChatService:
 
         existing = await self.conversation_repo.get_existing(user_id, influencer_id)
         if existing:
-            logger.info(f"Returning existing conversation: {existing.id}")
-            existing.influencer = influencer
-            
-            # Populate history and last message for existing conversation
-            # This ensures the frontend gets history immediately when "re-opening" a chat
-            existing.recent_messages = await self.message_repo.get_recent_for_context(
-                conversation_id=UUID(existing.id),
-                limit=10
-            )
-            existing.last_message = await self.conversation_repo._get_last_message(UUID(existing.id))
-            existing.message_count = await self.message_repo.count_by_conversation(UUID(existing.id))
-            
-            return existing, False
+            return await self._hydrate_existing_conversation(existing, influencer), False
 
         try:
             conversation = await self.conversation_repo.create(user_id, influencer_id)
         except sqlite3.IntegrityError:
-            logger.warning(
-                f"Race condition detected creating conversation for user {user_id} "
-                f"and influencer {influencer_id}. Retrying fetch."
-            )
+            # Race condition: someone else created it just now
             existing = await self.conversation_repo.get_existing(user_id, influencer_id)
             if existing:
-                existing.influencer = influencer
-                # Populate history for race condition case too
-                existing.recent_messages = await self.message_repo.get_recent_for_context(
-                    conversation_id=UUID(existing.id),
-                    limit=10
-                )
-                existing.last_message = await self.conversation_repo._get_last_message(UUID(existing.id))
-                existing.message_count = await self.message_repo.count_by_conversation(UUID(existing.id))
-                return existing, False
+                return await self._hydrate_existing_conversation(existing, influencer), False
             raise
-        logger.info(f"Created new conversation: {conversation.id}")
 
+        logger.info(f"Created new conversation: {conversation.id}")
+        conversation.influencer = influencer
+        
+        # Add initial greeting if configured
         greeting_msg = None
         if influencer.initial_greeting:
             logger.info(f"Creating initial greeting for conversation {conversation.id}")
@@ -115,10 +95,7 @@ class ChatService:
                 content=influencer.initial_greeting,
                 message_type=MessageType.TEXT
             )
-        else:
-            logger.info(f"No initial_greeting configured for influencer {influencer.id} ({influencer.display_name})")
 
-        conversation.influencer = influencer
         conversation.recent_messages = [greeting_msg] if greeting_msg else []
         conversation.message_count = 1 if greeting_msg else 0
         if greeting_msg:
@@ -130,6 +107,18 @@ class ChatService:
                 is_read=greeting_msg.is_read
             )
         return conversation, True
+
+    async def _hydrate_existing_conversation(self, conversation: Conversation, influencer: AIInfluencer) -> Conversation:
+        """Populate history and metadata for an existing conversation"""
+        logger.info(f"Returning existing conversation: {conversation.id}")
+        conversation.influencer = influencer
+        conversation.recent_messages = await self.message_repo.get_recent_for_context(
+            conversation_id=UUID(conversation.id),
+            limit=10
+        )
+        conversation.last_message = await self.conversation_repo._get_last_message(UUID(conversation.id))
+        conversation.message_count = await self.message_repo.count_by_conversation(UUID(conversation.id))
+        return conversation
 
     async def _transcribe_audio(self, audio_url: str, is_nsfw: bool = False) -> str:
         """Transcribe audio and return transcribed content"""
@@ -209,11 +198,11 @@ class ChatService:
         except Exception as e:
             logger.error(f"Failed to update memories: {e}", exc_info=True)
 
-    async def _validate_and_get_context(
+    async def validate_access_and_get_context(
         self,
         conversation_id: str,
         user_id: str
-    ) -> tuple[Conversation, object]:
+    ) -> tuple[Conversation, AIInfluencer]:
         """Validate conversation/user and return conversation and influencer"""
         conversation = await self.conversation_repo.get_by_id(conversation_id)
         if not conversation:
@@ -231,7 +220,7 @@ class ChatService:
 
         return conversation, influencer
 
-    async def _prepare_user_message(
+    async def persist_user_message(
         self,
         conversation_id: str,
         content: str,
@@ -239,18 +228,14 @@ class ChatService:
         audio_url: str | None,
         audio_duration_seconds: int | None,
         media_urls: list[str] | None,
-        timings: dict[str, float],
         is_nsfw: bool = False,
         client_message_id: str | None = None
     ) -> tuple[Message, str]:
         """Transcribe (if needed) and save user message"""
         transcribed_content = content
         if message_type == MessageType.AUDIO and audio_url:
-            t0 = time.time()
             transcribed_content = await self._transcribe_audio(audio_url, is_nsfw=is_nsfw)
-            timings["transcribe_audio"] = time.time() - t0
 
-        t0 = time.time()
         user_message = await self._save_message(
             conversation_id=conversation_id,
             role=MessageRole.USER,
@@ -261,29 +246,23 @@ class ChatService:
             audio_duration_seconds=audio_duration_seconds,
             client_message_id=client_message_id
         )
-        timings["save_user_message"] = time.time() - t0
         return user_message, transcribed_content or ""
 
-    async def _build_ai_context(
+    async def assemble_ai_context(
         self,
         conversation_id: str,
         user_message_id: str,
-        influencer: object,
-        memories: dict[str, object],
-        timings: dict[str, float]
+        influencer: AIInfluencer,
+        memories: dict[str, object]
     ) -> tuple[list[Message], str]:
         """Fetch history and build system instructions"""
-        t0 = time.time()
         all_recent = await self.message_repo.get_recent_for_context(
             conversation_id=conversation_id,
             limit=11
         )
         history = [msg for msg in all_recent if msg.id != user_message_id][:10]
-        timings["get_history"] = time.time() - t0
 
-        t0 = time.time()
         await self._convert_history_storage_keys_async(history)
-        timings["convert_history_urls"] = time.time() - t0
 
         enhanced_system_instructions = influencer.system_instructions
         if memories:
@@ -292,14 +271,13 @@ class ChatService:
             
         return history, enhanced_system_instructions
 
-    async def _generate_ai_response(
+    async def invoke_ai_provider(
         self,
-        influencer: object,
+        influencer: AIInfluencer,
         ai_input_content: str,
         enhanced_instructions: str,
         history: list[Message],
-        media_urls_for_ai: list[str] | None,
-        timings: dict[str, float]
+        media_urls_for_ai: list[str] | None
     ) -> tuple[str, int]:
         """Select client and generate AI response"""
         try:
@@ -309,7 +287,6 @@ class ChatService:
                 f"Generating response for influencer {influencer.id} ({influencer.display_name}) "
                 f"using {provider_name} provider"
             )
-            t0 = time.time()
             response = await ai_client.generate_response(
                 LLMGenerateParams(
                     user_message=ai_input_content,
@@ -320,7 +297,6 @@ class ChatService:
             )
             response_text = response.text
             token_count = response.token_count
-            timings["ai_generate_response"] = time.time() - t0
             logger.info(
                 f"Response generated successfully from {provider_name}: "
                 f"{len(response_text)} chars, {token_count} tokens"
@@ -333,23 +309,12 @@ class ChatService:
     async def send_message(self, params: SendMessageParams) -> tuple[Message, Message, bool]:
         """
         Send a message and get AI response
-
-        Args:
-            params: Message sending parameters
-
-        Returns:
-            Tuple of (user_message, assistant_message, is_duplicate)
         """
-        timings: dict[str, float] = {}
-        total_start = time.time()
-
         # 1. Validation & Context
-        t0 = time.time()
-        conversation, influencer = await self._validate_and_get_context(params.conversation_id, params.user_id)
-        timings["get_context"] = time.time() - t0
+        conversation, influencer = await self.validate_access_and_get_context(params.conversation_id, params.user_id)
         memories = conversation.metadata.get("memories", {})
 
-        # 1.1 Deduplication Check
+        # 2. Deduplication Check
         if params.client_message_id:
             existing_user_msg = await self.message_repo.get_by_client_id(
                 UUID(params.conversation_id), params.client_message_id
@@ -359,61 +324,40 @@ class ChatService:
                 assistant_reply = await self.message_repo.get_assistant_reply(existing_user_msg.id)
                 if assistant_reply:
                     return existing_user_msg, assistant_reply, True
-                logger.warning(f"User message exists for {params.client_message_id} but assistant reply not found. Proceeding with generation.")
 
-        # 2. User Message
-        user_message, transcribed_payload = await self._prepare_user_message(
+        # 3. Persist User Message
+        user_message, transcribed_payload = await self.persist_user_message(
             params.conversation_id,
             params.content,
             params.message_type,
             params.audio_url,
             params.audio_duration_seconds,
             params.media_urls,
-            timings,
             is_nsfw=influencer.is_nsfw,
             client_message_id=params.client_message_id
         )
-        logger.info(f"User message saved: {user_message.id}")
 
-        # 3. Context & History
-        history, enhanced_instructions = await self._build_ai_context(
-            params.conversation_id, user_message.id, influencer, memories, timings
+        # 4. Context & History
+        history, enhanced_instructions = await self.assemble_ai_context(
+            params.conversation_id, user_message.id, influencer, memories
         )
         ai_input_content = str(params.content or transcribed_payload or "What do you think?")
 
-        # 4. Multimodal Preparation
+        # 5. Multimodal Preparation
         media_urls_for_ai = None
         if params.message_type in [MessageType.IMAGE, MessageType.MULTIMODAL] and params.media_urls:
-            t0 = time.time()
             media_urls_for_ai = await self._convert_media_urls_for_ai_async(params.media_urls)
-            timings["convert_media_urls"] = time.time() - t0
 
-        # 5. AI Generation
-        # Broadcast typing indicator
-        try:
-            await manager.broadcast_typing_status(
-                user_id=params.user_id,
-                conversation_id=params.conversation_id,
-                influencer_id=influencer.id,
-                is_typing=True
-            )
-        except Exception as e:
-            logger.warning(f"Failed to broadcast typing status: {e}")
-        response_text, token_count = await self._generate_ai_response(
-            influencer, ai_input_content, enhanced_instructions, history, media_urls_for_ai, timings
+        # 6. AI Generation
+        await self._broadcast_typing(params.user_id, params.conversation_id, influencer.id, True)
+        
+        response_text, token_count = await self.invoke_ai_provider(
+            influencer, ai_input_content, enhanced_instructions, history, media_urls_for_ai
         )
 
-        try:
-            await manager.broadcast_typing_status(
-                user_id=params.user_id,
-                conversation_id=params.conversation_id,
-                influencer_id=influencer.id,
-                is_typing=False
-            )
-        except Exception as e:
-            logger.warning(f"Failed to broadcast typing status: {e}")
-        # 6. Save Assistant Message
-        t0 = time.time()
+        await self._broadcast_typing(params.user_id, params.conversation_id, influencer.id, False)
+
+        # 7. Save Assistant Message
         assistant_message = await self._save_message(
             conversation_id=params.conversation_id,
             role=MessageRole.ASSISTANT,
@@ -421,15 +365,30 @@ class ChatService:
             message_type=MessageType.TEXT,
             token_count=token_count
         )
-        timings["save_assistant_message"] = time.time() - t0
-        logger.info(f"Assistant message saved: {assistant_message.id}")
 
-        # 7. Finalize & Latency Tracking
-        timings["total"] = time.time() - total_start
-        timing_str = ", ".join(f"{k}={v*1000:.0f}ms" for k, v in timings.items())
-        log_lvl = logger.warning if timings["total"] > 5 else logger.info
-        log_lvl(f"send_message timings [{params.conversation_id}]: {timing_str}")
+        # 8. Background Tasks & Notifications
+        await self._trigger_post_message_tasks(params, conversation, ai_input_content, response_text, memories, influencer, assistant_message)
 
+        return user_message, assistant_message, False
+
+    async def _broadcast_typing(self, user_id: str, conversation_id: str, influencer_id: str, is_typing: bool):
+        """Helper to broadcast typing status safely"""
+        try:
+            await manager.emit_typing_status_event(
+                user_id=user_id,
+                conversation_id=UUID(conversation_id),
+                influencer_id=str(influencer_id),
+                is_typing=is_typing
+            )
+        except Exception as e:
+            logger.warning(f"Failed to broadcast typing status: {e}")
+
+    async def _trigger_post_message_tasks(
+        self, params: SendMessageParams, conversation: Conversation,
+        ai_input_content: str, response_text: str, memories: dict,
+        influencer: AIInfluencer, assistant_message: Message
+    ):
+        """Handle background tasks and notifications after message exchange"""
         if params.background_tasks and hasattr(params.background_tasks, "add_task"):
             params.background_tasks.add_task(
                 self._update_conversation_memories,
@@ -453,8 +412,6 @@ class ChatService:
             influencer=influencer,
         )
 
-        return user_message, assistant_message, False
-
     async def _handle_message_notifications(
         self,
         user_id: str,
@@ -470,24 +427,25 @@ class ChatService:
             unread_count = updated_conversation.unread_count if updated_conversation else 1
             
             # Broadcast to user
-            await manager.broadcast_new_message(
+            await manager.emit_new_message_event(
                 user_id=user_id,
-                conversation_id=conversation_id,
-                message={
-                    "id": str(assistant_message.id),
-                    "role": assistant_message.role.value,
-                    "content": assistant_message.content,
-                    "message_type": assistant_message.message_type.value,
-                    "created_at": assistant_message.created_at.isoformat(),
-                    "status": assistant_message.status,
-                    "is_read": assistant_message.is_read,
-                },
-                influencer={
-                    "id": str(influencer.id),
-                    "display_name": influencer.display_name,
-                    "avatar_url": influencer.avatar_url,
-                    "is_online": True,  # Influencers are always "online"
-                },
+                conversation_id=UUID(str(conversation_id)),
+                message=MessageResponse(
+                    id=assistant_message.id,
+                    role=assistant_message.role,
+                    content=assistant_message.content,
+                    message_type=assistant_message.message_type,
+                    created_at=assistant_message.created_at,
+                    status=assistant_message.status,
+                    is_read=assistant_message.is_read,
+                ),
+                influencer=InfluencerBasicInfo(
+                    id=influencer.id,
+                    name=influencer.name,
+                    display_name=influencer.display_name,
+                    avatar_url=influencer.avatar_url,
+                    is_online=True,  # Influencers are always "online"
+                ),
                 unread_count=unread_count,
             )
         except Exception as e:
@@ -499,11 +457,11 @@ class ChatService:
                 user_id=user_id,
                 title=influencer.display_name,
                 body=assistant_message.content[:100] if assistant_message.content else "New message",
-                data={
-                    "conversation_id": str(conversation_id),
-                    "message_id": str(assistant_message.id),
-                    "influencer_id": str(influencer.id),
-                },
+                data=PushNotificationData(
+                    conversation_id=str(conversation_id),
+                    message_id=str(assistant_message.id),
+                    influencer_id=str(influencer.id),
+                ),
             )
         except Exception as e:
             logger.warning(f"Failed to send push notification: {e}")
@@ -680,10 +638,10 @@ class ChatService:
         
         # Broadcast conversation read event via WebSocket
         try:
-            await manager.broadcast_conversation_read(
+            await manager.emit_conversation_read_event(
                 user_id=user_id,
-                conversation_id=conversation_id,
-                read_at=read_at.isoformat(),
+                conversation_id=UUID(str(conversation_id)),
+                read_at=read_at.isoformat()
             )
         except Exception as e:
             # Don't fail the operation if WebSocket broadcast fails

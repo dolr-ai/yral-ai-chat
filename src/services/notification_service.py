@@ -1,9 +1,9 @@
-from typing import Any
 
 import httpx
 from loguru import logger
 
 from src.config import settings
+from src.models.internal import PushNotificationData
 
 
 class MetadataPNProvider:
@@ -14,7 +14,7 @@ class MetadataPNProvider:
         user_id: str,
         title: str,
         body: str,
-        data: dict[str, Any] | None = None,
+        data: PushNotificationData | None = None,
     ) -> bool:
         """
         Calls the Metadata Server to send a push notification.
@@ -29,7 +29,7 @@ class MetadataPNProvider:
             "data": {
                 "title": title,
                 "body": body,
-                **(data or {})
+                **(data.model_dump(mode="json") if data else {})
             }
         }
 
@@ -64,7 +64,7 @@ class NotificationService:
         user_id: str,
         title: str,
         body: str,
-        data: dict | None = None,
+        data: PushNotificationData | None = None,
     ) -> bool:
         """Sends a push notification to a user's devices."""
         try:

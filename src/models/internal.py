@@ -2,6 +2,8 @@
 Internal Pydantic models for service layer
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.models.entities import MessageType
@@ -123,3 +125,41 @@ class SendMessageParams(BaseModel):
     audio_duration_seconds: int | None = None
     background_tasks: object | None = None
     client_message_id: str | None = None
+
+
+class PushNotificationData(BaseModel):
+    """Structured data for push notifications"""
+    conversation_id: str = Field(..., description="ID of the conversation")
+    message_id: str = Field(..., description="ID of the message")
+    influencer_id: str = Field(..., description="ID of the influencer")
+
+
+class OpenRouterImageURL(BaseModel):
+    url: str
+
+
+class OpenRouterContent(BaseModel):
+    type: Literal["text", "image_url"]
+    text: str | None = None
+    image_url: OpenRouterImageURL | None = None
+
+
+class OpenRouterMessage(BaseModel):
+    role: str
+    content: str | list[OpenRouterContent]
+
+
+class GeminiFileData(BaseModel):
+    file_uri: str
+    mime_type: str
+
+
+class GeminiPart(BaseModel):
+    text: str | None = None
+    inline_data: dict[str, str] | None = None  # For b64 audio/images
+    file_data: GeminiFileData | None = None
+
+
+class GeminiContent(BaseModel):
+    role: str
+    parts: list[GeminiPart]

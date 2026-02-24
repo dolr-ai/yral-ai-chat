@@ -7,6 +7,17 @@ from uuid import UUID
 
 from fastapi import WebSocket
 from loguru import logger
+from pydantic import BaseModel
+
+from src.models.responses import InfluencerBasicInfo, MessageResponse
+from src.models.websocket_events import (
+    ConversationReadEvent,
+    ConversationReadEventData,
+    NewMessageEvent,
+    NewMessageEventData,
+    TypingStatusEvent,
+    TypingStatusEventData,
+)
 
 
 class ConnectionManager:
@@ -39,79 +50,82 @@ class ConnectionManager:
             except ValueError:
                 logger.warning(f"Attempted to disconnect non-existent WebSocket for user {user_id}")
 
-    async def send_personal_message(self, message: dict[str, Any], user_id: str):
-        """Send a message to all connections of a specific user"""
+    async def emit_to_user(self, message: dict[str, Any] | BaseModel, user_id: str):
+        """Send a message/event to all active connections for a specific user"""
         if user_id not in self.active_connections:
-            logger.debug(f"No active connections for user {user_id}")
             return
 
-        disconnected = []
-        for connection in self.active_connections[user_id]:
+        payload = message.model_dump(mode="json") if isinstance(message, BaseModel) else message
+
+        connections = self.active_connections[user_id]
+        logger.debug(f"Emitting message to user {user_id} across {len(connections)} connections")
+        
+        # Collect dead connections to remove later
+        dead_connections = []
+        for connection in connections:
             try:
-                await connection.send_json(message)
+                await connection.send_json(payload)
             except Exception as e:
-                logger.warning(f"Failed to send message to user {user_id}: {e}")
-                disconnected.append(connection)
+                logger.warning(f"Failed to send websocket message: {e}")
+                dead_connections.append(connection)
 
-        # Clean up failed connections
-        for conn in disconnected:
-            self.disconnect(conn, user_id)
+        # Cleanup dead connections
+        for dead in dead_connections:
+            if dead in connections:
+                connections.remove(dead)
 
-    async def broadcast_new_message(
+    async def emit_new_message_event(
         self,
         user_id: str,
         conversation_id: UUID,
-        message: dict[str, Any],
-        influencer: dict[str, Any],
+        message: MessageResponse,
+        influencer: InfluencerBasicInfo,
         unread_count: int,
     ):
-        """Broadcast a new message event to a user"""
-        event = {
-            "event": "new_message",
-            "data": {
-                "conversation_id": str(conversation_id),
-                "message": message,
-                "influencer_id": influencer.get("id"),
-                "influencer": influencer,
-                "unread_count": unread_count,
-            },
-        }
-        await self.send_personal_message(event, user_id)
+        """Emit a new message event to a user"""
+        event = NewMessageEvent(
+            data=NewMessageEventData(
+                conversation_id=str(conversation_id),
+                message=message,
+                influencer_id=influencer.id,
+                influencer=influencer,
+                unread_count=unread_count,
+            )
+        )
+        await self.emit_to_user(event, user_id)
 
-    async def broadcast_conversation_read(
+    async def emit_conversation_read_event(
         self,
         user_id: str,
         conversation_id: UUID,
         read_at: str,
     ):
-        """Broadcast a conversation read event to a user"""
-        event = {
-            "event": "conversation_read",
-            "data": {
-                "conversation_id": str(conversation_id),
-                "unread_count": 0,
-                "read_at": read_at,
-            },
-        }
-        await self.send_personal_message(event, user_id)
+        """Emit a conversation read event to a user"""
+        event = ConversationReadEvent(
+            data=ConversationReadEventData(
+                conversation_id=str(conversation_id),
+                unread_count=0,
+                read_at=read_at,
+            )
+        )
+        await self.emit_to_user(event, user_id)
 
-    async def broadcast_typing_status(
+    async def emit_typing_status_event(
         self,
         user_id: str,
         conversation_id: UUID,
         influencer_id: str,
         is_typing: bool,
     ):
-        """Broadcast typing indicator to a user"""
-        event = {
-            "event": "typing_status",
-            "data": {
-                "conversation_id": str(conversation_id),
-                "influencer_id": influencer_id,
-                "is_typing": is_typing,
-            },
-        }
-        await self.send_personal_message(event, user_id)
+        """Emit typing indicator to a user"""
+        event = TypingStatusEvent(
+            data=TypingStatusEventData(
+                conversation_id=str(conversation_id),
+                influencer_id=influencer_id,
+                is_typing=is_typing,
+            )
+        )
+        await self.emit_to_user(event, user_id)
 
 
 # Global connection manager instance
