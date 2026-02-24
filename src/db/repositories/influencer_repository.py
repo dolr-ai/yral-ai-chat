@@ -3,11 +3,11 @@ Repository for AI Influencer operations
 """
 
 import json
-
-from src.db.base import db
-from src.core.exceptions import ConflictException
-from src.models.entities import AIInfluencer, InfluencerStatus
 import sqlite3
+
+from src.core.exceptions import ConflictException
+from src.db.base import db
+from src.models.entities import AIInfluencer, InfluencerStatus
 
 
 class InfluencerRepository:
@@ -119,7 +119,7 @@ class InfluencerRepository:
     async def list_trending(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
         """List influencers sorted by total message count (descending)"""
         # CRITICAL: We use scalar subqueries here instead of LEFT JOINs to prevent OOM
-        # SQLite materializes joins in memory. Joining the massive 'messages' table 
+        # SQLite materializes joins in memory. Joining the massive 'messages' table
         # causes uvicorn to exceed the 8GB memory limit and crash.
         # This scalar approach takes ~1000ms with the idx_messages_conv_role index,
         # which is fast enough since the result is cached behind an asyncio.Lock.

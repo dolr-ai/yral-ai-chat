@@ -1,6 +1,6 @@
+
 import pytest
-from src.models.entities import AIInfluencer, InfluencerStatus
-from datetime import datetime, UTC
+
 
 @pytest.mark.asyncio
 async def test_deleted_influencer_persistence(client):

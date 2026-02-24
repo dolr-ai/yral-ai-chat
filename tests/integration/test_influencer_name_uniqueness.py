@@ -1,5 +1,5 @@
 import pytest
-from src.models.entities import InfluencerStatus
+
 
 @pytest.mark.asyncio
 async def test_create_influencer_duplicate_name(client):
