@@ -115,6 +115,7 @@ pub struct LastMessageInfo {
     pub content: Option<String>,
     pub role: MessageRole,
     pub created_at: NaiveDateTime,
+    #[schema(default = "delivered")]
     pub status: Option<String>,
     pub is_read: bool,
 }

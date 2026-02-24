@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use axum::extract::{Path, Query, State, WebSocketUpgrade};
-use axum::http::StatusCode;
 use axum::response::IntoResponse;
+
+#[allow(unused_imports)]
+use crate::models::responses::WsDocsResponse;
 
 use crate::AppState;
 use crate::middleware;
@@ -107,13 +110,44 @@ async fn handle_socket(state: Arc<AppState>, user_id: String, mut socket: WebSoc
     tracing::info!(user_id = %user_id, conn_id = conn_id, "WebSocket disconnected");
 }
 
-/// Dummy endpoint that returns 418 to expose WebSocket event schemas (matches Python).
+/// WebSocket event schemas documentation
 #[utoipa::path(
     get,
     path = "/api/v1/chat/ws/docs",
-    responses((status = 418, description = "WebSocket event schemas documentation")),
+    responses((status = 200, body = WsDocsResponse, description = "WebSocket event schemas")),
     tag = "WebSocket"
 )]
-pub async fn ws_docs() -> (StatusCode, &'static str) {
-    (StatusCode::IM_A_TEAPOT, "WebSocket documentation endpoint")
+pub async fn ws_docs() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "new_message": {
+            "event": "new_message",
+            "data": {
+                "conversation_id": "string",
+                "message": "MessageResponse object",
+                "influencer": {
+                    "id": "string",
+                    "display_name": "string",
+                    "avatar_url": "string or null",
+                    "is_online": true
+                },
+                "unread_count": 0
+            }
+        },
+        "conversation_read": {
+            "event": "conversation_read",
+            "data": {
+                "conversation_id": "string",
+                "unread_count": 0,
+                "read_at": "ISO timestamp"
+            }
+        },
+        "typing_status": {
+            "event": "typing_status",
+            "data": {
+                "conversation_id": "string",
+                "influencer_id": "string",
+                "is_typing": true
+            }
+        }
+    }))
 }

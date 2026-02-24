@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 
 use crate::AppState;
 use crate::db::repositories::{ConversationRepository, InfluencerRepository, MessageRepository};
-use crate::error::AppError;
+use crate::error::{AppError, ErrorBody};
 use crate::middleware::AuthenticatedUser;
 use crate::models::entities::{AIInfluencer, InfluencerStatus, Message, MessageRole, MessageType};
 use crate::models::requests::{
@@ -92,7 +92,12 @@ fn conversation_to_response(
     post,
     path = "/api/v1/chat/conversations",
     request_body = CreateConversationRequest,
-    responses((status = 201, body = ConversationResponse)),
+    responses(
+        (status = 201, body = ConversationResponse, description = "Conversation created"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 404, body = ErrorBody, description = "Influencer not found"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Chat",
     security(("BearerAuth" = []))
 )]
@@ -169,7 +174,11 @@ pub async fn create_conversation(
     get,
     path = "/api/v1/chat/conversations",
     params(ListConversationsParams),
-    responses((status = 200, body = ListConversationsResponse)),
+    responses(
+        (status = 200, body = ListConversationsResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Chat",
     security(("BearerAuth" = []))
 )]
@@ -222,7 +231,13 @@ pub async fn list_conversations(
         ("conversation_id" = String, Path, description = "Conversation ID"),
         ListMessagesParams
     ),
-    responses((status = 200, body = ListMessagesResponse)),
+    responses(
+        (status = 200, body = ListMessagesResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 403, body = ErrorBody, description = "Forbidden"),
+        (status = 404, body = ErrorBody, description = "Conversation not found"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Chat",
     security(("BearerAuth" = []))
 )]
@@ -268,7 +283,13 @@ pub async fn list_messages(
     path = "/api/v1/chat/conversations/{conversation_id}/messages",
     params(("conversation_id" = String, Path, description = "Conversation ID")),
     request_body = SendMessageRequest,
-    responses((status = 200, body = SendMessageResponse)),
+    responses(
+        (status = 200, body = SendMessageResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 403, body = ErrorBody, description = "Forbidden"),
+        (status = 404, body = ErrorBody, description = "Conversation not found"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Chat",
     security(("BearerAuth" = []))
 )]
@@ -539,7 +560,12 @@ pub async fn send_message(
     post,
     path = "/api/v1/chat/conversations/{conversation_id}/read",
     params(("conversation_id" = String, Path, description = "Conversation ID")),
-    responses((status = 200, body = MarkConversationAsReadResponse)),
+    responses(
+        (status = 200, body = MarkConversationAsReadResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 403, body = ErrorBody, description = "Forbidden"),
+        (status = 404, body = ErrorBody, description = "Conversation not found")
+    ),
     tag = "Chat",
     security(("BearerAuth" = []))
 )]
@@ -584,7 +610,14 @@ pub async fn mark_as_read(
     path = "/api/v1/chat/conversations/{conversation_id}/images",
     params(("conversation_id" = String, Path, description = "Conversation ID")),
     request_body = GenerateImageRequest,
-    responses((status = 201, body = MessageResponse)),
+    responses(
+        (status = 201, body = MessageResponse, description = "Image generated"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 403, body = ErrorBody, description = "Forbidden"),
+        (status = 404, body = ErrorBody, description = "Conversation not found"),
+        (status = 422, body = ErrorBody, description = "Validation error"),
+        (status = 503, body = ErrorBody, description = "Service unavailable")
+    ),
     tag = "Chat",
     security(("BearerAuth" = []))
 )]
@@ -724,7 +757,12 @@ async fn generate_image_prompt_from_context(
     delete,
     path = "/api/v1/chat/conversations/{conversation_id}",
     params(("conversation_id" = String, Path, description = "Conversation ID")),
-    responses((status = 200, body = DeleteConversationResponse)),
+    responses(
+        (status = 200, body = DeleteConversationResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 403, body = ErrorBody, description = "Forbidden"),
+        (status = 404, body = ErrorBody, description = "Conversation not found")
+    ),
     tag = "Chat",
     security(("BearerAuth" = []))
 )]

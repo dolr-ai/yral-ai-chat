@@ -34,6 +34,7 @@ pub struct MessageResponse {
     pub audio_duration_seconds: Option<i32>,
     pub token_count: Option<i32>,
     pub created_at: NaiveDateTime,
+    #[schema(default = "delivered")]
     pub status: String,
     pub is_read: bool,
 }
@@ -234,4 +235,53 @@ pub struct DeleteConversationResponse {
     pub message: String,
     pub deleted_conversation_id: String,
     pub deleted_messages_count: i64,
+}
+
+// ── WebSocket Event Schemas ──
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NewMessageEventData {
+    pub conversation_id: String,
+    pub message: MessageResponse,
+    pub influencer: InfluencerBasicInfoV2,
+    pub unread_count: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NewMessageEvent {
+    pub event: String,
+    pub data: NewMessageEventData,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConversationReadEventData {
+    pub conversation_id: String,
+    pub unread_count: i64,
+    pub read_at: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConversationReadEvent {
+    pub event: String,
+    pub data: ConversationReadEventData,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TypingStatusEventData {
+    pub conversation_id: String,
+    pub influencer_id: String,
+    pub is_typing: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TypingStatusEvent {
+    pub event: String,
+    pub data: TypingStatusEventData,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct WsDocsResponse {
+    pub new_message: NewMessageEvent,
+    pub conversation_read: ConversationReadEvent,
+    pub typing_status: TypingStatusEvent,
 }

@@ -49,7 +49,10 @@ type CachedJson<T> = ([(header::HeaderName, &'static str); 1], Json<T>);
     get,
     path = "/api/v1/influencers",
     params(PaginationParams),
-    responses((status = 200, body = ListInfluencersResponse)),
+    responses(
+        (status = 200, body = ListInfluencersResponse, description = "Successful response"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Influencers"
 )]
 pub async fn list_influencers(
@@ -82,7 +85,10 @@ pub async fn list_influencers(
     get,
     path = "/api/v1/influencers/trending",
     params(PaginationParams),
-    responses((status = 200, body = ListTrendingInfluencersResponse)),
+    responses(
+        (status = 200, body = ListTrendingInfluencersResponse, description = "Successful response"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Influencers"
 )]
 pub async fn list_trending(
@@ -157,7 +163,11 @@ pub async fn get_influencer(
     post,
     path = "/api/v1/influencers/generate-prompt",
     request_body = GeneratePromptRequest,
-    responses((status = 200, body = SystemPromptResponse)),
+    responses(
+        (status = 200, body = SystemPromptResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Influencers",
     security(("BearerAuth" = []))
 )]
@@ -180,7 +190,11 @@ pub async fn generate_prompt(
     post,
     path = "/api/v1/influencers/validate-and-generate-metadata",
     request_body = ValidateMetadataRequest,
-    responses((status = 200, body = GeneratedMetadataResponse)),
+    responses(
+        (status = 200, body = GeneratedMetadataResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Influencers",
     security(("BearerAuth" = []))
 )]
@@ -204,7 +218,12 @@ pub async fn validate_and_generate_metadata(
     post,
     path = "/api/v1/influencers/create",
     request_body = CreateInfluencerRequest,
-    responses((status = 200, body = InfluencerResponse)),
+    responses(
+        (status = 200, body = InfluencerResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 409, body = ErrorBody, description = "Conflict"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Influencers",
     security(("BearerAuth" = []))
 )]
@@ -317,7 +336,13 @@ pub async fn create_influencer(
     path = "/api/v1/influencers/{influencer_id}/system-prompt",
     params(("influencer_id" = String, Path, description = "Influencer ID")),
     request_body = UpdateSystemPromptRequest,
-    responses((status = 200, body = InfluencerResponse)),
+    responses(
+        (status = 200, body = InfluencerResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 403, body = ErrorBody, description = "Forbidden"),
+        (status = 404, body = ErrorBody, description = "Not found"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Influencers",
     security(("BearerAuth" = []))
 )]
@@ -358,7 +383,12 @@ pub async fn update_system_prompt(
     delete,
     path = "/api/v1/influencers/{influencer_id}",
     params(("influencer_id" = String, Path, description = "Influencer ID")),
-    responses((status = 200, body = InfluencerResponse)),
+    responses(
+        (status = 200, body = InfluencerResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 403, body = ErrorBody, description = "Forbidden"),
+        (status = 404, body = ErrorBody, description = "Not found")
+    ),
     tag = "Influencers",
     security(("BearerAuth" = []))
 )]

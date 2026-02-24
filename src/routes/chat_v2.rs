@@ -5,7 +5,7 @@ use axum::extract::{Query, State};
 
 use crate::AppState;
 use crate::db::repositories::ConversationRepository;
-use crate::error::AppError;
+use crate::error::{AppError, ErrorBody};
 use crate::middleware::AuthenticatedUser;
 use crate::models::entities::InfluencerStatus;
 use crate::models::requests::ListConversationsParams;
@@ -18,7 +18,11 @@ use crate::models::responses::{
     get,
     path = "/api/v2/chat/conversations",
     params(ListConversationsParams),
-    responses((status = 200, body = ListConversationsResponseV2)),
+    responses(
+        (status = 200, body = ListConversationsResponseV2, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Chat V2",
     security(("BearerAuth" = []))
 )]

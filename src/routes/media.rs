@@ -5,8 +5,9 @@ use axum::extract::{Multipart, State};
 use chrono::Utc;
 
 use crate::AppState;
-use crate::error::AppError;
+use crate::error::{AppError, ErrorBody};
 use crate::middleware::AuthenticatedUser;
+use crate::models::requests::UploadMediaBody;
 use crate::models::responses::MediaUploadResponse;
 use crate::services::storage::{file_extension, mime_from_extension};
 
@@ -14,7 +15,12 @@ use crate::services::storage::{file_extension, mime_from_extension};
 #[utoipa::path(
     post,
     path = "/api/v1/media/upload",
-    responses((status = 200, body = MediaUploadResponse)),
+    request_body(content = UploadMediaBody, content_type = "multipart/form-data"),
+    responses(
+        (status = 200, body = MediaUploadResponse, description = "Upload successful"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
     tag = "Media",
     security(("BearerAuth" = []))
 )]

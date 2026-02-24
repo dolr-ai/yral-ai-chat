@@ -47,6 +47,7 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::models::requests::CreateInfluencerRequest,
         crate::models::requests::GenerateImageRequest,
         crate::models::requests::UpdateSystemPromptRequest,
+        crate::models::requests::UploadMediaBody,
         // Responses
         crate::models::responses::InfluencerBasicInfo,
         crate::models::responses::InfluencerBasicInfoV2,
@@ -71,6 +72,14 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::models::responses::SystemStatistics,
         crate::models::responses::MediaUploadResponse,
         crate::models::responses::DeleteConversationResponse,
+        // WebSocket event schemas
+        crate::models::responses::NewMessageEvent,
+        crate::models::responses::NewMessageEventData,
+        crate::models::responses::ConversationReadEvent,
+        crate::models::responses::ConversationReadEventData,
+        crate::models::responses::TypingStatusEvent,
+        crate::models::responses::TypingStatusEventData,
+        crate::models::responses::WsDocsResponse,
         // Entities (enums + shared types)
         crate::models::entities::MessageType,
         crate::models::entities::MessageRole,

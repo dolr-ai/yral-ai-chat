@@ -20,6 +20,7 @@ pub struct SendMessageRequest {
     pub message_type: String,
 
     #[validate(length(max = 4000, message = "content exceeds 4000 characters"))]
+    #[schema(default = "")]
     pub content: Option<String>,
 
     pub media_urls: Option<Vec<String>>,
@@ -77,7 +78,9 @@ impl SendMessageRequest {
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct PaginationParams {
+    #[param(default = 50)]
     pub limit: Option<i64>,
+    #[param(default = 0)]
     pub offset: Option<i64>,
 }
 
@@ -92,7 +95,9 @@ impl PaginationParams {
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListConversationsParams {
+    #[param(default = 20)]
     pub limit: Option<i64>,
+    #[param(default = 0)]
     pub offset: Option<i64>,
     pub influencer_id: Option<String>,
 }
@@ -108,8 +113,11 @@ impl ListConversationsParams {
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListMessagesParams {
+    #[param(default = 50)]
     pub limit: Option<i64>,
+    #[param(default = 0)]
     pub offset: Option<i64>,
+    #[param(default = "desc")]
     pub order: Option<String>,
 }
 
@@ -158,7 +166,11 @@ pub struct CreateInfluencerRequest {
     pub category: Option<String>,
     pub avatar_url: Option<String>,
     pub bot_principal_id: String,
+    #[allow(dead_code)]
     pub parent_principal_id: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub is_nsfw: bool,
 }
 
 fn default_personality_traits() -> serde_json::Value {
@@ -174,4 +186,16 @@ pub struct GenerateImageRequest {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateSystemPromptRequest {
     pub system_instructions: String,
+}
+
+/// Multipart form body for media upload
+#[derive(ToSchema)]
+#[allow(dead_code)]
+pub struct UploadMediaBody {
+    /// The file to upload (image or audio)
+    #[schema(format = Binary)]
+    pub file: String,
+    /// Media type: "image" or "audio"
+    #[schema(rename = "type")]
+    pub media_type: String,
 }
