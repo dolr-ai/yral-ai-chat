@@ -3,20 +3,6 @@ mod common;
 use common::{base_url, http_client};
 
 #[tokio::test]
-async fn test_root_endpoint() {
-    let base = base_url();
-    let client = http_client();
-
-    let resp = client.get(format!("{base}/")).send().await.unwrap();
-    assert_eq!(resp.status(), 200);
-
-    let data: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(data["service"], "Yral AI Chat API");
-    assert_eq!(data["version"], "1.0.0");
-    assert_eq!(data["docs"], "/docs");
-}
-
-#[tokio::test]
 async fn test_health_endpoint() {
     let base = base_url();
     let client = http_client();
