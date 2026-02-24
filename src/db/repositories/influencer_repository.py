@@ -5,7 +5,9 @@ Repository for AI Influencer operations
 import json
 
 from src.db.base import db
+from src.core.exceptions import ConflictException
 from src.models.entities import AIInfluencer, InfluencerStatus
+import sqlite3
 
 
 class InfluencerRepository:
@@ -260,26 +262,34 @@ class InfluencerRepository:
         is_active_str = influencer.is_active.value
         is_nsfw_int = 1 if influencer.is_nsfw else 0
 
-        row = await db.fetchone(
-            query,
-            influencer.id,
-            influencer.name,
-            influencer.display_name,
-            influencer.avatar_url,
-            influencer.description,
-            influencer.category,
-            influencer.system_instructions,
-            personality_traits_json,
-            influencer.initial_greeting,
-            suggested_messages_json,
-            is_active_str,
-            is_nsfw_int,
-            influencer.parent_principal_id,
-            influencer.source,
-            influencer.created_at,
-            influencer.updated_at,
-            metadata_json,
-        )
+        try:
+            row = await db.fetchone(
+                query,
+                influencer.id,
+                influencer.name,
+                influencer.display_name,
+                influencer.avatar_url,
+                influencer.description,
+                influencer.category,
+                influencer.system_instructions,
+                personality_traits_json,
+                influencer.initial_greeting,
+                suggested_messages_json,
+                is_active_str,
+                is_nsfw_int,
+                influencer.parent_principal_id,
+                influencer.source,
+                influencer.created_at,
+                influencer.updated_at,
+                metadata_json,
+            )
+        except sqlite3.IntegrityError as e:
+            if "ai_influencers.name" in str(e):
+                raise ConflictException(
+                    message=f"Influencer with name '{influencer.name}' already exists",
+                    details={"field": "name"}
+                )
+            raise
 
         if not row:
             raise RuntimeError("Failed to create influencer")
@@ -354,7 +364,7 @@ class InfluencerRepository:
             display_name=row["display_name"],
             avatar_url=row["avatar_url"],
             description=row["description"],
-            is_active=InfluencerStatus.ACTIVE,
+            is_active=InfluencerStatus(row["is_active"]),
             parent_principal_id=row.get("parent_principal_id"),
             source=row.get("source") or "admin-created-influencer",
             created_at=row["created_at"],
