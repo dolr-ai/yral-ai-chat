@@ -170,7 +170,7 @@ jobs:
             docker compose up -d
 
             echo 'Waiting for services to start...'
-            sleep 15
+            sleep 30
 
             echo 'Services status:'
             docker compose ps
@@ -185,7 +185,7 @@ jobs:
             echo ''
             echo '=== Health Check ==='
             for i in 1 2 3 4 5 6 7 8 9 10; do
-              if curl -sf http://127.0.0.1:8000/health > /dev/null 2>&1; then
+              if curl -sf http://127.0.0.1:80/health > /dev/null 2>&1; then
                 echo 'Health check passed!'
                 exit 0
               fi
