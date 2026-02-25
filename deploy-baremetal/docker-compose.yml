@@ -56,7 +56,7 @@ services:
       LITESTREAM_BUCKET: ${LITESTREAM_BUCKET}
       LITESTREAM_ENDPOINT: ${LITESTREAM_ENDPOINT}
       LITESTREAM_REGION: ${LITESTREAM_REGION}
-      LITESTREAM_PATH: ${LITESTREAM_PATH:-yral-ai-chat/db}
+      LITESTREAM_PATH: ${LITESTREAM_PATH:-yral-ai-chat/yral_chat.db}
     volumes:
       - app_data:/app/data
     networks:
