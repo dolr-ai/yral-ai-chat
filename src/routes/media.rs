@@ -1,0 +1,110 @@
+use std::sync::Arc;
+
+use axum::Json;
+use axum::extract::{Multipart, State};
+use chrono::Utc;
+
+use crate::AppState;
+use crate::error::{AppError, ErrorBody};
+use crate::middleware::AuthenticatedUser;
+use crate::models::requests::UploadMediaBody;
+use crate::models::responses::MediaUploadResponse;
+use crate::services::storage::{file_extension, mime_from_extension};
+
+/// Upload a media file (image or audio) via multipart form
+#[utoipa::path(
+    post,
+    path = "/api/v1/media/upload",
+    request_body(content = UploadMediaBody, content_type = "multipart/form-data"),
+    responses(
+        (status = 200, body = MediaUploadResponse, description = "Upload successful"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
+    tag = "Media",
+    security(("BearerAuth" = []))
+)]
+pub async fn upload_media(
+    State(state): State<Arc<AppState>>,
+    user: AuthenticatedUser,
+    mut multipart: Multipart,
+) -> Result<Json<MediaUploadResponse>, AppError> {
+    let mut file_bytes: Option<Vec<u8>> = None;
+    let mut file_name: Option<String> = None;
+    let mut content_type: Option<String> = None;
+    let mut media_type: Option<String> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::bad_request(format!("Invalid multipart data: {e}")))?
+    {
+        let name = field.name().unwrap_or("").to_string();
+        match name.as_str() {
+            "file" => {
+                file_name = field.file_name().map(|s| s.to_string());
+                content_type = field.content_type().map(|s| s.to_string());
+                file_bytes = Some(
+                    field
+                        .bytes()
+                        .await
+                        .map_err(|e| AppError::bad_request(format!("Failed to read file: {e}")))?
+                        .to_vec(),
+                );
+            }
+            "type" => {
+                media_type = Some(
+                    field
+                        .text()
+                        .await
+                        .map_err(|e| AppError::bad_request(format!("Failed to read type: {e}")))?,
+                );
+            }
+            _ => {}
+        }
+    }
+
+    let file_bytes =
+        file_bytes.ok_or_else(|| AppError::bad_request("Missing 'file' field in upload"))?;
+    let media_type =
+        media_type.ok_or_else(|| AppError::bad_request("Missing 'type' field in upload"))?;
+    let file_name = file_name.unwrap_or("upload".to_string());
+
+    if media_type != "image" && media_type != "audio" {
+        return Err(AppError::validation_error(
+            "Invalid type. Must be 'image' or 'audio'",
+        ));
+    }
+
+    let ext = file_extension(&file_name);
+    let size = file_bytes.len() as u64;
+
+    // Validate
+    if media_type == "image" {
+        state.storage.validate_image(&file_name, size)?;
+    } else {
+        state.storage.validate_audio(&file_name, size)?;
+    }
+
+    // Determine content type
+    let ct = content_type.unwrap_or_else(|| mime_from_extension(&ext).to_string());
+
+    // Upload to S3
+    let (storage_key, _) = state
+        .storage
+        .upload(&user.user_id, file_bytes, &ext, &ct)
+        .await?;
+
+    // Generate presigned URL for immediate access
+    let presigned_url = state.storage.generate_presigned_url(&storage_key).await;
+
+    Ok(Json(MediaUploadResponse {
+        url: presigned_url,
+        storage_key,
+        media_type,
+        size,
+        mime_type: ct,
+        duration_seconds: None,
+        uploaded_at: Utc::now().naive_utc(),
+    }))
+}
