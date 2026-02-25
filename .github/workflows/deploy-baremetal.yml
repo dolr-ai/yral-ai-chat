@@ -165,7 +165,7 @@ jobs:
             LITESTREAM_BUCKET='${{ secrets.LITESTREAM_BUCKET }}' \
             LITESTREAM_ENDPOINT='${{ secrets.LITESTREAM_ENDPOINT }}' \
             LITESTREAM_REGION='${{ secrets.LITESTREAM_REGION }}' \
-            LITESTREAM_PATH='yral-ai-chat/production' \
+            LITESTREAM_PATH='yral-ai-chat/yral_chat.db' \
             docker compose up -d
 
             echo 'Waiting for services to start...'
