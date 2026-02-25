@@ -905,8 +905,9 @@ fn spawn_notifications(
             unread_count,
         );
 
-        let truncated = if msg_content.len() > 100 {
-            format!("{}...", &msg_content[..100])
+        let truncated = if msg_content.chars().count() > 100 {
+            let s: String = msg_content.chars().take(100).collect();
+            format!("{s}...")
         } else {
             msg_content
         };
