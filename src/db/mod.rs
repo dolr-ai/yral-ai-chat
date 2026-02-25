@@ -1,17 +1,20 @@
+pub mod pg_write;
 pub mod repositories;
 
 use std::path::Path;
 use std::time::Instant;
 
 use sqlx::migrate::Migrator;
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::{ConnectOptions, SqlitePool};
+use sqlx::{ConnectOptions, PgPool, SqlitePool};
 
 use crate::config::Settings;
 
 #[derive(Clone)]
 pub struct Database {
     pub pool: SqlitePool,
+    pub pg_pool: Option<PgPool>,
     pub db_path: String,
 }
 
@@ -55,14 +58,9 @@ impl Database {
             .connect_with(connect_options)
             .await?;
 
-        let db = Self {
-            pool,
-            db_path: db_path.clone(),
-        };
-
         // Verify connection
         let version: (String,) = sqlx::query_as("SELECT sqlite_version()")
-            .fetch_one(&db.pool)
+            .fetch_one(&pool)
             .await?;
         tracing::info!(
             sqlite_version = %version.0,
@@ -71,7 +69,27 @@ impl Database {
             "Connected to SQLite database"
         );
 
-        Ok(db)
+        // Connect to PostgreSQL if configured
+        let pg_pool = if let Some(ref pg_url) = settings.pg_database_url {
+            match connect_pg(pg_url, settings.pg_pool_size, settings.pg_pool_timeout).await {
+                Ok(pg) => {
+                    tracing::info!(pool_size = settings.pg_pool_size, "Connected to PostgreSQL");
+                    Some(pg)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to connect to PostgreSQL (continuing without PG)");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        Ok(Self {
+            pool,
+            pg_pool,
+            db_path: db_path.clone(),
+        })
     }
 
     /// Run an immediate PASSIVE WAL checkpoint (e.g., on startup to drain existing WAL).
@@ -149,6 +167,28 @@ impl Database {
             },
         }
     }
+
+    pub async fn pg_health_check(&self) -> Option<HealthCheckResult> {
+        let pg = self.pg_pool.as_ref()?;
+        let start = Instant::now();
+        match sqlx::query_scalar::<_, i32>("SELECT 1")
+            .fetch_one(pg)
+            .await
+        {
+            Ok(_) => Some(HealthCheckResult {
+                status: "up".to_string(),
+                latency_ms: Some(start.elapsed().as_millis() as i64),
+                error: None,
+                size_mb: 0.0,
+            }),
+            Err(e) => Some(HealthCheckResult {
+                status: "down".to_string(),
+                latency_ms: None,
+                error: Some(e.to_string()),
+                size_mb: 0.0,
+            }),
+        }
+    }
 }
 
 pub struct HealthCheckResult {
@@ -169,8 +209,40 @@ pub async fn run_migrations(pool: &SqlitePool, migrations_dir: &str) -> Result<(
     let migrator = Migrator::new(path).await?;
     migrator.run(pool).await?;
 
-    tracing::info!("Migrations applied successfully");
+    tracing::info!("SQLite migrations applied successfully");
     Ok(())
+}
+
+pub async fn run_pg_migrations(pool: &PgPool, migrations_dir: &str) -> Result<(), sqlx::Error> {
+    let path = Path::new(migrations_dir);
+
+    if !path.exists() {
+        tracing::warn!(path = %migrations_dir, "PG migrations directory not found, skipping");
+        return Ok(());
+    }
+
+    let migrator = Migrator::new(path).await?;
+    migrator.run(pool).await?;
+
+    tracing::info!("PostgreSQL migrations applied successfully");
+    Ok(())
+}
+
+async fn connect_pg(url: &str, pool_size: u32, timeout_secs: u64) -> Result<PgPool, sqlx::Error> {
+    let connect_options: PgConnectOptions = url.parse::<PgConnectOptions>()?.disable_statement_logging();
+
+    let pool = PgPoolOptions::new()
+        .max_connections(pool_size)
+        .acquire_timeout(std::time::Duration::from_secs(timeout_secs))
+        .connect_with(connect_options)
+        .await?;
+
+    // Verify connection
+    sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&pool)
+        .await?;
+
+    Ok(pool)
 }
 
 fn resolve_db_path(db_path: &str) -> String {
