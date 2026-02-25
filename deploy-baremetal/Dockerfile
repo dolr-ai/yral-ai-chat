@@ -19,13 +19,14 @@ RUN wget -q https://github.com/benbjohnson/litestream/releases/download/v0.3.13/
     && chmod +x /usr/local/bin/litestream
 
 # Create data directory for SQLite
-RUN mkdir -p /app/data /app/migrations/sqlite
+RUN mkdir -p /app/data /app/migrations/sqlite /app/migrations/postgres
 
 # Copy the binary
 COPY ./target/x86_64-unknown-linux-gnu/release/yral-ai-chat .
 
 # Copy migrations
 COPY ./migrations/sqlite/ /app/migrations/sqlite/
+COPY ./migrations/postgres/ /app/migrations/postgres/
 
 # Copy Litestream config
 COPY ./deploy-baremetal/litestream.yml /etc/litestream.yml
