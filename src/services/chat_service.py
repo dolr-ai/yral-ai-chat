@@ -66,7 +66,7 @@ class ChatService:
     async def create_conversation(self, user_id: str, influencer_id: str) -> tuple[Conversation, bool]:
         """Create a new conversation or return existing one"""
         influencer = await self.influencer_repo.get_by_id(influencer_id)
-        if not influencer or influencer.is_active == InfluencerStatus.DISCONTINUED:
+        if not influencer:
             raise NotFoundException("Influencer not found")
 
         existing = await self.conversation_repo.get_existing(user_id, influencer_id)

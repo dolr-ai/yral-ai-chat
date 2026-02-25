@@ -3,9 +3,7 @@ Repository for AI Influencer operations
 """
 
 import json
-import sqlite3
 
-from src.core.exceptions import ConflictException
 from src.db.base import db
 from src.models.entities import AIInfluencer, InfluencerStatus
 
@@ -119,7 +117,7 @@ class InfluencerRepository:
     async def list_trending(self, limit: int = 50, offset: int = 0) -> list[AIInfluencer]:
         """List influencers sorted by total message count (descending)"""
         # CRITICAL: We use scalar subqueries here instead of LEFT JOINs to prevent OOM
-        # SQLite materializes joins in memory. Joining the massive 'messages' table
+        # SQLite materializes joins in memory. Joining the massive 'messages' table 
         # causes uvicorn to exceed the 8GB memory limit and crash.
         # This scalar approach takes ~1000ms with the idx_messages_conv_role index,
         # which is fast enough since the result is cached behind an asyncio.Lock.
@@ -262,34 +260,26 @@ class InfluencerRepository:
         is_active_str = influencer.is_active.value
         is_nsfw_int = 1 if influencer.is_nsfw else 0
 
-        try:
-            row = await db.fetchone(
-                query,
-                influencer.id,
-                influencer.name,
-                influencer.display_name,
-                influencer.avatar_url,
-                influencer.description,
-                influencer.category,
-                influencer.system_instructions,
-                personality_traits_json,
-                influencer.initial_greeting,
-                suggested_messages_json,
-                is_active_str,
-                is_nsfw_int,
-                influencer.parent_principal_id,
-                influencer.source,
-                influencer.created_at,
-                influencer.updated_at,
-                metadata_json,
-            )
-        except sqlite3.IntegrityError as e:
-            if "ai_influencers.name" in str(e):
-                raise ConflictException(
-                    message=f"Influencer with name '{influencer.name}' already exists",
-                    details={"field": "name"}
-                )
-            raise
+        row = await db.fetchone(
+            query,
+            influencer.id,
+            influencer.name,
+            influencer.display_name,
+            influencer.avatar_url,
+            influencer.description,
+            influencer.category,
+            influencer.system_instructions,
+            personality_traits_json,
+            influencer.initial_greeting,
+            suggested_messages_json,
+            is_active_str,
+            is_nsfw_int,
+            influencer.parent_principal_id,
+            influencer.source,
+            influencer.created_at,
+            influencer.updated_at,
+            metadata_json,
+        )
 
         if not row:
             raise RuntimeError("Failed to create influencer")
@@ -364,7 +354,7 @@ class InfluencerRepository:
             display_name=row["display_name"],
             avatar_url=row["avatar_url"],
             description=row["description"],
-            is_active=InfluencerStatus(row["is_active"]),
+            is_active=InfluencerStatus.ACTIVE,
             parent_principal_id=row.get("parent_principal_id"),
             source=row.get("source") or "admin-created-influencer",
             created_at=row["created_at"],
