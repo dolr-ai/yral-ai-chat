@@ -9,7 +9,7 @@
 }
 
 # Main HTTPS service
-ai-chat.yral.com {
+chat.yral.com {
     # HTTP reverse proxy
     reverse_proxy yral-ai-chat:8000 {
         # Headers
