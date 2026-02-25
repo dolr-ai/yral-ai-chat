@@ -10,10 +10,15 @@ pub struct Settings {
     pub host: String,
     pub port: u16,
 
-    // Database
+    // Database (SQLite)
     pub database_path: String,
     pub database_pool_size: u32,
     pub database_pool_timeout: u64,
+
+    // PostgreSQL (optional dual-write)
+    pub pg_database_url: Option<String>,
+    pub pg_pool_size: u32,
+    pub pg_pool_timeout: u64,
 
     // JWT
     pub jwt_secret_key: String,
@@ -102,6 +107,16 @@ impl Settings {
                 .unwrap_or("60".into())
                 .parse()
                 .unwrap_or(60),
+
+            pg_database_url: env::var("PG_DATABASE_URL").ok().filter(|s| !s.is_empty()),
+            pg_pool_size: env::var("PG_POOL_SIZE")
+                .unwrap_or("5".into())
+                .parse()
+                .unwrap_or(5),
+            pg_pool_timeout: env::var("PG_POOL_TIMEOUT")
+                .unwrap_or("10".into())
+                .parse()
+                .unwrap_or(10),
 
             jwt_secret_key: env::var("JWT_SECRET_KEY").expect("JWT_SECRET_KEY is required"),
             jwt_algorithm: env::var("JWT_ALGORITHM").unwrap_or("HS256".into()),
