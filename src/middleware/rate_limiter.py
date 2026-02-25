@@ -70,7 +70,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     Limits requests per minute and per hour for each user/IP
     """
 
-    def __init__(self, app):
+    def __init__(self, app) -> None:
         super().__init__(app)
         self.buckets: dict[str, tuple[TokenBucket, TokenBucket]] = defaultdict(
             lambda: (

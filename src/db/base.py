@@ -35,6 +35,7 @@ class ConnectionPool:
         self.timeout = timeout
         self._pool: asyncio.Queue[aiosqlite.Connection] = asyncio.Queue(maxsize=pool_size)
         self._created_connections = 0
+
     async def initialize(self):
         """Initialize the connection pool"""
         # Create first connection sequentially to ensure DB is in WAL mode and safe
@@ -47,23 +48,19 @@ class ConnectionPool:
         if self.pool_size > 1:
             tasks = [self._create_connection() for _ in range(self.pool_size - 1)]
             connections = await asyncio.gather(*tasks)
-            
+
             for conn in connections:
                 await self._pool.put(conn)
 
     async def _create_connection(self) -> aiosqlite.Connection:
         """Create a new database connection"""
         busy_timeout_ms = int(self.timeout * 1000)
-        conn = await aiosqlite.connect(
-            self.db_path,
-            timeout=busy_timeout_ms / 1000.0,
-            isolation_level=None
-        )
+        conn = await aiosqlite.connect(self.db_path, timeout=busy_timeout_ms / 1000.0, isolation_level=None)
 
         await conn.execute("PRAGMA foreign_keys = ON")
-        
+
         actual_timeout = max(busy_timeout_ms, 60000)
-        
+
         if self.db_path != ":memory:":
             try:
                 await conn.execute("PRAGMA journal_mode = WAL")
@@ -78,10 +75,10 @@ class ConnectionPool:
             # Setting to 0 gives Litestream exclusive ownership of checkpointing —
             # its own forced-truncate mechanism coordinates safely with its own locks.
             await conn.execute("PRAGMA wal_autocheckpoint = 0")
-            
+
             # Keep journal size limit reasonable (64MB)
             await conn.execute("PRAGMA journal_size_limit = 67108864")
-            
+
             # Timeout handling
             # We set a high busy_timeout to allow queuing during checkpoints
             actual_timeout = max(busy_timeout_ms, 60000)
@@ -92,9 +89,9 @@ class ConnectionPool:
             # across 10 pool connections was a major OOM contributor.
             await conn.execute("PRAGMA mmap_size = 33554432")  # 32MB
         # Reduced from 64MB to 16MB to lower per-connection memory footprint.
-        await conn.execute("PRAGMA cache_size = -16000")    # 16MB (negative value = kb)
+        await conn.execute("PRAGMA cache_size = -16000")  # 16MB (negative value = kb)
         await conn.execute("PRAGMA temp_store = MEMORY")
-        
+
         # Verify timeout setting
         async with conn.execute("PRAGMA busy_timeout") as cursor:
             row = await cursor.fetchone()
@@ -152,28 +149,30 @@ class Database:
         logger.info("Applying migrations to in-memory database...")
         project_root = Path(__file__).parent.parent.parent
         migrations_dir = project_root / "migrations" / "sqlite"
-        
-        await conn.execute("CREATE TABLE IF NOT EXISTS _migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
-        
+
+        await conn.execute(
+            "CREATE TABLE IF NOT EXISTS _migrations (filename TEXT PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+        )
+
         applied_rows = await conn.execute_fetchall("SELECT filename FROM _migrations")
         applied = {row[0] for row in applied_rows}
-        
+
         # Sort files to ensure order
         if not migrations_dir.exists():
-             logger.warning(f"Migrations directory not found: {migrations_dir}")
-             return
+            logger.warning(f"Migrations directory not found: {migrations_dir}")
+            return
 
         migration_files = sorted([f.name for f in migrations_dir.iterdir() if f.name.endswith(".sql")])
-        
+
         for filename in migration_files:
             if filename in applied:
                 continue
-                
+
             logger.info(f"Applying migration: {filename}")
             file_path = migrations_dir / filename
             with file_path.open() as f:
                 sql_script = f.read()
-                
+
             try:
                 await conn.executescript(sql_script)
                 await conn.execute("INSERT INTO _migrations (filename) VALUES (?)", (filename,))
@@ -187,7 +186,7 @@ class Database:
         """Resolve relative database path to absolute path based on project root"""
         if db_path == ":memory:":
             return db_path
-            
+
         if Path(db_path).is_absolute():
             return db_path
 
@@ -200,7 +199,7 @@ class Database:
         try:
             raw_db_path = os.getenv("TEST_DATABASE_PATH", settings.database_path)
             self.db_path = self._resolve_db_path(raw_db_path)
-            
+
             # Ensure the database directory exists (skip for in-memory)
             if self.db_path != ":memory:":
                 Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -210,12 +209,8 @@ class Database:
             )
             await self._pool.initialize()
 
-            logger.info(
-                f"Connected to SQLite database: {self.db_path} "
-                f"(pool size: {settings.database_pool_size})"
-            )
+            logger.info(f"Connected to SQLite database: {self.db_path} " f"(pool size: {settings.database_pool_size})")
             db_connections_active.set(settings.database_pool_size)
-
 
             conn = await self._pool.acquire()
             try:
@@ -265,8 +260,7 @@ class Database:
                         row = await cursor.fetchone()
                         if row:
                             logger.info(
-                                f"Periodic WAL checkpoint: log={row[1]} pages, "
-                                f"checkpointed={row[2]}, busy={row[0]}"
+                                f"Periodic WAL checkpoint: log={row[1]} pages, " f"checkpointed={row[2]}, busy={row[0]}"
                             )
                 finally:
                     await self._pool.release(conn)
@@ -285,8 +279,7 @@ class Database:
                     row = await cursor.fetchone()
                     if row:
                         logger.info(
-                            f"Eager WAL checkpoint: log={row[1]} pages, "
-                            f"checkpointed={row[2]}, busy={row[0]}"
+                            f"Eager WAL checkpoint: log={row[1]} pages, " f"checkpointed={row[2]}, busy={row[0]}"
                         )
             finally:
                 await self._pool.release(conn)
@@ -298,11 +291,11 @@ class Database:
         if not self._pool:
             raise RuntimeError("Database connection pool not initialized")
         query = self._convert_query(query)
-        
+
         start_wait = time.time()
         conn = await self._pool.acquire()
         wait_duration_ms = int((time.time() - start_wait) * 1000)
-        
+
         max_retries = 10
         retry_delay = 0.2
         last_error: Exception | None = None
@@ -315,10 +308,10 @@ class Database:
                     await conn.execute("BEGIN IMMEDIATE")
                     async with conn.execute(query, args) as cursor:
                         await conn.commit()
-                        
+
                         exec_duration_ms = int((time.time() - start_exec) * 1000)
                         total_duration_ms = wait_duration_ms + exec_duration_ms
-                        
+
                         db_query_duration_seconds.labels(operation="execute").observe(exec_duration_ms / 1000.0)
 
                         if total_duration_ms > 100:
@@ -328,7 +321,7 @@ class Database:
                                 f"exec_query={exec_duration_ms}ms, "
                                 f"attempt={attempt + 1}. Query: {query[:200]}"
                             )
-                        
+
                         db_query_duration_seconds.labels(operation="execute").observe(exec_duration_ms / 1000.0)
                         return f"Rows affected: {cursor.rowcount}"
 
@@ -339,14 +332,16 @@ class Database:
                         await conn.rollback()
                     except Exception as rollback_err:
                         logger.error(f"Failed to rollback after execution error: {rollback_err}")
-                        
+
                     error_str = str(e).lower()
                     if ("database is locked" in error_str or "locked" in error_str) and attempt < max_retries - 1:
-                        actual_delay = retry_delay * (2 ** attempt) + (secrets.SystemRandom().random() * 0.5)
-                        logger.warning(f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})")
+                        actual_delay = retry_delay * (2**attempt) + (secrets.SystemRandom().random() * 0.5)
+                        logger.warning(
+                            f"Database locked, retrying in {actual_delay:.2f}s (attempt {attempt + 1}/{max_retries})"
+                        )
                         await asyncio.sleep(actual_delay)
                         continue
-                    
+
                     if "foreign key" in error_str:
                         logger.error(
                             f"FOREIGN KEY constraint failed. Query: {query[:200]}, "
@@ -381,7 +376,6 @@ class Database:
 
                 if duration_ms > 100:
                     logger.warning(f"Slow query ({duration_ms}ms, {len(row_list)} rows): {query[:200]}")
-                
 
                 return row_list
         except Exception as e:
@@ -409,7 +403,7 @@ class Database:
                 db_query_duration_seconds.labels(operation="fetchone").observe(duration_ms / 1000.0)
                 if duration_ms > 50:
                     logger.warning(f"Slow query ({duration_ms}ms): {query[:200]}")
-                
+
                 return dict(row) if row else None
         except Exception as e:
             logger.error(f"Fetchone error: {e}, Query: {query[:100]}")

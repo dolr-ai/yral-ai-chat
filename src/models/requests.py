@@ -86,7 +86,7 @@ class SendMessageRequest(BaseModel):
     client_message_id: str | None = Field(
         default=None,
         description="Optional unique identifier for deduplication (UUID format recommended)",
-        examples=["550e8400-e29b-41d4-a716-446655440000"]
+        examples=["550e8400-e29b-41d4-a716-446655440000"],
     )
 
     @field_validator("message_type", mode="before")
@@ -197,7 +197,9 @@ class CreateInfluencerRequest(BaseModel):
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    name: str = Field(..., min_length=3, max_length=15, description="Internal name (slug) - 3-15 alphanumeric characters")
+    name: str = Field(
+        ..., min_length=3, max_length=15, description="Internal name (slug) - 3-15 alphanumeric characters"
+    )
     display_name: str = Field(..., min_length=1, max_length=100, description="Display name")
     description: str | None = Field(None, max_length=500, description="Short bio")
     system_instructions: str = Field(..., description="System prompts for the AI")

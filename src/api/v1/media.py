@@ -41,20 +41,21 @@ router = APIRouter(prefix="/api/v1/media", tags=["Media"])
     },
 )
 async def upload_media(
+    *,
     file: UploadFile = File(..., description="File to upload"),  # noqa: B008
     media_type: str = Form(
         ..., alias="type", pattern="^(image|audio)$", description="Type of media: 'image' or 'audio'"
     ),
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    storage_service: StorageServiceDep = None,
+    storage_service: StorageServiceDep,
 ):
     """
     Upload media file (image or audio) to cloud storage.
 
     Returns a presigned URL for immediate access and a stable storage_key.
     """
-    if not file:
-        raise HTTPException(status_code=400, detail="No file provided")
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="No file or filename provided")
 
     file_content = await file.read()
     file_size = len(file_content)

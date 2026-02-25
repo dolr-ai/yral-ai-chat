@@ -14,18 +14,14 @@ class BaseAPIException(HTTPException):
         message: str,
         error_code: str,
         details: dict[str, object] | None = None,
-        headers: dict[str, str] | None = None
+        headers: dict[str, str] | None = None,
     ):
         self.error_code = error_code
         self.details = details or {}
         super().__init__(
             status_code=status_code,
-            detail={
-                "error": error_code,
-                "message": message,
-                "details": self.details
-            },
-            headers=headers
+            detail={"error": error_code, "message": message, "details": self.details},
+            headers=headers,
         )
 
 
@@ -89,32 +85,25 @@ class DatabaseException(BaseAPIException):
     """Database error exception"""
 
     def __init__(self, message: str = "Database error", details: dict[str, object] | None = None):
-        super().__init__(
-            status_code=500,
-            message=message,
-            error_code="database_error",
-            details=details
-        )
+        super().__init__(status_code=500, message=message, error_code="database_error", details=details)
 
 
 class ConflictException(BaseAPIException):
     """Resource conflict exception"""
+
     def __init__(self, message: str = "Resource conflict", details: dict[str, object] | None = None):
-        super().__init__(
-            status_code=409,
-            message=message,
-            error_code="conflict",
-            details=details
-        )
+        super().__init__(status_code=409, message=message, error_code="conflict", details=details)
 
 
 class ServiceUnavailableException(BaseAPIException):
     """Service unavailable exception"""
-    def __init__(self, message: str = "Service unavailable", details: dict[str, object] | None = None, headers: dict[str, str] | None = None):
+
+    def __init__(
+        self,
+        message: str = "Service unavailable",
+        details: dict[str, object] | None = None,
+        headers: dict[str, str] | None = None,
+    ):
         super().__init__(
-            status_code=503,
-            message=message,
-            error_code="service_unavailable",
-            details=details,
-            headers=headers
+            status_code=503, message=message, error_code="service_unavailable", details=details, headers=headers
         )

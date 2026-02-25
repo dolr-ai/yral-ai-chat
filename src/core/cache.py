@@ -188,7 +188,7 @@ def cached(ttl: int = 300, key_prefix: str = ""):
             # 2. Cache miss -> Stampede Protection
             # Get a unique lock for this specific key
             lock = cache.get_lock(key)
-            
+
             async with lock:
                 # 3. Double-check pattern
                 # If another request was also waiting for the lock, it might have
@@ -213,7 +213,7 @@ def cached(ttl: int = 300, key_prefix: str = ""):
             """Invalidate all cache entries for this function"""
             invalidate_cache_pattern(f"{key_prefix}:{func.__name__}")
 
-        wrapper.invalidate_all = invalidate_all
+        wrapper.invalidate_all = invalidate_all  # type: ignore[attr-defined]
 
         return wrapper
 

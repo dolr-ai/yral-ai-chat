@@ -1,7 +1,9 @@
 """
 Google Gemini AI Client
 """
+
 import asyncio
+import logging
 import mimetypes
 import time
 from collections.abc import Callable
@@ -35,7 +37,7 @@ from src.models.internal import (
 from src.services.base_ai_client import BaseAIClient
 
 
-def _is_retryable_http_error(exception: Exception) -> bool:
+def _is_retryable_http_error(exception: BaseException) -> bool:
     """Check if an exception is a retryable HTTP error"""
     if isinstance(exception, httpx.HTTPStatusError):
         status_code = exception.response.status_code
@@ -72,10 +74,10 @@ def _gemini_retry_decorator[T](func: Callable[..., T]) -> Callable[..., T]:
     return retry(  # type: ignore[return-value]
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=2, max=60),
-        retry=retry_if_exception_type(ConnectionError | TimeoutError | httpx.RequestError)
+        retry=retry_if_exception_type((ConnectionError, TimeoutError, httpx.RequestError))
         | retry_if_exception(_is_retryable_http_error),
-        before_sleep=before_sleep_log(logger, "WARNING"),
-        after=after_log(logger, "INFO"),
+        before_sleep=before_sleep_log(logger, logging.WARNING),  # type: ignore[arg-type]
+        after=after_log(logger, logging.INFO),  # type: ignore[arg-type]
         reraise=True,
     )(func)
 
@@ -100,14 +102,16 @@ class GeminiClient(BaseAIClient):
         """
         try:
             timings: dict[str, float] = {}
-            user_message_str = str(params.user_message) if not isinstance(params.user_message, str) else params.user_message
+            user_message_str = (
+                str(params.user_message) if not isinstance(params.user_message, str) else params.user_message
+            )
 
             # Build contents for Gemini API (Native Google GenAI SDK)
             t0 = time.time()
             contents = await self._build_contents(
                 user_message_str,
                 params.conversation_history,  # type: ignore[arg-type]
-                params.media_urls
+                params.media_urls,
             )
             timings["build_contents"] = time.time() - t0
 
@@ -117,7 +121,7 @@ class GeminiClient(BaseAIClient):
                 params.system_instructions,
                 params.max_tokens,
                 response_mime_type=params.response_mime_type,
-                response_schema=params.response_schema
+                response_schema=params.response_schema,
             )
 
             timing_str = ", ".join(f"{k}={v*1000:.0f}ms" for k, v in timings.items())
@@ -143,12 +147,7 @@ class GeminiClient(BaseAIClient):
 
     def _get_media_part(self, url: str) -> GeminiPart:
         """Helper to create a media part with file_uri for GenAI types"""
-        return GeminiPart(
-            file_data=GeminiFileData(
-                file_uri=url,
-                mime_type=self._get_mime_type_from_url(url)
-            )
-        )
+        return GeminiPart(file_data=GeminiFileData(file_uri=url, mime_type=self._get_mime_type_from_url(url)))
 
     async def _build_contents(
         self, user_message: str, conversation_history: list[Message] | None, media_urls: list[str] | None
@@ -214,7 +213,7 @@ class GeminiClient(BaseAIClient):
         """Generate content using Gemini API with retry logic"""
         logger.info(f"Generating Gemini response with {len(contents)} messages")
 
-        config_args = {
+        config_args: dict[str, object] = {
             "max_output_tokens": max_tokens or settings.gemini_max_tokens,
             "temperature": settings.gemini_temperature,
         }
@@ -231,11 +230,9 @@ class GeminiClient(BaseAIClient):
         try:
             response = await asyncio.wait_for(
                 self.client.aio.models.generate_content(
-                    model=self.model_name,
-                    contents=contents,
-                    config=types.GenerateContentConfig(**config_args)
+                    model=self.model_name, contents=contents, config=types.GenerateContentConfig(**config_args)
                 ),
-                timeout=settings.gemini_timeout
+                timeout=settings.gemini_timeout,
             )
         except TimeoutError:
             logger.error(f"Gemini API call timed out after {settings.gemini_timeout} seconds")
@@ -244,7 +241,6 @@ class GeminiClient(BaseAIClient):
         response_text = response.text
         if response.candidates and response.candidates[0].finish_reason != types.FinishReason.STOP:
             logger.warning(f"Response finished with reason: {response.candidates[0].finish_reason} (expected STOP)")
-
 
         # Use tiktoken for accurate token counting
         if self.tokenizer:
@@ -257,7 +253,9 @@ class GeminiClient(BaseAIClient):
 
         return response_text, token_count
 
-    def _prepare_schema(self, schema: dict[str, object], root_schema: dict[str, object] | None = None) -> dict[str, object]:
+    def _prepare_schema(
+        self, schema: dict[str, object], root_schema: dict[str, object] | None = None
+    ) -> dict[str, object]:
         """
         Recursively fix Pydantic JSON schema to be compatible with Google GenAI SDK.
         - Resolves and inlines '$ref'
@@ -277,7 +275,7 @@ class GeminiClient(BaseAIClient):
             return self._handle_any_of(schema, root_schema)
 
         # 3. Process fields
-        new_schema = {}
+        new_schema: dict[str, object] = {}
         for k, v in schema.items():
             if k in ["title", "definitions", "$defs", "additionalProperties", "additional_properties"]:
                 continue
@@ -286,8 +284,7 @@ class GeminiClient(BaseAIClient):
                 new_schema[k] = self._prepare_schema(v, root_schema)
             elif isinstance(v, list):
                 new_schema[k] = [
-                    self._prepare_schema(item, root_schema) if isinstance(item, dict) else item
-                    for item in v
+                    self._prepare_schema(item, root_schema) if isinstance(item, dict) else item for item in v
                 ]
             else:
                 new_schema[k] = v
@@ -336,7 +333,7 @@ class GeminiClient(BaseAIClient):
 
             response = await self._transcribe_audio_with_link(audio_url, prompt)
 
-            transcription = response.text.strip()
+            transcription = str(response.text.strip())
             logger.info(f"Audio transcribed: {len(transcription)} characters")
             return transcription
         except Exception as e:
@@ -354,7 +351,7 @@ class GeminiClient(BaseAIClient):
     async def _extract_memories_with_retry(self, prompt: str) -> str:
         """Extract memories with retry logic"""
         response = await self.client.aio.models.generate_content(model=self.model_name, contents=prompt)
-        return response.text.strip()
+        return str(response.text.strip())
 
     async def health_check(self) -> AIProviderHealth:
         """Check Gemini API health"""

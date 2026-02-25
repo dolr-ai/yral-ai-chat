@@ -112,19 +112,17 @@ class Settings(BaseSettings):
         ge=0.0,
         le=1.0,
         alias="SENTRY_PROFILES_SAMPLE_RATE",
-        description="Profiling sample rate (0.0 to 1.0). Default: 1.0 (enabled)"
+        description="Profiling sample rate (0.0 to 1.0). Default: 1.0 (enabled)",
     )
 
     sentry_webhook_secret: str | None = Field(
         default=None,
         alias="SENTRY_WEBHOOK_SECRET",
-        description="Sentry integration Client Secret for webhook signature verification"
+        description="Sentry integration Client Secret for webhook signature verification",
     )
 
     google_chat_webhook_url: str | None = Field(
-        default=None,
-        alias="GOOGLE_CHAT",
-        description="Google Chat webhook URL for notifications"
+        default=None, alias="GOOGLE_CHAT", description="Google Chat webhook URL for notifications"
     )
 
     # ===========================================
@@ -167,4 +165,4 @@ class Settings(BaseSettings):
     )
 
 
-settings = Settings()
+settings = Settings()  # type: ignore[call-arg]

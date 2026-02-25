@@ -30,17 +30,18 @@ router = APIRouter(prefix="/api/v2/chat", tags=["Chat V2"])
     },
 )
 async def list_conversations(
+    *,
     limit: int = Query(default=20, ge=1, le=100, description="Number of conversations to return"),
     offset: int = Query(default=0, ge=0, description="Number of conversations to skip"),
     influencer_id: str | None = Query(default=None, description="Filter by specific influencer ID"),
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    message_repo: MessageRepositoryDep = None,
-    storage_service: StorageServiceDep = None,
+    chat_service: ChatServiceDep,
+    message_repo: MessageRepositoryDep,
+    storage_service: StorageServiceDep,
 ):
     """
     List user's conversations (V2)
-    
+
     Returns conversations with unread_count and last_message info.
     """
     conversations, _total = await chat_service.list_conversations(
@@ -51,17 +52,17 @@ async def list_conversations(
     )
 
     conversation_responses = []
-    
+
     for conv in conversations:
         conversation_responses.append(
             ConversationResponseV2(
                 id=conv.id,
                 user_id=conv.user_id,
-                influencer_id=conv.influencer.id,
+                influencer_id=str(conv.influencer.id) if conv.influencer else "00000000-0000-0000-0000-000000000000",
                 influencer=InfluencerBasicInfoV2(
-                    id=conv.influencer.id,
-                    display_name=conv.influencer.display_name,
-                    avatar_url=conv.influencer.avatar_url,
+                    id=str(conv.influencer.id) if conv.influencer else "00000000-0000-0000-0000-000000000000",
+                    display_name=conv.influencer.display_name if conv.influencer else "Unknown",
+                    avatar_url=conv.influencer.avatar_url if conv.influencer else None,
                     is_online=True,
                 ),
                 created_at=conv.created_at,

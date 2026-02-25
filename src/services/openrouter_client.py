@@ -42,9 +42,9 @@ def _is_retryable_http_error(exception: BaseException) -> bool:  # type: ignore[
         return True
 
     if hasattr(exception, "status_code"):
-        status_code = getattr(exception, "status_code", None)
-        if isinstance(status_code, int):
-            return status_code == 429 or (500 <= status_code < 600)
+        sc = getattr(exception, "status_code", None)
+        if isinstance(sc, int):
+            return sc == 429 or (500 <= sc < 600)
 
     error_str = str(exception).lower()
     retryable_patterns = [
@@ -98,7 +98,6 @@ class OpenRouterClient(BaseAIClient):
         self.http_client.timeout = settings.openrouter_timeout
         logger.debug(f"OpenRouter client initialized with model: {self.model_name}")
 
-
     @validate_call
     async def generate_response(self, params: LLMGenerateParams) -> AIResponse:
         """
@@ -111,14 +110,16 @@ class OpenRouterClient(BaseAIClient):
             AIResponse containing text and token_count
         """
         try:
-            user_message_str = str(params.user_message) if not isinstance(params.user_message, str) else params.user_message
+            user_message_str = (
+                str(params.user_message) if not isinstance(params.user_message, str) else params.user_message
+            )
 
             # Build messages for OpenAI-compatible API
             messages = await self._build_messages(
                 user_message_str,
                 params.system_instructions,
                 params.conversation_history,  # type: ignore[arg-type]
-                params.media_urls
+                params.media_urls,
             )
 
             # Convert models to dicts for HTTP request
@@ -135,10 +136,7 @@ class OpenRouterClient(BaseAIClient):
 
     def _build_image_content(self, image_url: str) -> OpenRouterContent:
         """Build image content for OpenAI-compatible API"""
-        return OpenRouterContent(
-            type="image_url",
-            image_url=OpenRouterImageURL(url=image_url)
-        )
+        return OpenRouterContent(type="image_url", image_url=OpenRouterImageURL(url=image_url))
 
     @_openrouter_retry_decorator
     async def _execute_api_call(self, messages: list[dict]) -> tuple[str, int]:
@@ -203,7 +201,7 @@ class OpenRouterClient(BaseAIClient):
 
         # Ensure data is bytes
         audio_bytes = (
-            audio_data["data"] if isinstance(audio_data["data"], bytes) else bytes(audio_data["data"])  # type: ignore[arg-type]
+            audio_data["data"] if isinstance(audio_data["data"], bytes) else bytes(audio_data["data"])  # type: ignore[call-overload]
         )
         base64_audio = base64.standard_b64encode(audio_bytes).decode("utf-8")
 
@@ -231,8 +229,7 @@ class OpenRouterClient(BaseAIClient):
 
         response.raise_for_status()
         data = response.json()
-        return data["choices"][0]["message"]["content"].strip()
-
+        return str(data["choices"][0]["message"]["content"].strip())
 
     async def health_check(self) -> AIProviderHealth:
         """Check OpenRouter API health"""
@@ -321,9 +318,7 @@ class OpenRouterClient(BaseAIClient):
                 messages.append(OpenRouterMessage(role=role, content=message_content))
 
         # Add current message with optional images
-        current_content = self._construct_message_content(
-            user_message, media_urls, max_images=5, warn_on_error=False
-        )
+        current_content = self._construct_message_content(user_message, media_urls, max_images=5, warn_on_error=False)
         messages.append(OpenRouterMessage(role="user", content=current_content))
 
         return messages

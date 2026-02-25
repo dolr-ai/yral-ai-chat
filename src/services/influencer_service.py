@@ -18,11 +18,7 @@ class InfluencerService:
 
     @validate_call
     @cached(ttl=120, key_prefix="influencers")  # Reduced from 600 to 120 to mitigate multi-worker staleness
-    async def list_influencers(
-        self,
-        limit: int = 50,
-        offset: int = 0
-    ) -> tuple[list[AIInfluencer], int]:
+    async def list_influencers(self, limit: int = 50, offset: int = 0) -> tuple[list[AIInfluencer], int]:
         """List all influencers (active and inactive, cached)"""
         influencers = await self.influencer_repo.list_all(limit=limit, offset=offset)
 
@@ -81,22 +77,18 @@ class InfluencerService:
         updated = await self.influencer_repo.update_system_prompt(influencer_id, system_instructions)
         if not updated:
             raise NotFoundException("Influencer not found")
-        
+
         # Clear caches
         self.get_influencer.invalidate_all()
         self.list_influencers.invalidate_all()
         if updated.is_nsfw:
             self.list_nsfw_influencers.invalidate_all()
-        
+
         return updated
 
     @validate_call
     @cached(ttl=600, key_prefix="trending_influencers")  # Cache for 10 minutes
-    async def list_trending_influencers(
-        self,
-        limit: int = 50,
-        offset: int = 0
-    ) -> tuple[list[AIInfluencer], int]:
+    async def list_trending_influencers(self, limit: int = 50, offset: int = 0) -> tuple[list[AIInfluencer], int]:
         """List influencers sorted by total message count (cached)"""
         influencers = await self.influencer_repo.list_trending(limit=limit, offset=offset)
         # We use a simplified count for trending (all influencers by default or reuse count_all)
@@ -109,12 +101,12 @@ class InfluencerService:
         deleted = await self.influencer_repo.soft_delete(influencer_id)
         if not deleted:
             raise NotFoundException("Influencer not found")
-        
+
         # Clear caches
         self.get_influencer.invalidate_all()
         self.list_influencers.invalidate_all()
         self.list_trending_influencers.invalidate_all()
         if deleted.is_nsfw:
             self.list_nsfw_influencers.invalidate_all()
-        
+
         return deleted

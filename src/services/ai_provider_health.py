@@ -21,7 +21,7 @@ class AIProviderHealthService:
     @validate_call
     async def check_provider_health(self, provider_name: str) -> AIProviderHealth:
         """Check specific AI provider API health"""
-        client = None
+        client: GeminiClient | OpenRouterClient | None = None
         if provider_name.lower() == "gemini":
             client = self.gemini_client
         elif provider_name.lower() == "openrouter":

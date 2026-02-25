@@ -2,6 +2,9 @@
 Chat endpoints
 """
 
+from datetime import datetime
+from typing import cast
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, WebSocket, WebSocketDisconnect
 from fastapi.security import HTTPBearer
 
@@ -13,13 +16,14 @@ from src.core.background_tasks import (
 )
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
 from src.core.websocket import manager
-from src.models.entities import InfluencerStatus, Message
+from src.models.entities import InfluencerStatus, Message, MessageRole
 from src.models.internal import SendMessageParams
 from src.models.requests import CreateConversationRequest, GenerateImageRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,
     DeleteConversationResponse,
     InfluencerBasicInfo,
+    LastMessageInfo,
     ListConversationsResponse,
     ListMessagesResponse,
     MarkConversationAsReadResponse,
@@ -35,9 +39,7 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 
 
 async def _convert_message_to_response(
-    msg: Message,
-    storage_service: StorageService,
-    presigned_urls: dict[str, str] | None = None
+    msg: Message, storage_service: StorageService, presigned_urls: dict[str, str] | None = None
 ) -> MessageResponse:
     """Convert Message to MessageResponse with presigned URLs"""
     presigned_media_urls = []
@@ -52,29 +54,45 @@ async def _convert_message_to_response(
         audio_url = presigned_urls.get(key, audio_url) if presigned_urls else audio_url
 
     return MessageResponse(
-        id=msg.id, role=msg.role, content=msg.content,
-        message_type=msg.message_type, media_urls=presigned_media_urls,
-        audio_url=audio_url, audio_duration_seconds=msg.audio_duration_seconds,
-        token_count=msg.token_count, created_at=msg.created_at,
-        status=msg.status, is_read=msg.is_read,
+        id=msg.id,
+        role=msg.role,
+        content=msg.content,
+        message_type=msg.message_type,
+        media_urls=presigned_media_urls,
+        audio_url=audio_url,
+        audio_duration_seconds=msg.audio_duration_seconds,
+        token_count=msg.token_count,
+        created_at=msg.created_at,
+        status=msg.status,
+        is_read=msg.is_read,
     )
 
 
 async def _convert_messages(
-    messages: list[Message],
-    storage_service: StorageService,
-    sort_newest: bool = True
+    messages: list[Message], storage_service: StorageService, sort_newest: bool = True
 ) -> list[MessageResponse]:
     """Helper to batch convert messages with presigned URLs"""
     if not messages:
         return []
-        
+
     presigned_map = await storage_service.get_presigned_urls_for_messages(messages)
-    
+
     if sort_newest:
         messages = sorted(messages, key=lambda m: m.created_at, reverse=True)
-        
+
     return [await _convert_message_to_response(m, storage_service, presigned_map) for m in messages]
+
+
+def _to_last_message_info(msg: MessageResponse | None) -> LastMessageInfo | None:
+    if not msg:
+        return None
+    return LastMessageInfo(
+        content=msg.content,
+        role=MessageRole(msg.role),
+        created_at=msg.created_at,
+        status=msg.status,
+        is_read=msg.is_read,
+    )
 
 
 @router.post(
@@ -126,11 +144,12 @@ async def _convert_messages(
     },
 )
 async def create_conversation(
+    *,
     request: CreateConversationRequest,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    message_repo: MessageRepositoryDep = None,
-    storage_service: StorageServiceDep = None,
+    chat_service: ChatServiceDep,
+    message_repo: MessageRepositoryDep,
+    storage_service: StorageServiceDep,
 ):
     """Create a new conversation with an AI influencer"""
     conversation, _is_new = await chat_service.create_conversation(
@@ -138,24 +157,27 @@ async def create_conversation(
         influencer_id=request.influencer_id,
     )
 
-    recent_messages = await _convert_messages(conversation.recent_messages, storage_service) if conversation.recent_messages else []
+    recent_messages = (
+        await _convert_messages(conversation.recent_messages, storage_service) if conversation.recent_messages else []
+    )
 
     return ConversationResponse(
         id=conversation.id,
         user_id=conversation.user_id,
-        influencer_id=conversation.influencer.id,
         influencer=InfluencerBasicInfo(
-            id=conversation.influencer.id,
-            name=conversation.influencer.name,
-            display_name=conversation.influencer.display_name,
-            avatar_url=conversation.influencer.avatar_url,
-            suggested_messages=conversation.influencer.suggested_messages,
-            is_online=conversation.influencer.is_active == InfluencerStatus.ACTIVE,
+            id=str(conversation.influencer.id) if conversation.influencer else "00000000-0000-0000-0000-000000000000",
+            name=conversation.influencer.name if conversation.influencer else "Unknown",
+            display_name=conversation.influencer.display_name if conversation.influencer else "Unknown",
+            avatar_url=conversation.influencer.avatar_url if conversation.influencer else None,
+            suggested_messages=conversation.influencer.suggested_messages if conversation.influencer else None,
+            is_online=conversation.influencer.is_active == InfluencerStatus.ACTIVE
+            if conversation.influencer
+            else False,
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         message_count=conversation.message_count or 0,
-        last_message=recent_messages[0] if recent_messages else None,
+        last_message=_to_last_message_info(recent_messages[0] if recent_messages else None),
         recent_messages=recent_messages,
     )
 
@@ -175,13 +197,14 @@ async def create_conversation(
     },
 )
 async def list_conversations(
+    *,
     limit: int = Query(default=20, ge=1, le=100, description="Number of conversations to return"),
     offset: int = Query(default=0, ge=0, description="Number of conversations to skip"),
     influencer_id: str | None = Query(default=None, description="Filter by specific influencer ID"),
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    message_repo: MessageRepositoryDep = None,
-    storage_service: StorageServiceDep = None,
+    chat_service: ChatServiceDep,
+    message_repo: MessageRepositoryDep,
+    storage_service: StorageServiceDep,
 ):
     """
     List user's conversations
@@ -196,7 +219,7 @@ async def list_conversations(
     )
 
     conversation_responses: list[ConversationResponse] = []
-    
+
     # Batch generate presigned URLs for all messages and avatars efficiently
     all_messages = []
     all_influencers = []
@@ -205,7 +228,7 @@ async def list_conversations(
             all_messages.extend(conv.recent_messages)
         if conv.influencer:
             all_influencers.append(conv.influencer)
-            
+
     # Combine everything for one single batch call to get all URLs needed
     presigned_map = await storage_service.generate_presigned_urls_batch(
         storage_service.collect_keys_from_messages(all_messages + all_influencers)
@@ -223,26 +246,26 @@ async def list_conversations(
             await _convert_message_to_response(msg, storage_service, presigned_map)
             for msg in (conv.recent_messages or [])
         ]
-        
+
         conversation_responses.append(
             ConversationResponse(
                 id=conv.id,
                 user_id=conv.user_id,
                 influencer=InfluencerBasicInfo(
-                    id=conv.influencer.id,
-                    name=conv.influencer.name,
-                    display_name=conv.influencer.display_name,
-                    avatar_url=conv.influencer.avatar_url,
+                    id=str(conv.influencer.id) if conv.influencer else "00000000-0000-0000-0000-000000000000",
+                    name=conv.influencer.name if conv.influencer else "Unknown",
+                    display_name=conv.influencer.display_name if conv.influencer else "Unknown",
+                    avatar_url=conv.influencer.avatar_url if conv.influencer else None,
                     # Only show suggested messages if conversation is empty or has just 1 message (greeting)
                     suggested_messages=conv.influencer.suggested_messages
-                    if (conv.message_count or 0) <= 1
+                    if conv.influencer and (conv.message_count or 0) <= 1
                     else None,
-                    is_online=conv.influencer.is_active == InfluencerStatus.ACTIVE,
+                    is_online=conv.influencer.is_active == InfluencerStatus.ACTIVE if conv.influencer else False,
                 ),
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
                 message_count=conv.message_count or 0,
-                last_message=recent_messages[0] if recent_messages else None,
+                last_message=_to_last_message_info(recent_messages[0] if recent_messages else None),
                 recent_messages=recent_messages,
             )
         )
@@ -272,13 +295,14 @@ async def list_conversations(
     },
 )
 async def list_messages(
+    *,
     conversation_id: str,
     limit: int = Query(default=50, ge=1, le=200, description="Number of messages to return"),
     offset: int = Query(default=0, ge=0, description="Number of messages to skip"),
     order: str = Query(default="desc", pattern="^(asc|desc)$", description="Sort order: 'asc' or 'desc'"),
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    storage_service: StorageServiceDep = None,
+    chat_service: ChatServiceDep,
+    storage_service: StorageServiceDep,
 ):
     """Get paginated conversation message history"""
     messages, total = await chat_service.list_messages(
@@ -329,13 +353,14 @@ async def list_messages(
     },
 )
 async def send_message(
+    *,
     conversation_id: str,
     request: SendMessageRequest,
     background_tasks: BackgroundTasks,
     response: Response,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    storage_service: StorageServiceDep = None,
+    chat_service: ChatServiceDep,
+    storage_service: StorageServiceDep,
 ):
     """
     Send a message to AI influencer
@@ -352,7 +377,7 @@ async def send_message(
         SendMessageParams(
             conversation_id=conversation_id,
             user_id=current_user.user_id,
-            content=request.content,
+            content=request.content or "",
             message_type=request.message_type,
             media_urls=request.media_urls or [],
             audio_url=request.audio_url,
@@ -419,11 +444,12 @@ async def send_message(
     status_code=201,
 )
 async def generate_image(
+    *,
     conversation_id: str,
     request: GenerateImageRequest,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    storage_service: StorageServiceDep = None,
+    chat_service: ChatServiceDep,
+    storage_service: StorageServiceDep,
 ):
     """Generate an image in the conversation"""
     try:
@@ -455,9 +481,10 @@ async def generate_image(
     },
 )
 async def delete_conversation(
+    *,
     conversation_id: str,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
+    chat_service: ChatServiceDep,
 ):
     """Delete a conversation and all associated messages"""
     deleted_messages = await chat_service.delete_conversation(
@@ -489,9 +516,10 @@ async def delete_conversation(
     },
 )
 async def mark_conversation_as_read(
+    *,
     conversation_id: str,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
+    chat_service: ChatServiceDep,
 ):
     """Mark all messages in a conversation as read"""
     result = await chat_service.mark_conversation_as_read(
@@ -499,7 +527,11 @@ async def mark_conversation_as_read(
         user_id=current_user.user_id,
     )
 
-    return MarkConversationAsReadResponse(**result)
+    return MarkConversationAsReadResponse(
+        id=str(result["id"]),
+        unread_count=int(cast(int, result["unread_count"])),
+        last_read_at=cast(datetime, result["last_read_at"]),
+    )
 
 
 @router.websocket("/ws/inbox/{user_id}")
@@ -510,10 +542,10 @@ async def websocket_inbox_endpoint(
 ):
     """
     WebSocket endpoint for real-time inbox updates.
-    
+
     ### Connection:
     `ws://{host}/api/v1/chat/ws/inbox/{user_id}?token={jwt_token}`
-    
+
     ### Events:
     Clients connect to receive real-time events:
     - `new_message`: When a new message arrives in any conversation
@@ -545,4 +577,3 @@ async def websocket_inbox_endpoint(
 async def doc_websocket_events():
     """Dummy endpoint for WebSocket documentation"""
     return Response(status_code=418)  # I'm a teapot
-

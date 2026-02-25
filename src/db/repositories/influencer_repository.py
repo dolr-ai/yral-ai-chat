@@ -286,8 +286,7 @@ class InfluencerRepository:
         except sqlite3.IntegrityError as e:
             if "ai_influencers.name" in str(e):
                 raise ConflictException(
-                    message=f"Influencer with name '{influencer.name}' already exists",
-                    details={"field": "name"}
+                    message=f"Influencer with name '{influencer.name}' already exists", details={"field": "name"}
                 )
             raise
 
@@ -375,5 +374,5 @@ class InfluencerRepository:
             metadata={},
             suggested_messages=[],
             initial_greeting=None,
-            is_nsfw=False
+            is_nsfw=False,
         )

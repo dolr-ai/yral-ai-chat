@@ -52,7 +52,6 @@ def check_restore_status() -> dict[str, str | bool | int | None]:
         db_file = Path(db_path)
         if not db_file.exists():
             return restore_info
-        
 
         # Check for corrupted backup files (indicates restore happened)
         db_dir = db_file.parent
@@ -213,8 +212,9 @@ async def health_check():
     },
 )
 async def system_status(
-    message_repo: MessageRepositoryDep = None,
-    influencer_repo: InfluencerRepositoryDep = None,
+    *,
+    message_repo: MessageRepositoryDep,
+    influencer_repo: InfluencerRepositoryDep,
 ):
     """Get detailed system statistics including database info, uptime, and usage metrics"""
     db_health = await db.health_check()
@@ -225,7 +225,7 @@ async def system_status(
     )
 
     try:
-        total_conversations = await db.fetchval("SELECT COUNT(*) FROM conversations")
+        total_conversations = int(await db.fetchval("SELECT COUNT(*) FROM conversations") or 0)
         total_messages = await message_repo.count_all()
         active_influencers = await influencer_repo.count_all()
     except Exception:

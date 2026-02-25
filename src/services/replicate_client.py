@@ -29,7 +29,6 @@ class ReplicateClient:
             logger.error("Replicate client not initialized")
             return None
 
-
         def _run():
             return self.client.run(
                 self.model,
@@ -52,7 +51,7 @@ class ReplicateClient:
                 image_url = str(output[0])
                 logger.info(f"Image generated successfully: {image_url}")
                 return image_url
-            
+
             if output:
                 image_url = str(output)
                 logger.info(f"Image generated successfully (direct format): {image_url}")
@@ -73,7 +72,6 @@ class ReplicateClient:
         if not self.client:
             logger.error("Replicate client not initialized")
             return None
-
 
         def _run():
             return self.client.run(
@@ -100,7 +98,7 @@ class ReplicateClient:
                 image_url = str(output[0])
                 logger.info(f"Image generated via context successfully: {image_url}")
                 return image_url
-            
+
             if output:
                 image_url = str(output)
                 logger.info(f"Image generated via context successfully (direct format): {image_url}")

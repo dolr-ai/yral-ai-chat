@@ -2,11 +2,13 @@
 Internal Pydantic models for service layer
 """
 
-from typing import Literal
+from __future__ import annotations
+
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.models.entities import MessageType
+from src.models.entities import Message, MessageType
 
 
 class CircuitBreakerState(BaseModel):
@@ -73,6 +75,7 @@ class JWTPayload(BaseModel):
 
 class PersonalityTrait(BaseModel):
     """Trait key-value pair for character personality"""
+
     trait: str = Field(..., description="Name of the trait (e.g., energy_level)")
     value: str = Field(..., description="Value of the trait (e.g., high)")
 
@@ -87,9 +90,7 @@ class CharacterValidation(BaseModel):
     description: str | None = Field(None, description="Character biography/description")
     initial_greeting: str | None = Field(None, description="Initial greeting message")
     suggested_messages: list[str] | None = Field(None, description="List of suggested starter messages")
-    personality_traits: list[PersonalityTrait] | None = Field(
-        None, description="List of personality traits"
-    )
+    personality_traits: list[PersonalityTrait] | None = Field(None, description="List of personality traits")
     category: str | None = Field(None, description="Expertise or character category")
     image_prompt: str | None = Field(None, description="Detailed prompt for avatar generation")
 
@@ -99,7 +100,7 @@ class LLMGenerateParams(BaseModel):
 
     user_message: str
     system_instructions: str
-    conversation_history: list[object] | None = None  # Using object to avoid circular import with Message
+    conversation_history: list[Message] | None = None
     media_urls: list[str] | None = None
     max_tokens: int | None = None
     response_mime_type: str | None = None
@@ -116,6 +117,8 @@ class AIResponse(BaseModel):
 class SendMessageParams(BaseModel):
     """Parameters for ChatService.send_message"""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     conversation_id: str
     user_id: str
     content: str
@@ -123,12 +126,13 @@ class SendMessageParams(BaseModel):
     media_urls: list[str] | None = None
     audio_url: str | None = None
     audio_duration_seconds: int | None = None
-    background_tasks: object | None = None
+    background_tasks: Any | None = None
     client_message_id: str | None = None
 
 
 class PushNotificationData(BaseModel):
     """Structured data for push notifications"""
+
     conversation_id: str = Field(..., description="ID of the conversation")
     message_id: str = Field(..., description="ID of the message")
     influencer_id: str = Field(..., description="ID of the influencer")

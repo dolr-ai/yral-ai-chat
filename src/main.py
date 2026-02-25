@@ -40,9 +40,9 @@ from src.services.openrouter_client import OpenRouterClient
 
 # Environment detection
 is_test = (
-    os.getenv("PYTEST_CURRENT_TEST") is not None or
-    "pytest" in sys.modules or
-    Path(sys.argv[0]).name.startswith("pytest")
+    os.getenv("PYTEST_CURRENT_TEST") is not None
+    or "pytest" in sys.modules
+    or Path(sys.argv[0]).name.startswith("pytest")
 )
 
 # Sentry initialization
@@ -68,17 +68,20 @@ if not is_test and settings.sentry_dsn and sentry_env:
 
 # --- Lifecycle Management ---
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handles startup and shutdown events"""
     configure_logging()
-    
+
     logger.info(f"Starting {settings.app_name} v{settings.app_version} ({settings.environment})")
-    logger.info(f"Config: DB={settings.database_path}, Pool={settings.database_pool_size}, Sentry={'ON' if settings.sentry_dsn else 'OFF'}")
+    logger.info(
+        f"Config: DB={settings.database_path}, Pool={settings.database_pool_size}, Sentry={'ON' if settings.sentry_dsn else 'OFF'}"
+    )
 
     # Initialize connections
     await db.connect()
-    
+
     # Eager checkpoint on startup to drain any existing WAL
     await db.eager_checkpoint()
 
@@ -91,10 +94,10 @@ async def lifespan(app: FastAPI):
     get_influencer_repository()
     get_message_repository()
     get_storage_service()
-    
+
     app.state.gemini_client = GeminiClient()
     app.state.openrouter_client = OpenRouterClient()
-    
+
     logger.info("Services initialized and warmed up")
     yield
 
@@ -120,7 +123,7 @@ tags_metadata = [
         "description": "Schemas and documentation for asynchronous event-driven features like WebSockets.",
     },
 ]
-root_path = "/staging" if settings.environment == "staging" else None
+root_path = "/staging" if settings.environment == "staging" else ""
 
 app = FastAPI(
     title=settings.app_name,
@@ -143,11 +146,12 @@ Clients should connect to listen for real-time inbox updates:
     redoc_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
 )
 
+
 # Customize OpenAPI Schema
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-    
+
     schema = get_openapi(
         title=settings.app_name,
         version=settings.app_version,
@@ -157,7 +161,7 @@ def custom_openapi():
 
     if settings.environment == "staging":
         schema["servers"] = [{"url": "/staging", "description": "Staging environment"}]
-    
+
     schema["components"]["securitySchemes"] = {
         "BearerAuth": {
             "type": "http",
@@ -168,6 +172,7 @@ def custom_openapi():
     }
     app.openapi_schema = schema
     return schema
+
 
 app.openapi = custom_openapi  # type: ignore
 
@@ -197,7 +202,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle Pydantic validation errors"""
     logger.warning(f"Validation error on {request.url.path}: {exc.errors()}")
-    
+
     # Pydantic v2 errors contain non-serializable objects (like ValueError) in 'ctx'
     # We must sanitize them before sending to JSONResponse
     def sanitize(obj):
@@ -214,9 +219,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={
             "error": "validation_error",
             "message": "Request validation failed",
-            "details": {"errors": sanitize(exc.errors())}
-        }
+            "details": {"errors": sanitize(exc.errors())},
+        },
     )
+
 
 @app.exception_handler(DatabaseConnectionPoolTimeoutError)
 async def database_timeout_handler(request: Request, exc: DatabaseConnectionPoolTimeoutError):
@@ -225,13 +231,15 @@ async def database_timeout_handler(request: Request, exc: DatabaseConnectionPool
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"error": "service_unavailable", "message": "Database busy. Try again soon."},
-        headers={"Retry-After": "5"}
+        headers={"Retry-After": "5"},
     )
+
 
 @app.exception_handler(BaseAPIException)
 async def api_exception_handler(request: Request, exc: BaseAPIException):
     """Handle domain-specific API exceptions"""
     return JSONResponse(status_code=exc.status_code, content=exc.detail, headers=exc.headers)
+
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -241,8 +249,8 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "error": "internal_server_error",
-            "message": str(exc) if settings.debug else "An unexpected error occurred"
-        }
+            "message": str(exc) if settings.debug else "An unexpected error occurred",
+        },
     )
 
 
@@ -279,4 +287,5 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("src.main:app", host=settings.host, port=settings.port, reload=settings.debug)

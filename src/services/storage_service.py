@@ -4,6 +4,7 @@ S3-compatible storage service for media uploads (Storj)
 
 import asyncio
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import aioboto3
@@ -30,15 +31,10 @@ class StorageService:
             aws_secret_access_key=settings.aws_secret_access_key,
             endpoint_url=settings.s3_endpoint_url,
             region_name=settings.aws_region,
-            config=Config(signature_version="s3v4")
+            config=Config(signature_version="s3v4"),
         )
 
-    async def save_file(
-        self,
-        file_content: bytes,
-        filename: str,
-        user_id: str
-    ) -> tuple[str, str, int]:
+    async def save_file(self, file_content: bytes, filename: str, user_id: str) -> tuple[str, str, int]:
         """Save file to S3 and return (storage_key, mime_type, file_size)"""
         file_ext = Path(filename).suffix.lower()
         unique_filename = f"{uuid4()}{file_ext}"
@@ -55,19 +51,14 @@ class StorageService:
                     "ContentType": mime_type,
                     "ContentLength": file_size,
                 },
-                ExpiresIn=300
+                ExpiresIn=300,
             )
 
         async with (
             aiohttp.ClientSession() as session,
             session.put(
-                upload_url,
-                data=file_content,
-                headers={
-                    "Content-Type": mime_type,
-                    "Content-Length": str(file_size)
-                }
-            ) as response
+                upload_url, data=file_content, headers={"Content-Type": mime_type, "Content-Length": str(file_size)}
+            ) as response,
         ):
             if response.status not in [200, 201]:
                 text = await response.text()
@@ -78,10 +69,7 @@ class StorageService:
         return s3_key, mime_type, file_size
 
     async def generate_presigned_url(
-        self,
-        key: str,
-        expires_in: int | None = None,
-        s3_client: any = None
+        self, key: str, expires_in: int | None = None, s3_client: Any | None = None
     ) -> str:
         """
         Generate presigned URL for S3 object access.
@@ -98,7 +86,7 @@ class StorageService:
 
         # Reuse existing client if provided (for batch operations)
         if s3_client:
-            return await s3_client.generate_presigned_url(
+            return await s3_client.generate_presigned_url(  # type: ignore[no-any-return]
                 "get_object",
                 Params={"Bucket": self.bucket, "Key": key},
                 ExpiresIn=expiration,
@@ -106,31 +94,30 @@ class StorageService:
 
         # Otherwise create a new client
         async with await self.get_s3_client() as s3:
-            return await s3.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": self.bucket, "Key": key},
-                ExpiresIn=expiration,
+            return str(
+                await s3.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self.bucket, "Key": key},
+                    ExpiresIn=expiration,
+                )
             )
 
     async def generate_presigned_urls_batch(self, keys: list[str]) -> dict[str, str]:
         """Generate presigned URLs for multiple keys in parallel"""
         if not keys:
             return {}
-            
+
         # Filter for S3 keys only (skip external URLs)
-        unique_keys = [
-            k for k in {k for k in keys if k}
-            if not k.startswith(("http://", "https://"))
-        ]
-        
+        unique_keys = [k for k in {k for k in keys if k} if not k.startswith(("http://", "https://"))]
+
         if not unique_keys:
             return {}
-            
+
         # Generate all URLs in parallel using a single client session
         async with await self.get_s3_client() as s3:
             tasks = [self.generate_presigned_url(key, s3_client=s3) for key in unique_keys]
             urls = await asyncio.gather(*tasks)
-        
+
         return {k: u for k, u in zip(unique_keys, urls, strict=False) if u}
 
     def collect_keys_from_messages(self, messages: list) -> list[str]:
@@ -141,17 +128,17 @@ class StorageService:
             media_urls = getattr(msg, "media_urls", None)
             if media_urls and isinstance(media_urls, list):
                 keys.extend([self.extract_key_from_url(u) for u in media_urls if u])
-            
+
             # Check for audio_url (str)
             audio_url = getattr(msg, "audio_url", None)
             if audio_url:
                 keys.append(self.extract_key_from_url(audio_url))
-                
+
             # Check for avatar_url (str) - used in Influencer objects
             avatar_url = getattr(msg, "avatar_url", None)
             if avatar_url:
                 keys.append(self.extract_key_from_url(avatar_url))
-        
+
         return [k for k in keys if k]
 
     async def get_presigned_urls_for_messages(self, messages: list) -> dict[str, str]:

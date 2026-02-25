@@ -165,8 +165,12 @@ class InfluencerResponse(BaseModel):
         ..., description="Influencer status: 'active', 'coming_soon', or 'discontinued'"
     )
     parent_principal_id: str | None = Field(None, description="ID of the parent principal")
-    source: str | None = Field(None, description="Creation source: 'admin-created-influencer' or 'user-created-influencer'")
-    system_prompt: str | None = Field(None, description="User-provided original system instructions (excluding forced guardrails)")
+    source: str | None = Field(
+        None, description="Creation source: 'admin-created-influencer' or 'user-created-influencer'"
+    )
+    system_prompt: str | None = Field(
+        None, description="User-provided original system instructions (excluding forced guardrails)"
+    )
     created_at: datetime = Field(..., description="Creation timestamp")
     conversation_count: int | None = Field(None, description="Total number of conversations")
     message_count: int | None = Field(None, description="Total number of messages received")

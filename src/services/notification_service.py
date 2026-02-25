@@ -1,4 +1,3 @@
-
 import httpx
 from loguru import logger
 
@@ -25,13 +24,7 @@ class MetadataPNProvider:
             return False
 
         url = f"{settings.metadata_url.rstrip('/')}/notifications/{user_id}/send"
-        payload = {
-            "data": {
-                "title": title,
-                "body": body,
-                **(data.model_dump(mode="json") if data else {})
-            }
-        }
+        payload = {"data": {"title": title, "body": body, **(data.model_dump(mode="json") if data else {})}}
 
         headers = {}
         if settings.metadata_auth_token:
@@ -43,10 +36,8 @@ class MetadataPNProvider:
                 if response.status_code == 200:
                     logger.info(f"Notification sent to {user_id} via Metadata Server")
                     return True
-                
-                logger.error(
-                    f"Metadata PNS error for {user_id}: {response.status_code} - {response.text}"
-                )
+
+                logger.error(f"Metadata PNS error for {user_id}: {response.status_code} - {response.text}")
                 return False
         except Exception as e:
             logger.error(f"Failed to call Metadata Server for {user_id}: {e}")
@@ -81,29 +72,35 @@ class NotificationService:
         try:
             issue = data.get("issue", {})
             card = {
-                "cardsV2": [{
-                    "cardId": "sentry_alert",
-                    "card": {
-                        "header": {
-                            "title": f"Sentry: {resource.capitalize()} {action.capitalize()}",
-                            "subtitle": issue.get("shortId", "N/A"),
-                            "imageUrl": "https://sentry.io/_static/1601416489/sentry/images/logos/apple-touch-icon.png"
-                        },
-                        "sections": [{
-                            "widgets": [
-                                {"textParagraph": {"text": f"<b>{issue.get('title', 'Sentry Alert')}</b>"}},
+                "cardsV2": [
+                    {
+                        "cardId": "sentry_alert",
+                        "card": {
+                            "header": {
+                                "title": f"Sentry: {resource.capitalize()} {action.capitalize()}",
+                                "subtitle": issue.get("shortId", "N/A"),
+                                "imageUrl": "https://sentry.io/_static/1601416489/sentry/images/logos/apple-touch-icon.png",
+                            },
+                            "sections": [
                                 {
-                                    "buttonList": {
-                                        "buttons": [{
-                                            "text": "View in Sentry",
-                                            "onClick": {"openLink": {"url": issue.get("permalink", "#")}}
-                                        }]
-                                    }
+                                    "widgets": [
+                                        {"textParagraph": {"text": f"<b>{issue.get('title', 'Sentry Alert')}</b>"}},
+                                        {
+                                            "buttonList": {
+                                                "buttons": [
+                                                    {
+                                                        "text": "View in Sentry",
+                                                        "onClick": {"openLink": {"url": issue.get("permalink", "#")}},
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                    ]
                                 }
-                            ]
-                        }]
+                            ],
+                        },
                     }
-                }]
+                ]
             }
 
             async with httpx.AsyncClient() as client:
@@ -116,5 +113,6 @@ class NotificationService:
             # forming an infinite loop that exhausts the thread pool and DB connection pool.
             # Using print bypasses Sentry but still writes to stdout (docker logs).
             print(f"ERROR: Google Chat notification error: {e}")  # noqa: T201
+
 
 notification_service = NotificationService()

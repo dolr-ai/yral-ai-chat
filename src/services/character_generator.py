@@ -2,7 +2,6 @@
 Character Generator Service
 """
 
-
 from loguru import logger
 from pydantic import validate_call
 
@@ -66,7 +65,6 @@ class CharacterGeneratorService:
             "4. IMPORTANT: Use the language specified in the system instructions for 'initial_greeting' and 'suggested_messages'. If no specific language is mentioned, default to Hinglish (Hindi mixed with English text in English letters). "
             "5. If valid, refine the system instructions if needed to be more effective and store them in 'system_instructions'. "
             "6. Create a specific, detailed image generation prompt for the character's avatar and store it in 'image_prompt'. The style of the image should be realistic. "
-
         )
 
         try:
@@ -96,15 +94,16 @@ class CharacterGeneratorService:
             if any(pattern in response_text_lower for pattern in refusal_patterns):
                 logger.warning("Detected safety refusal in LLM response text")
                 return GeneratedMetadataResponse(
-                    is_valid=False,
-                    reason="Content violates safety guidelines and was refused by the AI."
+                    is_valid=False, reason="Content violates safety guidelines and was refused by the AI."
                 )
 
             # Parse using Pydantic
             validation = CharacterValidation.model_validate_json(response.text)
 
             if not validation.is_valid:
-                return GeneratedMetadataResponse(is_valid=False, reason=validation.reason or "Invalid character concept")
+                return GeneratedMetadataResponse(
+                    is_valid=False, reason=validation.reason or "Invalid character concept"
+                )
 
             # Check for safety refusals even if LLM said is_valid=True
             if validation.is_valid:
@@ -122,8 +121,7 @@ class CharacterGeneratorService:
                 if any(pattern in combined_text for pattern in refusal_patterns):
                     logger.warning(f"Detected safety refusal in LLM response for character: {validation.name}")
                     return GeneratedMetadataResponse(
-                        is_valid=False,
-                        reason="Content violates safety guidelines and was refused by the AI."
+                        is_valid=False, reason="Content violates safety guidelines and was refused by the AI."
                     )
 
             # 2. Generate Avatar using Replicate
@@ -133,19 +131,16 @@ class CharacterGeneratorService:
                 try:
                     # Enhance prompt for better results
                     enhanced_prompt = f"{image_prompt}, high quality, detailed, centered portrait"
-                    avatar_url = await self.replicate_client.generate_image(
-                        enhanced_prompt,
-                        aspect_ratio="1:1"
-                    )
+                    avatar_url = await self.replicate_client.generate_image(enhanced_prompt, aspect_ratio="1:1")
                 except Exception as e:
                     logger.error(f"Failed to generate avatar: {e}")
 
             # Convert personality_traits from list of PersonalityTrait objects to dict
-            personality_traits_dict = {}
+            personality_traits_dict: dict[str, object] = {}
             if validation.personality_traits:
-                personality_traits_dict = {
-                    str(t.trait): t.value for t in validation.personality_traits if t.trait
-                }
+                for t in validation.personality_traits:
+                    if t.trait:
+                        personality_traits_dict[str(t.trait)] = t.value
 
             return GeneratedMetadataResponse(
                 is_valid=True,
@@ -193,8 +188,11 @@ class CharacterGeneratorService:
             )
             response = await self.gemini_client.generate_response(params)
             import json
+
             data = json.loads(response.text)
-            return data.get("initial_greeting", f"Hi! I'm {display_name}. Nice to meet you!"), data.get("suggested_messages", [])
+            return data.get("initial_greeting", f"Hi! I'm {display_name}. Nice to meet you!"), data.get(
+                "suggested_messages", []
+            )
         except Exception as e:
             logger.error(f"Failed to generate initial greeting: {e}")
             return f"Hi! I'm {display_name}. How can I help you today?", []

@@ -1,4 +1,5 @@
 """AI Influencer endpoints"""
+
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -30,12 +31,12 @@ def _get_user_system_prompt(full_instructions: str | None) -> str | None:
     """Strip STYLE_PROMPT and MODERATION_PROMPT from instructions"""
     if not full_instructions:
         return full_instructions
-    
+
     # The order of appending was: user_prompt + \n + STYLE + \n + MODERATION
     suffix = f"\n{STYLE_PROMPT}\n{MODERATION_PROMPT}"
     if full_instructions.endswith(suffix):
         return full_instructions[: -len(suffix)]
-    
+
     return full_instructions
 
 
@@ -88,10 +89,11 @@ def _map_trending_response(inf: AIInfluencer) -> TrendingInfluencerResponse:
     },
 )
 async def list_influencers(
+    *,
+    response: Response,
     limit: int = Query(default=50, ge=1, le=100, description="Number of influencers to return"),
     offset: int = Query(default=0, ge=0, description="Number of influencers to skip"),
-    influencer_service: InfluencerServiceDep = None,
-    response: Response = None,
+    influencer_service: InfluencerServiceDep,
 ):
     """\
     List all AI influencers
@@ -126,10 +128,11 @@ async def list_influencers(
     description="Retrieve paginated list of AI influencers sorted by total lifetime message count. Most messaged first.",
 )
 async def list_trending_influencers(
+    *,
+    response: Response,
     limit: int = Query(default=50, ge=1, le=100, description="Number of influencers to return"),
     offset: int = Query(default=0, ge=0, description="Number of influencers to skip"),
-    influencer_service: InfluencerServiceDep = None,
-    response: Response = None,
+    influencer_service: InfluencerServiceDep,
 ):
     """List trending influencers sorted by message count"""
     influencers, total = await influencer_service.list_trending_influencers(
@@ -165,9 +168,10 @@ async def list_trending_influencers(
     },
 )
 async def get_influencer(
+    *,
     influencer_id: str,
-    influencer_service: InfluencerServiceDep = None,
-    response: Response = None,
+    response: Response,
+    influencer_service: InfluencerServiceDep,
 ):
     """\
     Get specific AI influencer details
@@ -191,6 +195,8 @@ async def get_influencer(
         source=influencer.source,
         system_prompt=_get_user_system_prompt(influencer.system_instructions),
         created_at=influencer.created_at,
+        conversation_count=influencer.conversation_count or 0,
+        message_count=influencer.message_count or 0,
     )
 
 
@@ -234,6 +240,7 @@ async def validate_and_generate_metadata(
     description="Create a new AI influencer character",
 )
 async def create_influencer(
+    *,
     request: CreateInfluencerRequest,
     influencer_service: InfluencerServiceDep,
     character_generator_service: CharacterGeneratorServiceDep,
@@ -290,6 +297,8 @@ async def create_influencer(
         system_prompt=_get_user_system_prompt(created.system_instructions),
         starter_video_prompt=starter_video_prompt,
         created_at=created.created_at,
+        conversation_count=0,
+        message_count=0,
     )
 
 
@@ -309,28 +318,29 @@ async def create_influencer(
     },
 )
 async def update_system_prompt(
+    *,
     influencer_id: str,
     request: UpdateSystemPromptRequest,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    influencer_service: InfluencerServiceDep = None,
+    influencer_service: InfluencerServiceDep,
 ):
     """Update an influencer's system prompt (bot owner only)"""
     # Get the influencer to check ownership
     influencer = await influencer_service.get_influencer(influencer_id)
-    
+
     # Verify the current user is the bot owner
     if influencer.parent_principal_id != current_user.user_id:
         raise HTTPException(
             status_code=403,
             detail="Only the bot owner can update the system prompt",
         )
-    
+
     # Append style and moderation prompts (same as create endpoint)
     full_system_instructions = f"{request.system_instructions}\n{STYLE_PROMPT}\n{MODERATION_PROMPT}"
-    
+
     # Update the system prompt
     updated = await influencer_service.update_system_prompt(influencer_id, full_system_instructions)
-    
+
     return InfluencerResponse(
         id=updated.id,
         name=updated.name,
@@ -343,6 +353,8 @@ async def update_system_prompt(
         source=updated.source,
         system_prompt=_get_user_system_prompt(updated.system_instructions),
         created_at=updated.created_at,
+        conversation_count=updated.conversation_count or 0,
+        message_count=updated.message_count or 0,
     )
 
 
@@ -361,24 +373,25 @@ async def update_system_prompt(
     },
 )
 async def delete_influencer(
+    *,
     influencer_id: str,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    influencer_service: InfluencerServiceDep = None,
+    influencer_service: InfluencerServiceDep,
 ):
     """Soft delete an influencer (bot owner only)"""
     # Get the influencer to check ownership
     influencer = await influencer_service.get_influencer(influencer_id)
-    
+
     # Verify the current user is the bot owner
     if influencer.parent_principal_id != current_user.user_id:
         raise HTTPException(
             status_code=403,
             detail="Only the bot owner can delete the influencer",
         )
-    
+
     # Soft delete the influencer
     deleted = await influencer_service.soft_delete_influencer(influencer_id)
-    
+
     return InfluencerResponse(
         id=deleted.id,
         name=deleted.name,
@@ -391,6 +404,6 @@ async def delete_influencer(
         source=deleted.source,
         system_prompt=_get_user_system_prompt(deleted.system_instructions),
         created_at=deleted.created_at,
+        conversation_count=deleted.conversation_count or 0,
+        message_count=deleted.message_count or 0,
     )
-
-

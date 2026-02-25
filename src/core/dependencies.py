@@ -1,6 +1,7 @@
 """
 Central dependency injection for FastAPI
 """
+
 from functools import lru_cache
 from typing import Annotated
 
@@ -39,12 +40,12 @@ def get_message_repository() -> MessageRepository:
 
 def get_gemini_client(request: Request) -> GeminiClient:
     """Get shared Gemini client instance from app state"""
-    return request.app.state.gemini_client
+    return request.app.state.gemini_client  # type: ignore[no-any-return]
 
 
 def get_openrouter_client(request: Request) -> OpenRouterClient:
     """Get shared OpenRouter client instance from app state"""
-    return request.app.state.openrouter_client
+    return request.app.state.openrouter_client  # type: ignore[no-any-return]
 
 
 @lru_cache
@@ -57,7 +58,6 @@ def get_replicate_client() -> ReplicateClient:
 def get_storage_service() -> StorageService:
     """Get storage service instance"""
     return StorageService()
-
 
 
 def get_chat_service(

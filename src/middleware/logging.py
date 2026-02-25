@@ -96,7 +96,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             )
             raise
         else:
-            return response
+            return response  # type: ignore[no-any-return]
 
     def _get_client_ip(self, request: Request) -> str:
         """

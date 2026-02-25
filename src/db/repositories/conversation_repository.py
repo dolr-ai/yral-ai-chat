@@ -5,7 +5,6 @@ Repository for Conversation operations
 import json
 import uuid
 from datetime import UTC, datetime
-from uuid import UUID
 
 from src.db.base import db
 from src.models.entities import AIInfluencer, Conversation, LastMessageInfo, MessageRole
@@ -14,7 +13,7 @@ from src.models.entities import AIInfluencer, Conversation, LastMessageInfo, Mes
 class ConversationRepository:
     """Repository for conversation database operations"""
 
-    async def create(self, user_id: str, influencer_id: UUID) -> Conversation:
+    async def create(self, user_id: str, influencer_id: str) -> Conversation:
         """Create a new conversation"""
         conversation_id = str(uuid.uuid4())
 
@@ -23,14 +22,14 @@ class ConversationRepository:
             VALUES ($1, $2, $3)
         """
 
-        await db.execute(query, conversation_id, user_id, str(influencer_id))
+        await db.execute(query, conversation_id, user_id, influencer_id)
 
-        result = await self.get_by_id(UUID(conversation_id))
+        result = await self.get_by_id(conversation_id)
         if result is None:
             raise RuntimeError(f"Failed to create conversation {conversation_id}")
         return result
 
-    async def get_by_id(self, conversation_id: UUID) -> Conversation | None:
+    async def get_by_id(self, conversation_id: str) -> Conversation | None:
         """Get conversation by ID"""
         query = """
             SELECT
@@ -42,10 +41,10 @@ class ConversationRepository:
             WHERE c.id = $1
         """
 
-        row = await db.fetchone(query, str(conversation_id))
+        row = await db.fetchone(query, conversation_id)
         return self._row_to_conversation_with_influencer(row) if row else None
 
-    async def get_existing(self, user_id: str, influencer_id: UUID) -> Conversation | None:
+    async def get_existing(self, user_id: str, influencer_id: str) -> Conversation | None:
         """Check if conversation already exists between user and influencer"""
         query = """
             SELECT
@@ -57,13 +56,13 @@ class ConversationRepository:
             WHERE c.user_id = $1 AND c.influencer_id = $2
         """
 
-        row = await db.fetchone(query, user_id, str(influencer_id))
+        row = await db.fetchone(query, user_id, influencer_id)
         return self._row_to_conversation_with_influencer(row) if row else None
 
     async def list_by_user(
         self,
         user_id: str,
-        influencer_id: UUID | None = None,
+        influencer_id: str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[Conversation]:
@@ -90,7 +89,7 @@ class ConversationRepository:
                 ORDER BY c.updated_at DESC
                 LIMIT $3 OFFSET $4
             """
-            rows = await db.fetch(query, user_id, str(influencer_id), limit, offset)
+            rows = await db.fetch(query, user_id, influencer_id, limit, offset)
         else:
             query = """
                 SELECT
@@ -135,41 +134,41 @@ class ConversationRepository:
                 conv.unread_count = unread_count_val
             else:
                 conv.unread_count = 0
-            
+
             conversations.append(conv)
 
         # Batch fetch last messages for all conversations in a single query
         if conversations:
-            conversation_ids = [UUID(conv.id) for conv in conversations]
+            conversation_ids = [conv.id for conv in conversations]
             last_messages = await self._get_last_messages_batch(conversation_ids)
-            
+
             for conv in conversations:
                 conv.last_message = last_messages.get(str(conv.id))
 
         return conversations
 
-    async def count_by_user(self, user_id: str, influencer_id: UUID | None = None) -> int:
+    async def count_by_user(self, user_id: str, influencer_id: str | None = None) -> int:
         """Count conversations for a user"""
         if influencer_id:
             query = "SELECT COUNT(*) FROM conversations WHERE user_id = $1 AND influencer_id = $2"
-            result = await db.fetchval(query, user_id, str(influencer_id))
+            result = await db.fetchval(query, user_id, influencer_id)
             return int(result) if result is not None and isinstance(result, int | str) else 0
         query = "SELECT COUNT(*) FROM conversations WHERE user_id = $1"
         result = await db.fetchval(query, user_id)
         return int(result) if result is not None and isinstance(result, int | str) else 0
 
-    async def delete(self, conversation_id: UUID) -> None:
+    async def delete(self, conversation_id: str) -> None:
         """Delete conversation (messages should be deleted first)"""
         delete_query = "DELETE FROM conversations WHERE id = $1"
-        await db.execute(delete_query, str(conversation_id))
+        await db.execute(delete_query, conversation_id)
 
-    async def update_metadata(self, conversation_id: UUID, metadata: dict[str, object]) -> None:
+    async def update_metadata(self, conversation_id: str, metadata: dict[str, object]) -> None:
         """Update conversation metadata"""
         metadata_json = json.dumps(metadata)
         query = "UPDATE conversations SET metadata = $1 WHERE id = $2"
-        await db.execute(query, metadata_json, str(conversation_id))
+        await db.execute(query, metadata_json, conversation_id)
 
-    async def _get_last_message(self, conversation_id: UUID) -> LastMessageInfo | None:
+    async def _get_last_message(self, conversation_id: str) -> LastMessageInfo | None:
         """Get last message in conversation"""
         query = """
             SELECT content, role, created_at, status, is_read
@@ -179,7 +178,7 @@ class ConversationRepository:
             LIMIT 1
         """
 
-        row = await db.fetchone(query, str(conversation_id))
+        row = await db.fetchone(query, conversation_id)
         if row:
             content = row.get("content")
             role_str = row.get("role")
@@ -192,20 +191,20 @@ class ConversationRepository:
                 content=str(content) if content is not None else None,
                 role=role,
                 created_at=created_at,
-                status=row.get("status", "delivered"),
+                status=str(row.get("status", "delivered")),
                 is_read=bool(row.get("is_read", False)),
             )
         return None
 
-    async def _get_last_messages_batch(self, conversation_ids: list[UUID]) -> dict[str, LastMessageInfo]:
+    async def _get_last_messages_batch(self, conversation_ids: list[str]) -> dict[str, LastMessageInfo]:
         """Get last message for multiple conversations in a single query"""
         if not conversation_ids:
             return {}
-        
+
         # Convert UUIDs to strings for query
-        id_strings = [str(cid) for cid in conversation_ids]
+        id_strings = conversation_ids
         placeholders = ", ".join([f"${i+1}" for i in range(len(id_strings))])
-        
+
         query = f"""
             SELECT
 
@@ -225,27 +224,26 @@ class ConversationRepository:
                 AND m1.created_at = m2.max_created
         """  # noqa: S608
 
-        
         rows = await db.fetch(query, *id_strings)
-        
+
         result: dict[str, LastMessageInfo] = {}
         for row in rows:
             conv_id = row.get("conversation_id")
             content = row.get("content")
             role_str = row.get("role")
             created_at_val = row.get("created_at")
-            
+
             role = MessageRole(role_str) if isinstance(role_str, str) else MessageRole.USER
             created_at = created_at_val if isinstance(created_at_val, datetime) else datetime.now(UTC)
-            
+
             result[str(conv_id)] = LastMessageInfo(
                 content=str(content) if content is not None else None,
                 role=role,
                 created_at=created_at,
-                status=row.get("status", "delivered"),
+                status=str(row.get("status", "delivered")),
                 is_read=bool(row.get("is_read", False)),
             )
-        
+
         return result
 
     def _row_to_conversation(self, row) -> Conversation:

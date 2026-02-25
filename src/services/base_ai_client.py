@@ -2,6 +2,7 @@
 Base AI Client
 Shared logic for AI provider clients
 """
+
 import asyncio
 import json
 import time
@@ -32,7 +33,7 @@ class BaseAIClient(ABC):
             },
         )
         try:
-            self.tokenizer = tiktoken.get_encoding("cl100k_base")
+            self.tokenizer: tiktoken.Encoding | None = tiktoken.get_encoding("cl100k_base")
         except Exception as e:
             logger.warning(
                 f"Failed to initialize tiktoken for {self.provider_name}, falling back to approximate counting: {e}"
@@ -47,10 +48,10 @@ class BaseAIClient(ABC):
     async def health_check(self) -> AIProviderHealth:
         """Check API health"""
 
-    def _extract_json_from_response(self, response_text: str) -> dict:
+    def _extract_json_from_response(self, response_text: str) -> dict[str, Any]:
         """Extract JSON object from response text, handling nested braces"""
         try:
-            return json.loads(response_text)
+            return json.loads(response_text)  # type: ignore[no-any-return]
         except json.JSONDecodeError:
             brace_count = 0
             start_idx = -1
@@ -64,22 +65,17 @@ class BaseAIClient(ABC):
                     if brace_count == 0 and start_idx != -1:
                         json_str = response_text[start_idx : i + 1]
                         try:
-                            return json.loads(json_str)
+                            return json.loads(json_str)  # type: ignore[no-any-return]
                         except json.JSONDecodeError:
                             continue
             return {}
-
-
 
     async def _download_audio(self, url: str) -> dict[str, Any]:
         """Download and encode audio with timeout"""
         timeout = settings.media_download_timeout
         t0 = time.time()
         try:
-            response = await asyncio.wait_for(
-                self.http_client.get(url),
-                timeout=timeout
-            )
+            response = await asyncio.wait_for(self.http_client.get(url), timeout=timeout)
             response.raise_for_status()
 
             audio_data = response.content
@@ -87,10 +83,7 @@ class BaseAIClient(ABC):
             elapsed = time.time() - t0
             if elapsed > 2:
                 logger.warning(f"Slow audio download ({elapsed:.1f}s): {url[:100]}")
-            return {
-                "mime_type": mime_type,
-                "data": audio_data
-            }
+            return {"mime_type": mime_type, "data": audio_data}
         except TimeoutError:
             elapsed = time.time() - t0
             logger.error(f"Audio download timeout ({elapsed:.1f}s): {url[:100]}")
@@ -99,7 +92,6 @@ class BaseAIClient(ABC):
             elapsed = time.time() - t0
             logger.error(f"Failed to download audio ({elapsed:.1f}s) {url[:100]}: {e}")
             raise AIServiceException(f"Failed to process audio: {e}") from e
-
 
     async def extract_memories(
         self, user_message: str, assistant_response: str, existing_memories: dict[str, str] | None = None

@@ -16,11 +16,11 @@ class APIVersionMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
 
-        self.current_version = "v1"
-        self.supported_versions = {"v1", "v2"}
-        self.deprecated_versions = set()
+        self.current_version: str = "v1"
+        self.supported_versions: set[str] = {"v1", "v2"}
+        self.deprecated_versions: set[str] = set()
 
-        self.deprecation_messages = {}
+        self.deprecation_messages: dict[str, str] = {}
 
     async def dispatch(self, request: Request, call_next):
         """Process request with version checking"""

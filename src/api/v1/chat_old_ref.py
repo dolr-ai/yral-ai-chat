@@ -1,6 +1,7 @@
 """
 Chat endpoints
 """
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from fastapi.security import HTTPBearer
 
@@ -12,6 +13,7 @@ from src.core.background_tasks import (
 )
 from src.core.dependencies import ChatServiceDep, MessageRepositoryDep, StorageServiceDep
 from src.models.entities import Message
+from src.models.internal import SendMessageParams
 from src.models.requests import CreateConversationRequest, SendMessageRequest
 from src.models.responses import (
     ConversationResponse,
@@ -30,19 +32,17 @@ router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 
 
 async def _convert_message_to_response(
-    msg: Message,
-    storage_service: StorageService,
-    presigned_urls: dict[str, str] | None = None
+    msg: Message, storage_service: StorageService, presigned_urls: dict[str, str] | None = None
 ) -> MessageResponse:
     """Convert Message to MessageResponse with presigned URLs"""
     presigned_media_urls = []
-    
+
     # Process media URLs
     if msg.media_urls:
         for media_key in msg.media_urls:
             if not media_key:
                 continue
-            
+
             s3_key = storage_service.extract_key_from_url(media_key)
             # Use batch-generated URL if available, otherwise generate on-demand
             if presigned_urls and s3_key in presigned_urls:
@@ -66,6 +66,8 @@ async def _convert_message_to_response(
 
     return MessageResponse(
         id=msg.id,
+        status="sent",
+        is_read=True,
         role=msg.role,
         content=msg.content,
         message_type=msg.message_type,
@@ -126,11 +128,12 @@ async def _convert_message_to_response(
     },
 )
 async def create_conversation(
+    *,
     request: CreateConversationRequest,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    message_repo: MessageRepositoryDep = None,
-    storage_service: StorageServiceDep = None,
+    chat_service: ChatServiceDep,
+    message_repo: MessageRepositoryDep,
+    storage_service: StorageServiceDep,
 ):
     """Create a new conversation with an AI influencer"""
     conversation, _is_new = await chat_service.create_conversation(
@@ -139,7 +142,7 @@ async def create_conversation(
     )
 
     message_count = await message_repo.count_by_conversation(conversation.id)
-    
+
     recent_messages: list[MessageResponse] | None = None
     if message_count >= 1:
         recent_messages_list = await message_repo.list_by_conversation(
@@ -149,28 +152,26 @@ async def create_conversation(
             order="desc",
         )
         if recent_messages_list:
-            recent_messages = [
-                await _convert_message_to_response(msg, storage_service)
-                for msg in recent_messages_list
-            ]
+            recent_messages = [await _convert_message_to_response(msg, storage_service) for msg in recent_messages_list]
 
     return ConversationResponse(
         id=conversation.id,
         user_id=conversation.user_id,
         influencer=InfluencerBasicInfo(
-            id=conversation.influencer.id,
-            name=conversation.influencer.name,
-            display_name=conversation.influencer.display_name,
-            avatar_url=conversation.influencer.avatar_url,
+            id=str(conversation.influencer.id) if conversation.influencer else "00000000-0000-0000-0000-000000000000",
+            name=conversation.influencer.name if conversation.influencer else "Unknown",
+            display_name=conversation.influencer.display_name if conversation.influencer else "Unknown",
+            avatar_url=conversation.influencer.avatar_url if conversation.influencer else None,
             suggested_messages=conversation.influencer.suggested_messages
-            if message_count <= 1
+            if conversation.influencer and message_count <= 1
             else None,
         ),
         created_at=conversation.created_at,
         updated_at=conversation.updated_at,
         message_count=message_count,
-        recent_messages=recent_messages,
+        recent_messages=recent_messages if recent_messages else [],
     )
+
 
 @router.get(
     "/conversations",
@@ -187,17 +188,18 @@ async def create_conversation(
     },
 )
 async def list_conversations(
+    *,
     limit: int = Query(default=20, ge=1, le=100, description="Number of conversations to return"),
     offset: int = Query(default=0, ge=0, description="Number of conversations to skip"),
     influencer_id: str | None = Query(default=None, description="Filter by specific influencer ID"),
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    message_repo: MessageRepositoryDep = None,
-    storage_service: StorageServiceDep = None,
+    chat_service: ChatServiceDep,
+    message_repo: MessageRepositoryDep,
+    storage_service: StorageServiceDep,
 ):
     """
     List user's conversations
-    
+
     Optionally filter by influencer_id
     """
     conversations, total = await chat_service.list_conversations(
@@ -208,13 +210,13 @@ async def list_conversations(
     )
 
     conversation_responses: list[ConversationResponse] = []
-    
+
     # Collect all messages that need URL signing
     all_messages_for_signing = []
     for conv in conversations:
         if conv.recent_messages:
             all_messages_for_signing.extend(conv.recent_messages)
-            
+
     # Batch generate presigned URLs if StorageService is available
     presigned_map = {}
     if storage_service and all_messages_for_signing:
@@ -226,7 +228,7 @@ async def list_conversations(
                         all_keys.append(storage_service.extract_key_from_url(url))
             if msg.audio_url:
                 all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
-        
+
         if all_keys:
             presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
 
@@ -234,8 +236,7 @@ async def list_conversations(
         recent_messages: list[MessageResponse] | None = None
         if conv.recent_messages:
             recent_messages = [
-                await _convert_message_to_response(msg, storage_service, presigned_map)
-                for msg in conv.recent_messages
+                await _convert_message_to_response(msg, storage_service, presigned_map) for msg in conv.recent_messages
             ]
 
         conversation_responses.append(
@@ -243,19 +244,18 @@ async def list_conversations(
                 id=conv.id,
                 user_id=conv.user_id,
                 influencer=InfluencerBasicInfo(
-                    id=conv.influencer.id,
-                    name=conv.influencer.name,
-                    display_name=conv.influencer.display_name,
-                    avatar_url=conv.influencer.avatar_url,
-                    # Only show suggested messages if conversation is empty or has just 1 message (greeting)
+                    id=str(conv.influencer.id) if conv.influencer else "00000000-0000-0000-0000-000000000000",
+                    name=conv.influencer.name if conv.influencer else "Unknown",
+                    display_name=conv.influencer.display_name if conv.influencer else "Unknown",
+                    avatar_url=conv.influencer.avatar_url if conv.influencer else None,
                     suggested_messages=conv.influencer.suggested_messages
-                    if (conv.message_count or 0) <= 1
+                    if conv.influencer and (conv.message_count or 0) <= 1
                     else None,
                 ),
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
                 message_count=conv.message_count or 0,
-                recent_messages=recent_messages,
+                recent_messages=recent_messages if recent_messages else [],
             )
         )
 
@@ -284,13 +284,14 @@ async def list_conversations(
     },
 )
 async def list_messages(
+    *,
     conversation_id: str,
     limit: int = Query(default=50, ge=1, le=200, description="Number of messages to return"),
     offset: int = Query(default=0, ge=0, description="Number of messages to skip"),
     order: str = Query(default="desc", pattern="^(asc|desc)$", description="Sort order: 'asc' or 'desc'"),
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    storage_service: StorageServiceDep = None,
+    chat_service: ChatServiceDep,
+    storage_service: StorageServiceDep,
 ):
     """Get paginated conversation message history"""
     messages, total = await chat_service.list_messages(
@@ -313,16 +314,13 @@ async def list_messages(
             # Collect audio keys
             if msg.audio_url:
                 all_keys.append(storage_service.extract_key_from_url(msg.audio_url))
-            
+
     # Generate all URLs in one parallel batch operation
     presigned_map = {}
     if all_keys and storage_service:
         presigned_map = await storage_service.generate_presigned_urls_batch(all_keys)
 
-    message_responses = [
-        await _convert_message_to_response(msg, storage_service, presigned_map)
-        for msg in messages
-    ]
+    message_responses = [await _convert_message_to_response(msg, storage_service, presigned_map) for msg in messages]
 
     return ListMessagesResponse(
         conversation_id=conversation_id,
@@ -362,34 +360,37 @@ async def list_messages(
     },
 )
 async def send_message(
+    *,
     conversation_id: str,
     request: SendMessageRequest,
     background_tasks: BackgroundTasks,
     response: Response,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
-    storage_service: StorageServiceDep = None,
+    chat_service: ChatServiceDep,
+    storage_service: StorageServiceDep,
 ):
     """
     Send a message to AI influencer
-    
+
     Supports:
     - Text-only messages
     - Image-only messages
     - Text + Image messages (multimodal)
     - Audio/voice messages
-    
+
     Background tasks are used for logging and cache invalidation.
     """
-    user_msg, assistant_msg = await chat_service.send_message(
-        conversation_id=conversation_id,
-        user_id=current_user.user_id,
-        content=request.content,
-        message_type=request.message_type,
-        media_urls=request.media_urls or [],
-        audio_url=request.audio_url,
-        audio_duration_seconds=request.audio_duration_seconds,
-        background_tasks=background_tasks,
+    user_msg, assistant_msg, _is_dup = await chat_service.send_message(
+        SendMessageParams(
+            conversation_id=conversation_id,
+            user_id=str(current_user.user_id),
+            content=request.content or "",
+            message_type=request.message_type,
+            media_urls=request.media_urls or [],
+            audio_url=request.audio_url,
+            audio_duration_seconds=request.audio_duration_seconds,
+            background_tasks=background_tasks,
+        )
     )
 
     # Check if we hit the fallback error message
@@ -437,9 +438,10 @@ async def send_message(
     },
 )
 async def delete_conversation(
+    *,
     conversation_id: str,
     current_user: CurrentUser = Depends(get_current_user),  # noqa: B008
-    chat_service: ChatServiceDep = None,
+    chat_service: ChatServiceDep,
 ):
     """Delete a conversation and all associated messages"""
     deleted_messages = await chat_service.delete_conversation(
