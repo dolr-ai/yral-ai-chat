@@ -9,6 +9,7 @@ RUN apt-get update \
     curl \
     wget \
     sqlite3 \
+    gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Litestream for SQLite replication
