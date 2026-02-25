@@ -39,7 +39,7 @@ Return a JSON object with this exact schema:
   "description": "One line description",
   "initial_greeting": "Hi! I'm...",
   "suggested_messages": ["msg1", "msg2", "msg3"],
-  "personality_traits": [{"trait": "energy_level", "value": "high"}],
+  "personality_traits": {"energy_level": "high", "demeanor": "calm"},
   "category": "entertainment",
   "image_prompt": "portrait of..."
 }"#;
