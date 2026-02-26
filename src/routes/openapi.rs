@@ -118,5 +118,5 @@ impl utoipa::Modify for SecurityAddon {
 }
 
 pub fn swagger_ui() -> SwaggerUi {
-    SwaggerUi::new("/explorer").url("/api-docs/openapi.json", ApiDoc::openapi())
+    SwaggerUi::new("/explore").url("/api-docs/openapi.json", ApiDoc::openapi())
 }

@@ -129,7 +129,7 @@ pub async fn root(State(state): State<Arc<AppState>>) -> Json<serde_json::Value>
         "service": state.settings.app_name,
         "version": state.settings.app_version,
         "status": "running",
-        "docs": "/explorer/",
+        "docs": "/explore/",
         "health": "/health",
         "metrics": "/metrics",
     }))
