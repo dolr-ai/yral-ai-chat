@@ -1,0 +1,124 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - staging
+
+permissions:
+  deployments: write
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  FLY_ORG: gobazzinga-inc-584
+  APP_NAME: staging-yral-ai-chat
+
+jobs:
+  build_check:
+    uses: ./.github/workflows/build-check.yml
+    with:
+      publish-artifact: true
+    secrets: inherit
+
+  deploy:
+    name: Deploy to Fly.io Staging
+    needs: build_check
+    runs-on: ubuntu-latest
+
+    concurrency:
+      group: staging-deploy
+      cancel-in-progress: false
+
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-glibc
+
+      - name: Make binary executable
+        run: chmod +x target/x86_64-unknown-linux-gnu/release/yral-ai-chat
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Create app if not exists
+        run: |
+          flyctl apps list | grep -q "$APP_NAME" || \
+            flyctl apps create "$APP_NAME" --org "$FLY_ORG"
+
+      - name: Set secrets
+        run: |
+          flyctl secrets set \
+            "JWT_SECRET_KEY=$JWT_SECRET_KEY" \
+            "GEMINI_API_KEY=$GEMINI_API_KEY" \
+            "GEMINI_MODEL=gemini-2.5-flash" \
+            "GEMINI_MAX_TOKENS=2048" \
+            "GEMINI_TEMPERATURE=0.7" \
+            "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
+            "OPENROUTER_MODEL=$OPENROUTER_MODEL" \
+            "REPLICATE_API_TOKEN=$REPLICATE_API_TOKEN" \
+            "REPLICATE_MODEL=black-forest-labs/flux-dev" \
+            "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" \
+            "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" \
+            "AWS_S3_BUCKET=$AWS_S3_BUCKET" \
+            "AWS_REGION=$AWS_REGION" \
+            "S3_ENDPOINT_URL=$S3_ENDPOINT_URL" \
+            "S3_PUBLIC_URL_BASE=$S3_PUBLIC_URL_BASE" \
+            "METADATA_URL=https://metadata.yral.com" \
+            "YRAL_METADATA_NOTIFICATION_API_KEY=$YRAL_METADATA_NOTIFICATION_API_KEY" \
+            "CORS_ORIGINS=$CORS_ORIGINS" \
+            "ENABLE_LITESTREAM=true" \
+            "LITESTREAM_ACCESS_KEY_ID=$LITESTREAM_ACCESS_KEY_ID" \
+            "LITESTREAM_SECRET_ACCESS_KEY=$LITESTREAM_SECRET_ACCESS_KEY" \
+            "LITESTREAM_BUCKET=$LITESTREAM_BUCKET" \
+            "LITESTREAM_ENDPOINT=$LITESTREAM_ENDPOINT" \
+            "LITESTREAM_REGION=$LITESTREAM_REGION" \
+            "LITESTREAM_PATH=yral-ai-chat/staging" \
+            --app "$APP_NAME" --stage
+        env:
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
+          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+          S3_PUBLIC_URL_BASE: ${{ secrets.S3_PUBLIC_URL_BASE }}
+          YRAL_METADATA_NOTIFICATION_API_KEY: ${{ secrets.YRAL_METADATA_NOTIFICATION_API_KEY }}
+          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+          LITESTREAM_ACCESS_KEY_ID: ${{ secrets.LITESTREAM_ACCESS_KEY_ID }}
+          LITESTREAM_SECRET_ACCESS_KEY: ${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
+          LITESTREAM_BUCKET: ${{ secrets.LITESTREAM_BUCKET }}
+          LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
+          LITESTREAM_REGION: ${{ secrets.LITESTREAM_REGION }}
+
+      - name: Deploy to Fly.io
+        id: deploy
+        run: |
+          flyctl deploy --app "$APP_NAME" --remote-only
+          URL="https://${APP_NAME}.fly.dev"
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Verify deployment
+        run: |
+          URL="https://${APP_NAME}.fly.dev"
+          echo "Waiting for $URL/health to be healthy..."
+          for i in $(seq 1 30); do
+            if curl -sf "$URL/health" > /dev/null 2>&1; then
+              echo "Staging is healthy!"
+              echo "Staging URL: $URL"
+              exit 0
+            fi
+            echo "Attempt $i/30 - not ready yet, waiting 10s..."
+            sleep 10
+          done
+          echo "Staging failed to become healthy after 5 minutes"
+          exit 1
