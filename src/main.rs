@@ -56,16 +56,16 @@ async fn main() {
         .await
         .expect("Failed to connect to database");
 
-    // Run migrations
-    let migrations_dir = if std::path::Path::new("/app/migrations/sqlite").exists() {
-        "/app/migrations/sqlite"
-    } else {
-        "./migrations/sqlite"
-    };
-
-    db::run_migrations(&database.pool, migrations_dir)
-        .await
-        .expect("Failed to run migrations");
+    // // Run migrations (disabled — DB is pre-seeded)
+    // let migrations_dir = if std::path::Path::new("/app/migrations/sqlite").exists() {
+    //     "/app/migrations/sqlite"
+    // } else {
+    //     "./migrations/sqlite"
+    // };
+    //
+    // db::run_migrations(&database.pool, migrations_dir)
+    //     .await
+    //     .expect("Failed to run migrations");
 
     // Eager WAL checkpoint on startup to drain any existing WAL
     database.run_checkpoint().await;
