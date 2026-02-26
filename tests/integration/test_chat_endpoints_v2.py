@@ -65,9 +65,9 @@ def test_list_conversations_response_structure(client, test_conversation_id, aut
     assert "created_at" in conv
     assert "updated_at" in conv
     assert "unread_count" in conv
+    assert "message_count" in conv
     
     # Check removed fields are NOT present
-    assert "message_count" not in conv
     assert "recent_messages" not in conv
 
     # Verify data types
@@ -79,6 +79,7 @@ def test_list_conversations_response_structure(client, test_conversation_id, aut
     # Verify influencer structure
     influencer = conv["influencer"]
     assert "id" in influencer
+    assert "name" in influencer
     assert "display_name" in influencer
     assert "avatar_url" in influencer
     assert "is_online" in influencer

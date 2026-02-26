@@ -61,12 +61,14 @@ async def list_conversations(
                 influencer_id=str(conv.influencer.id) if conv.influencer else "00000000-0000-0000-0000-000000000000",
                 influencer=InfluencerBasicInfoV2(
                     id=str(conv.influencer.id) if conv.influencer else "00000000-0000-0000-0000-000000000000",
+                    name=conv.influencer.name if conv.influencer else "unknown",
                     display_name=conv.influencer.display_name if conv.influencer else "Unknown",
                     avatar_url=conv.influencer.avatar_url if conv.influencer else None,
                     is_online=True,
                 ),
                 created_at=conv.created_at,
                 updated_at=conv.updated_at,
+                message_count=conv.message_count or 0,
                 unread_count=conv.unread_count,
                 last_message=conv.last_message,
             )

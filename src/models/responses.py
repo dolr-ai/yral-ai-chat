@@ -21,6 +21,7 @@ class InfluencerBasicInfoV2(BaseModel):
         description="Unique identifier for the influencer (UUID or IC Principal)",
         examples=["550e8400-e29b-41d4-a716-446655440000"],
     )
+    name: str = Field(..., description="Internal name of the influencer", examples=["tech_guru"])
     display_name: str = Field(..., description="Display name for the influencer", examples=["Tech Guru AI"])
     avatar_url: str | None = Field(
         None, description="Profile picture URL", examples=["https://cdn.yral.com/avatars/tech_guru.png"]
@@ -88,6 +89,7 @@ class ConversationResponseV2(BaseModel):
     influencer: InfluencerBasicInfoV2
     created_at: datetime
     updated_at: datetime
+    message_count: int = 0
     unread_count: int = 0
     last_message: LastMessageInfo | None = None
 
