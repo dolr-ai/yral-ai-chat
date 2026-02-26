@@ -50,12 +50,14 @@ pub async fn list_conversations_v2(
                 .as_ref()
                 .map(|i| InfluencerBasicInfoV2 {
                     id: i.id.clone(),
+                    name: i.name.clone(),
                     display_name: i.display_name.clone(),
                     avatar_url: i.avatar_url.clone(),
                     is_online: i.is_active == InfluencerStatus::Active,
                 })
                 .unwrap_or_else(|| InfluencerBasicInfoV2 {
                     id: conv.influencer_id.clone(),
+                    name: String::new(),
                     display_name: String::new(),
                     avatar_url: None,
                     is_online: false,
@@ -68,6 +70,7 @@ pub async fn list_conversations_v2(
                 influencer: influencer_info,
                 created_at: conv.created_at,
                 updated_at: conv.updated_at,
+                message_count: conv.message_count.unwrap_or(0),
                 unread_count: conv.unread_count,
                 last_message: conv.last_message,
             }

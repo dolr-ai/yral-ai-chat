@@ -18,6 +18,7 @@ pub struct InfluencerBasicInfo {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct InfluencerBasicInfoV2 {
     pub id: String,
+    pub name: String,
     pub display_name: String,
     pub avatar_url: Option<String>,
     pub is_online: bool,
@@ -59,6 +60,7 @@ pub struct ConversationResponseV2 {
     pub influencer: InfluencerBasicInfoV2,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    pub message_count: i64,
     pub unread_count: i64,
     pub last_message: Option<LastMessageInfo>,
 }
