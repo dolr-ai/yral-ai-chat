@@ -166,6 +166,7 @@ jobs:
             LITESTREAM_ENDPOINT='${{ secrets.LITESTREAM_ENDPOINT }}' \
             LITESTREAM_REGION='${{ secrets.LITESTREAM_REGION }}' \
             LITESTREAM_PATH='yral-ai-chat/yral_chat.db' \
+            PG_DATABASE_URL='${{ secrets.PG_DATABASE_URL }}' \
             docker compose up -d
 
             echo 'Waiting for services to start...'
