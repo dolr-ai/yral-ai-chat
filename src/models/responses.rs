@@ -27,6 +27,7 @@ pub struct InfluencerBasicInfoV2 {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct UserBasicInfo {
     pub principal_id: String,
+    pub username: Option<String>,
     pub profile_picture_url: Option<String>,
 }
 

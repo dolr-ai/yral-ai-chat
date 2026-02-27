@@ -56,37 +56,117 @@ async fn resolve_caller_type(agent: &ic_agent::Agent, principal_str: &str) -> Ca
     }
 }
 
-/// Batch fetch user profile pictures from the User Info Service canister.
+/// Batch fetch user profiles: profile pictures from canister + usernames from metadata server.
 /// Returns a map of principal_id -> UserBasicInfo.
 async fn batch_fetch_user_profiles(
     agent: &ic_agent::Agent,
+    http_client: &reqwest::Client,
+    metadata_url: &str,
     user_ids: &[String],
 ) -> HashMap<String, UserBasicInfo> {
-    let mut profiles = HashMap::new();
-
-    // Pre-fill with defaults
-    for uid in user_ids {
-        profiles.insert(
-            uid.clone(),
-            UserBasicInfo {
-                principal_id: uid.clone(),
-                profile_picture_url: None,
-            },
-        );
-    }
+    let mut profiles: HashMap<String, UserBasicInfo> = user_ids
+        .iter()
+        .map(|uid| {
+            (
+                uid.clone(),
+                UserBasicInfo {
+                    principal_id: uid.clone(),
+                    username: None,
+                    profile_picture_url: None,
+                },
+            )
+        })
+        .collect();
 
     if user_ids.is_empty() {
         return profiles;
     }
 
-    // Parse principals
+    // Fetch usernames from metadata server and profile pics from canister in parallel
+    let (metadata_result, canister_result) = tokio::join!(
+        fetch_usernames_from_metadata(http_client, metadata_url, user_ids),
+        fetch_profile_pics_from_canister(agent, user_ids),
+    );
+
+    // Merge metadata (usernames)
+    for (pid, username) in metadata_result {
+        if let Some(info) = profiles.get_mut(&pid) {
+            info.username = Some(username);
+        }
+    }
+
+    // Merge canister data (profile pictures)
+    for (pid, pic_url) in canister_result {
+        if let Some(info) = profiles.get_mut(&pid) {
+            info.profile_picture_url = Some(pic_url);
+        }
+    }
+
+    profiles
+}
+
+/// Fetch usernames from the yral metadata server via POST /metadata-bulk.
+async fn fetch_usernames_from_metadata(
+    http_client: &reqwest::Client,
+    metadata_url: &str,
+    user_ids: &[String],
+) -> HashMap<String, String> {
+    let url = format!("{}/metadata-bulk", metadata_url.trim_end_matches('/'));
+
+    let body = serde_json::json!({ "users": user_ids });
+
+    let result: HashMap<String, String> = match http_client
+        .post(&url)
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                tracing::warn!(status = %resp.status(), "Metadata server returned error for bulk fetch");
+                return HashMap::new();
+            }
+            match resp.json::<serde_json::Value>().await {
+                Ok(json) => {
+                    let mut usernames = HashMap::new();
+                    if let Some(ok_data) = json.get("ok").and_then(|v| v.as_object()) {
+                        for (principal, meta) in ok_data {
+                            if let Some(name) = meta.get("user_name").and_then(|v| v.as_str()) {
+                                if !name.trim().is_empty() {
+                                    usernames.insert(principal.clone(), name.to_string());
+                                }
+                            }
+                        }
+                    }
+                    usernames
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to parse metadata bulk response");
+                    HashMap::new()
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to fetch usernames from metadata server");
+            HashMap::new()
+        }
+    };
+
+    result
+}
+
+/// Fetch profile pictures from the User Info Service canister.
+async fn fetch_profile_pics_from_canister(
+    agent: &ic_agent::Agent,
+    user_ids: &[String],
+) -> HashMap<String, String> {
     let principals: Vec<candid::Principal> = user_ids
         .iter()
         .filter_map(|id| candid::Principal::from_text(id).ok())
         .collect();
 
     if principals.is_empty() {
-        return profiles;
+        return HashMap::new();
     }
 
     let canister_id = yral_canisters_client::ic::USER_INFO_SERVICE_ID;
@@ -94,27 +174,23 @@ async fn batch_fetch_user_profiles(
 
     match service.get_users_profile_details(principals).await {
         Ok(yral_canisters_client::user_info_service::Result9::Ok(details)) => {
+            let mut pics = HashMap::new();
             for detail in details {
-                let pid = detail.principal_id.to_text();
-                let pic_url = detail.profile_picture.map(|p| p.url);
-                profiles.insert(
-                    pid.clone(),
-                    UserBasicInfo {
-                        principal_id: pid,
-                        profile_picture_url: pic_url,
-                    },
-                );
+                if let Some(pic) = detail.profile_picture {
+                    pics.insert(detail.principal_id.to_text(), pic.url);
+                }
             }
+            pics
         }
         Ok(yral_canisters_client::user_info_service::Result9::Err(e)) => {
             tracing::warn!(error = %e, "Canister error fetching user profiles");
+            HashMap::new()
         }
         Err(e) => {
             tracing::warn!(error = %e, "IC agent error fetching user profiles");
+            HashMap::new()
         }
     }
-
-    profiles
 }
 
 /// List user's conversations (V2 with enriched influencer info)
@@ -145,7 +221,16 @@ pub async fn list_conversations_v2(
     match caller_type {
         CallerType::User => list_for_user(conv_repo, &user.user_id, &params, limit, offset).await,
         CallerType::Bot => {
-            list_for_bot(conv_repo, &state.ic_agent, &user.user_id, limit, offset).await
+            list_for_bot(
+                conv_repo,
+                &state.ic_agent,
+                &state.http_client,
+                &state.settings.metadata_url,
+                &user.user_id,
+                limit,
+                offset,
+            )
+            .await
         }
     }
 }
@@ -214,6 +299,8 @@ async fn list_for_user(
 async fn list_for_bot(
     conv_repo: ConversationRepository,
     agent: &ic_agent::Agent,
+    http_client: &reqwest::Client,
+    metadata_url: &str,
     bot_principal: &str,
     limit: i64,
     offset: i64,
@@ -231,7 +318,8 @@ async fn list_for_bot(
         .into_iter()
         .collect();
 
-    let user_profiles = batch_fetch_user_profiles(agent, &unique_user_ids).await;
+    let user_profiles =
+        batch_fetch_user_profiles(agent, http_client, metadata_url, &unique_user_ids).await;
 
     let conversations = conversations
         .into_iter()
@@ -241,6 +329,7 @@ async fn list_for_bot(
                 .cloned()
                 .unwrap_or_else(|| UserBasicInfo {
                     principal_id: conv.user_id.clone(),
+                    username: None,
                     profile_picture_url: None,
                 });
 
