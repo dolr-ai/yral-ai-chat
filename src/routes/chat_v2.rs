@@ -203,25 +203,26 @@ async fn fetch_profile_pics_from_canister(
 )]
 pub async fn list_conversations_v2(
     State(state): State<Arc<AppState>>,
-    user: AuthenticatedUser,
+    _user: AuthenticatedUser,
     Query(params): Query<ListConversationsParams>,
 ) -> Result<Json<ListConversationsResponseV2>, AppError> {
     let conv_repo = ConversationRepository::new(state.db.pool.clone());
     let limit = params.limit();
     let offset = params.offset();
+    let principal = &params.principal;
 
-    // Determine if the caller is a bot or user via canister lookup
-    let caller_type = resolve_caller_type(&state.ic_agent, &user.user_id).await;
+    // Determine if the principal is a bot or user via canister lookup
+    let caller_type = resolve_caller_type(&state.ic_agent, principal).await;
 
     match caller_type {
-        CallerType::User => list_for_user(conv_repo, &user.user_id, &params, limit, offset).await,
+        CallerType::User => list_for_user(conv_repo, principal, &params, limit, offset).await,
         CallerType::Bot => {
             list_for_bot(
                 conv_repo,
                 &state.ic_agent,
                 &state.http_client,
                 &state.settings.metadata_url,
-                &user.user_id,
+                principal,
                 limit,
                 offset,
             )
