@@ -115,12 +115,7 @@ async fn fetch_usernames_from_metadata(
 
     let body = serde_json::json!({ "users": user_ids });
 
-    let result: HashMap<String, String> = match http_client
-        .post(&url)
-        .json(&body)
-        .send()
-        .await
-    {
+    let result: HashMap<String, String> = match http_client.post(&url).json(&body).send().await {
         Ok(resp) => {
             if !resp.status().is_success() {
                 tracing::warn!(status = %resp.status(), "Metadata server returned error for bulk fetch");
@@ -131,10 +126,10 @@ async fn fetch_usernames_from_metadata(
                     let mut usernames = HashMap::new();
                     if let Some(ok_data) = json.get("ok").and_then(|v| v.as_object()) {
                         for (principal, meta) in ok_data {
-                            if let Some(name) = meta.get("user_name").and_then(|v| v.as_str()) {
-                                if !name.trim().is_empty() {
-                                    usernames.insert(principal.clone(), name.to_string());
-                                }
+                            if let Some(name) = meta.get("user_name").and_then(|v| v.as_str())
+                                && !name.trim().is_empty()
+                            {
+                                usernames.insert(principal.clone(), name.to_string());
                             }
                         }
                     }
