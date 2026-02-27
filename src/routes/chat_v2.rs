@@ -37,9 +37,9 @@ async fn resolve_caller_type(agent: &ic_agent::Agent, principal_str: &str) -> Ca
     match service.get_user_profile_details_v_7(principal).await {
         Ok(yral_canisters_client::user_info_service::Result7::Ok(profile)) => {
             match profile.account_type {
-                yral_canisters_client::user_info_service::UserAccountType::BotAccount { .. } => {
-                    CallerType::Bot
-                }
+                yral_canisters_client::user_info_service::UserAccountType::BotAccount {
+                    ..
+                } => CallerType::Bot,
                 yral_canisters_client::user_info_service::UserAccountType::MainAccount {
                     ..
                 } => CallerType::User,
