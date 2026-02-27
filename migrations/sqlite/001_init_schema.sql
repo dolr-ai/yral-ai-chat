@@ -19,7 +19,10 @@ CREATE TABLE IF NOT EXISTS ai_influencers (
     is_active TEXT DEFAULT 'active',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
-    metadata TEXT DEFAULT '{}'
+    metadata TEXT DEFAULT '{}',
+    is_nsfw INTEGER DEFAULT 0,
+    parent_principal_id TEXT,
+    source TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_influencers_name ON ai_influencers(name);
@@ -55,7 +58,10 @@ CREATE TABLE IF NOT EXISTS messages (
     audio_duration_seconds INTEGER,
     token_count INTEGER,
     created_at TEXT DEFAULT (datetime('now')),
-    metadata TEXT DEFAULT '{}'
+    metadata TEXT DEFAULT '{}',
+    client_message_id TEXT,
+    is_read BOOLEAN DEFAULT 0,
+    status TEXT DEFAULT 'delivered'
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
