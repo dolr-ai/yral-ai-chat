@@ -54,6 +54,11 @@ base64 = "0.22"
 thiserror = "2"
 anyhow = "1"
 
+# IC / Canister integration
+yral-canisters-client = { git = "https://github.com/dolr-ai/yral-common.git", features = ["user-info-service"] }
+ic-agent = "0.41.0"
+candid = "0.10.20"
+
 # Concurrent map (WebSocket manager)
 dashmap = "6"
 
@@ -67,6 +72,10 @@ hex = "0.4.3"
 # OpenAPI documentation
 utoipa = { version = "5.3", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
+
+[features]
+default = []
+staging = []
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

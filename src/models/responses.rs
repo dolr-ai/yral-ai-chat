@@ -15,12 +15,20 @@ pub struct InfluencerBasicInfo {
     pub suggested_messages: Option<Vec<String>>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct InfluencerBasicInfoV2 {
     pub id: String,
+    pub name: String,
     pub display_name: String,
     pub avatar_url: Option<String>,
     pub is_online: bool,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct UserBasicInfo {
+    pub principal_id: String,
+    pub username: Option<String>,
+    pub profile_picture_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -56,9 +64,13 @@ pub struct ConversationResponseV2 {
     pub id: String,
     pub user_id: String,
     pub influencer_id: String,
-    pub influencer: InfluencerBasicInfoV2,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub influencer: Option<InfluencerBasicInfoV2>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user: Option<UserBasicInfo>,
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
+    pub message_count: i64,
     pub unread_count: i64,
     pub last_message: Option<LastMessageInfo>,
 }

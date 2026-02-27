@@ -12,17 +12,48 @@ env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
   FLY_ORG: gobazzinga-inc-584
   APP_NAME: staging-yral-ai-chat
+  CARGO_TERM_COLOR: always
 
 jobs:
-  build_check:
-    uses: ./.github/workflows/build-check.yml
-    with:
-      publish-artifact: true
-    secrets: inherit
+  build:
+    name: Build (staging)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Rust Setup
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: "x86_64-unknown-linux-gnu"
+          components: "clippy,rustfmt"
+
+      - name: Use rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clippy check
+        run: cargo clippy --features staging --no-deps --release -- --deny warnings --allow deprecated --allow dead-code
+
+      - name: Formatting check
+        run: cargo fmt --check
+
+      - name: Build
+        run: cargo build --features staging --release --target x86_64-unknown-linux-gnu
+
+      - run: touch .empty
+      - name: Archive build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-glibc
+          path: |
+            target/x86_64-unknown-linux-gnu/release/yral-ai-chat
+            .empty
 
   deploy:
     name: Deploy to Fly.io Staging
-    needs: build_check
+    needs: build
     runs-on: ubuntu-latest
 
     concurrency:
@@ -78,7 +109,7 @@ jobs:
             "LITESTREAM_BUCKET=$LITESTREAM_BUCKET" \
             "LITESTREAM_ENDPOINT=$LITESTREAM_ENDPOINT" \
             "LITESTREAM_REGION=$LITESTREAM_REGION" \
-            "LITESTREAM_PATH=yral-ai-chat/staging" \
+            "LITESTREAM_PATH=yral-ai-chat-staging/yral_chat.db" \
             --app "$APP_NAME" --stage
         env:
           JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
@@ -100,10 +131,13 @@ jobs:
           LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
           LITESTREAM_REGION: ${{ secrets.LITESTREAM_REGION }}
 
+      - name: Scale to single machine
+        run: flyctl scale count 1 --app "$APP_NAME" --yes || true
+
       - name: Deploy to Fly.io
         id: deploy
         run: |
-          flyctl deploy --app "$APP_NAME" --remote-only
+          flyctl deploy --app "$APP_NAME" --remote-only --ha=false
           URL="https://${APP_NAME}.fly.dev"
           echo "url=$URL" >> $GITHUB_OUTPUT
 

@@ -3,7 +3,6 @@ pub mod repositories;
 use std::path::Path;
 use std::time::Instant;
 
-use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{ConnectOptions, SqlitePool};
 
@@ -158,7 +157,10 @@ pub struct HealthCheckResult {
     pub size_mb: f64,
 }
 
+#[cfg(feature = "staging")]
 pub async fn run_migrations(pool: &SqlitePool, migrations_dir: &str) -> Result<(), sqlx::Error> {
+    use sqlx::migrate::Migrator;
+
     let path = Path::new(migrations_dir);
 
     if !path.exists() {

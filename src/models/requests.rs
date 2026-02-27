@@ -95,6 +95,8 @@ impl PaginationParams {
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListConversationsParams {
+    /// The principal whose conversations to fetch (bot or user principal).
+    pub principal: String,
     #[param(default = 20)]
     pub limit: Option<i64>,
     #[param(default = 0)]
