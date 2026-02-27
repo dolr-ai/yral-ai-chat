@@ -54,6 +54,7 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::models::responses::MessageResponse,
         crate::models::responses::ConversationResponse,
         crate::models::responses::ConversationResponseV2,
+        crate::models::responses::UserBasicInfo,
         crate::models::responses::SendMessageResponse,
         crate::models::responses::ListConversationsResponse,
         crate::models::responses::ListConversationsResponseV2,
