@@ -1,11 +1,13 @@
-use sqlx::SqlitePool;
+use sqlx::{PgPool, SqlitePool};
 use uuid::Uuid;
 
 use super::parse_dt;
+use crate::db::pg_write;
 use crate::models::entities::{Message, MessageRole, MessageType};
 
 pub struct MessageRepository {
     pool: SqlitePool,
+    pg_pool: Option<PgPool>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -53,8 +55,8 @@ impl From<MessageRow> for Message {
 }
 
 impl MessageRepository {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(pool: SqlitePool, pg_pool: Option<PgPool>) -> Self {
+        Self { pool, pg_pool }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -100,6 +102,40 @@ impl MessageRepository {
             .bind(conversation_id)
             .execute(&self.pool)
             .await?;
+
+        // Dual-write to PG
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let id = message_id.clone();
+            let conv_id = conversation_id.to_string();
+            let role_str = role.as_ref().to_string();
+            let content_owned = content.map(|s| s.to_string());
+            let mt = message_type.as_ref().to_string();
+            let mu_json = media_urls_json.clone();
+            let au = audio_url.map(|s| s.to_string());
+            let cmid = client_message_id.map(|s| s.to_string());
+            tokio::spawn(async move {
+                if let Err(e) = pg_write::pg_insert_message(
+                    &pg,
+                    &id,
+                    &conv_id,
+                    &role_str,
+                    content_owned.as_deref(),
+                    &mt,
+                    &mu_json,
+                    au.as_deref(),
+                    audio_duration_seconds,
+                    token_count,
+                    cmid.as_deref(),
+                    "delivered",
+                    false,
+                )
+                .await
+                {
+                    tracing::warn!(error = %e, "PG dual-write failed for insert_message");
+                }
+            });
+        }
 
         self.get_by_id(&message_id)
             .await?
@@ -286,6 +322,19 @@ impl MessageRepository {
                 .await?;
         }
 
+        // Dual-write to PG
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let conv_id = conversation_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    pg_write::pg_delete_messages_by_conversation(&pg, &conv_id).await
+                {
+                    tracing::warn!(error = %e, "PG dual-write failed for delete_messages_by_conversation");
+                }
+            });
+        }
+
         Ok(count.0)
     }
 
@@ -297,6 +346,18 @@ impl MessageRepository {
         .bind(conversation_id)
         .execute(&self.pool)
         .await?;
+
+        // Dual-write to PG
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let conv_id = conversation_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = pg_write::pg_mark_as_read(&pg, &conv_id).await {
+                    tracing::warn!(error = %e, "PG dual-write failed for mark_as_read");
+                }
+            });
+        }
+
         Ok(())
     }
 

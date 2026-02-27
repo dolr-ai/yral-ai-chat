@@ -1,10 +1,12 @@
-use sqlx::SqlitePool;
+use sqlx::{PgPool, SqlitePool};
 
 use super::{parse_dt, parse_json};
+use crate::db::pg_write;
 use crate::models::entities::{AIInfluencer, InfluencerStatus};
 
 pub struct InfluencerRepository {
     pool: SqlitePool,
+    pg_pool: Option<PgPool>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -64,8 +66,8 @@ const SELECT_COLS: &str =
      parent_principal_id, source, created_at, updated_at, metadata";
 
 impl InfluencerRepository {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(pool: SqlitePool, pg_pool: Option<PgPool>) -> Self {
+        Self { pool, pg_pool }
     }
 
     pub async fn create(&self, influencer: &AIInfluencer) -> Result<(), sqlx::Error> {
@@ -112,6 +114,60 @@ impl InfluencerRepository {
         .bind(&metadata)
         .execute(&self.pool)
         .await?;
+
+        // Dual-write to PG
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let id = influencer.id.clone();
+            let name = influencer.name.clone();
+            let display_name = influencer.display_name.clone();
+            let avatar_url = influencer.avatar_url.clone();
+            let description = influencer.description.clone();
+            let category = influencer.category.clone();
+            let system_instructions = influencer.system_instructions.clone();
+            let pt = personality_traits.clone();
+            let initial_greeting = influencer.initial_greeting.clone();
+            let sm = suggested_messages.clone();
+            let is_active = influencer.is_active.as_ref().to_string();
+            let is_nsfw = influencer.is_nsfw;
+            let parent_principal_id = influencer.parent_principal_id.clone();
+            let source = influencer.source.clone();
+            let created_at = influencer
+                .created_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
+            let updated_at = influencer
+                .updated_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
+            let md = metadata.clone();
+            tokio::spawn(async move {
+                if let Err(e) = pg_write::pg_insert_influencer(
+                    &pg,
+                    &id,
+                    &name,
+                    &display_name,
+                    avatar_url.as_deref(),
+                    description.as_deref(),
+                    category.as_deref(),
+                    &system_instructions,
+                    &pt,
+                    initial_greeting.as_deref(),
+                    &sm,
+                    &is_active,
+                    is_nsfw,
+                    parent_principal_id.as_deref(),
+                    source.as_deref(),
+                    &created_at,
+                    &updated_at,
+                    &md,
+                )
+                .await
+                {
+                    tracing::warn!(error = %e, "PG dual-write failed for insert_influencer");
+                }
+            });
+        }
 
         Ok(())
     }
@@ -201,6 +257,19 @@ impl InfluencerRepository {
         .bind(influencer_id)
         .execute(&self.pool)
         .await?;
+
+        // Dual-write to PG
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let iid = influencer_id.to_string();
+            let instr = instructions.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = pg_write::pg_update_system_prompt(&pg, &iid, &instr).await {
+                    tracing::warn!(error = %e, "PG dual-write failed for update_system_prompt");
+                }
+            });
+        }
+
         Ok(())
     }
 
@@ -211,6 +280,18 @@ impl InfluencerRepository {
         .bind(influencer_id)
         .execute(&self.pool)
         .await?;
+
+        // Dual-write to PG
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let iid = influencer_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = pg_write::pg_soft_delete_influencer(&pg, &iid).await {
+                    tracing::warn!(error = %e, "PG dual-write failed for soft_delete_influencer");
+                }
+            });
+        }
+
         Ok(())
     }
 

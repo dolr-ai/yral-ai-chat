@@ -49,6 +49,9 @@ services:
       # === CORS ===
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
 
+      # === PostgreSQL (optional dual-write) ===
+      PG_DATABASE_URL: ${PG_DATABASE_URL:-}
+
       # === Litestream (SQLite Replication) ===
       ENABLE_LITESTREAM: ${ENABLE_LITESTREAM:-true}
       LITESTREAM_ACCESS_KEY_ID: ${LITESTREAM_ACCESS_KEY_ID}

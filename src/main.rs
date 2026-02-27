@@ -67,6 +67,19 @@ async fn main() {
     //     .await
     //     .expect("Failed to run migrations");
 
+    // Run PostgreSQL migrations if PG is configured
+    if let Some(ref pg_pool) = database.pg_pool {
+        let pg_migrations_dir = if std::path::Path::new("/app/migrations/postgres").exists() {
+            "/app/migrations/postgres"
+        } else {
+            "./migrations/postgres"
+        };
+
+        if let Err(e) = db::run_pg_migrations(pg_pool, pg_migrations_dir).await {
+            tracing::warn!(error = %e, "Failed to run PostgreSQL migrations (continuing without PG)");
+        }
+    }
+
     // Eager WAL checkpoint on startup to drain any existing WAL
     database.run_checkpoint().await;
 

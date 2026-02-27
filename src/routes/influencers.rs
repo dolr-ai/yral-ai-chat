@@ -59,7 +59,7 @@ pub async fn list_influencers(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PaginationParams>,
 ) -> Result<CachedJson<ListInfluencersResponse>, AppError> {
-    let repo = InfluencerRepository::new(state.db.pool.clone());
+    let repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
 
     let limit = params.limit(50, 100);
     let offset = params.offset();
@@ -95,7 +95,7 @@ pub async fn list_trending(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PaginationParams>,
 ) -> Result<CachedJson<ListTrendingInfluencersResponse>, AppError> {
-    let repo = InfluencerRepository::new(state.db.pool.clone());
+    let repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
 
     let limit = params.limit(50, 100);
     let offset = params.offset();
@@ -145,7 +145,7 @@ pub async fn get_influencer(
     State(state): State<Arc<AppState>>,
     Path(influencer_id): Path<String>,
 ) -> Result<CachedJson<InfluencerResponse>, AppError> {
-    let repo = InfluencerRepository::new(state.db.pool.clone());
+    let repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
 
     let influencer = repo
         .get_with_conversation_count(&influencer_id)
@@ -236,7 +236,7 @@ pub async fn create_influencer(
     body.validate()
         .map_err(|e| AppError::validation_error(format!("{e}")))?;
 
-    let repo = InfluencerRepository::new(state.db.pool.clone());
+    let repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
 
     // Check name uniqueness
     if let Some(_existing) = repo.get_by_name(&body.name).await? {
@@ -352,7 +352,7 @@ pub async fn update_system_prompt(
     Path(influencer_id): Path<String>,
     Json(body): Json<UpdateSystemPromptRequest>,
 ) -> Result<Json<InfluencerResponse>, AppError> {
-    let repo = InfluencerRepository::new(state.db.pool.clone());
+    let repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
 
     let influencer = repo
         .get_by_id(&influencer_id)
@@ -397,7 +397,7 @@ pub async fn delete_influencer(
     user: AuthenticatedUser,
     Path(influencer_id): Path<String>,
 ) -> Result<Json<InfluencerResponse>, AppError> {
-    let repo = InfluencerRepository::new(state.db.pool.clone());
+    let repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
 
     let influencer = repo
         .get_by_id(&influencer_id)

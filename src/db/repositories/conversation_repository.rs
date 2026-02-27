@@ -1,13 +1,15 @@
-use sqlx::SqlitePool;
+use sqlx::{PgPool, SqlitePool};
 use uuid::Uuid;
 
 use super::{parse_dt, parse_json};
+use crate::db::pg_write;
 use crate::models::entities::{
     AIInfluencer, Conversation, InfluencerStatus, LastMessageInfo, MessageRole,
 };
 
 pub struct ConversationRepository {
     pool: SqlitePool,
+    pg_pool: Option<PgPool>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -98,8 +100,8 @@ impl From<LastMessageRow> for LastMessageInfo {
 }
 
 impl ConversationRepository {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(pool: SqlitePool, pg_pool: Option<PgPool>) -> Self {
+        Self { pool, pg_pool }
     }
 
     pub async fn create(
@@ -115,6 +117,19 @@ impl ConversationRepository {
             .bind(influencer_id)
             .execute(&self.pool)
             .await?;
+
+        // Dual-write to PG
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let id = conversation_id.clone();
+            let uid = user_id.to_string();
+            let iid = influencer_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = pg_write::pg_insert_conversation(&pg, &id, &uid, &iid).await {
+                    tracing::warn!(error = %e, "PG dual-write failed for insert_conversation");
+                }
+            });
+        }
 
         self.get_by_id(&conversation_id)
             .await?
@@ -259,6 +274,21 @@ impl ConversationRepository {
         .bind(conversation_id)
         .execute(&self.pool)
         .await?;
+
+        // Dual-write to PG
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let conv_id = conversation_id.to_string();
+            let mj = metadata_json.clone();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    pg_write::pg_update_conversation_metadata(&pg, &conv_id, &mj).await
+                {
+                    tracing::warn!(error = %e, "PG dual-write failed for update_conversation_metadata");
+                }
+            });
+        }
+
         Ok(())
     }
 
@@ -267,6 +297,18 @@ impl ConversationRepository {
             .bind(conversation_id)
             .execute(&self.pool)
             .await?;
+
+        // Dual-write to PG
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let conv_id = conversation_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = pg_write::pg_delete_conversation(&pg, &conv_id).await {
+                    tracing::warn!(error = %e, "PG dual-write failed for delete_conversation");
+                }
+            });
+        }
+
         Ok(())
     }
 
