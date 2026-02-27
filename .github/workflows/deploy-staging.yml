@@ -131,10 +131,13 @@ jobs:
           LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
           LITESTREAM_REGION: ${{ secrets.LITESTREAM_REGION }}
 
+      - name: Scale to single machine
+        run: flyctl scale count 1 --app "$APP_NAME" --yes || true
+
       - name: Deploy to Fly.io
         id: deploy
         run: |
-          flyctl deploy --app "$APP_NAME" --remote-only
+          flyctl deploy --app "$APP_NAME" --remote-only --ha=false
           URL="https://${APP_NAME}.fly.dev"
           echo "url=$URL" >> $GITHUB_OUTPUT
 
