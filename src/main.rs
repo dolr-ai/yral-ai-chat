@@ -34,6 +34,7 @@ pub struct AppState {
     pub replicate: ReplicateClient,
     pub push_notifications: PushNotificationService,
     pub ws_manager: Arc<WsManager>,
+    pub ic_agent: ic_agent::Agent,
 }
 
 #[tokio::main]
@@ -112,6 +113,12 @@ async fn main() {
 
     let ws_manager = Arc::new(WsManager::new());
 
+    // Build IC agent for canister calls
+    let ic_agent = ic_agent::Agent::builder()
+        .with_url("https://ic0.app")
+        .build()
+        .expect("Failed to create IC agent");
+
     // Build app state
     let state = Arc::new(AppState {
         db: database,
@@ -124,6 +131,7 @@ async fn main() {
         replicate,
         push_notifications,
         ws_manager,
+        ic_agent,
     });
 
     // Start periodic WAL checkpoint (every 5 minutes)
