@@ -95,6 +95,24 @@ impl PaginationParams {
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListConversationsParams {
+    #[param(default = 20)]
+    pub limit: Option<i64>,
+    #[param(default = 0)]
+    pub offset: Option<i64>,
+    pub influencer_id: Option<String>,
+}
+
+impl ListConversationsParams {
+    pub fn limit(&self) -> i64 {
+        self.limit.unwrap_or(20).clamp(1, 100)
+    }
+    pub fn offset(&self) -> i64 {
+        self.offset.unwrap_or(0).max(0)
+    }
+}
+
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+pub struct ListConversationsV2Params {
     /// The principal whose conversations to fetch (bot or user principal).
     pub principal: String,
     #[param(default = 20)]
@@ -104,7 +122,7 @@ pub struct ListConversationsParams {
     pub influencer_id: Option<String>,
 }
 
-impl ListConversationsParams {
+impl ListConversationsV2Params {
     pub fn limit(&self) -> i64 {
         self.limit.unwrap_or(20).clamp(1, 100)
     }

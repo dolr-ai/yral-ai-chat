@@ -9,7 +9,7 @@ use crate::db::repositories::ConversationRepository;
 use crate::error::{AppError, ErrorBody};
 use crate::middleware::AuthenticatedUser;
 use crate::models::entities::InfluencerStatus;
-use crate::models::requests::ListConversationsParams;
+use crate::models::requests::ListConversationsV2Params;
 use crate::models::responses::{
     ConversationResponseV2, InfluencerBasicInfoV2, ListConversationsResponseV2, UserBasicInfo,
 };
@@ -192,7 +192,7 @@ async fn fetch_profile_pics_from_canister(
 #[utoipa::path(
     get,
     path = "/api/v2/chat/conversations",
-    params(ListConversationsParams),
+    params(ListConversationsV2Params),
     responses(
         (status = 200, body = ListConversationsResponseV2, description = "Successful response"),
         (status = 401, body = ErrorBody, description = "Unauthorized"),
@@ -204,7 +204,7 @@ async fn fetch_profile_pics_from_canister(
 pub async fn list_conversations_v2(
     State(state): State<Arc<AppState>>,
     _user: AuthenticatedUser,
-    Query(params): Query<ListConversationsParams>,
+    Query(params): Query<ListConversationsV2Params>,
 ) -> Result<Json<ListConversationsResponseV2>, AppError> {
     let conv_repo = ConversationRepository::new(state.db.pool.clone());
     let limit = params.limit();
@@ -235,7 +235,7 @@ pub async fn list_conversations_v2(
 async fn list_for_user(
     conv_repo: ConversationRepository,
     user_id: &str,
-    params: &ListConversationsParams,
+    params: &ListConversationsV2Params,
     limit: i64,
     offset: i64,
 ) -> Result<Json<ListConversationsResponseV2>, AppError> {
