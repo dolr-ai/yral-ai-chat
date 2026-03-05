@@ -255,7 +255,7 @@ pub async fn list_messages(
         .await?
         .ok_or_else(|| AppError::not_found("Conversation not found"))?;
 
-    if conv.user_id != user.user_id {
+    if conv.user_id != user.user_id && conv.influencer_id != user.user_id {
         return Err(AppError::forbidden("Not your conversation"));
     }
 
@@ -317,7 +317,7 @@ pub async fn send_message(
         .await?
         .ok_or_else(|| AppError::not_found("Conversation not found"))?;
 
-    if conv.user_id != user.user_id {
+    if conv.user_id != user.user_id && conv.influencer_id != user.user_id {
         return Err(AppError::forbidden("Not your conversation"));
     }
 
@@ -582,7 +582,7 @@ pub async fn mark_as_read(
         .await?
         .ok_or_else(|| AppError::not_found("Conversation not found"))?;
 
-    if conv.user_id != user.user_id {
+    if conv.user_id != user.user_id && conv.influencer_id != user.user_id {
         return Err(AppError::forbidden("Not your conversation"));
     }
 
@@ -642,7 +642,7 @@ pub async fn generate_image(
         .await?
         .ok_or_else(|| AppError::not_found("Conversation not found"))?;
 
-    if conv.user_id != user.user_id {
+    if conv.user_id != user.user_id && conv.influencer_id != user.user_id {
         return Err(AppError::forbidden("Not your conversation"));
     }
 
@@ -779,7 +779,7 @@ pub async fn delete_conversation(
         .await?
         .ok_or_else(|| AppError::not_found("Conversation not found"))?;
 
-    if conv.user_id != user.user_id {
+    if conv.user_id != user.user_id && conv.influencer_id != user.user_id {
         return Err(AppError::forbidden("Not your conversation"));
     }
 

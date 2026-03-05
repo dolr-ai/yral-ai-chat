@@ -124,7 +124,7 @@ async fn fetch_usernames_from_metadata(
             match resp.json::<serde_json::Value>().await {
                 Ok(json) => {
                     let mut usernames = HashMap::new();
-                    if let Some(ok_data) = json.get("ok").and_then(|v| v.as_object()) {
+                    if let Some(ok_data) = json.get("Ok").and_then(|v| v.as_object()) {
                         for (principal, meta) in ok_data {
                             if let Some(name) = meta.get("user_name").and_then(|v| v.as_str())
                                 && !name.trim().is_empty()
