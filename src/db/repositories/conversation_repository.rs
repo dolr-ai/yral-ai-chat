@@ -207,7 +207,7 @@ impl ConversationRepository {
                  FROM conversations c
                  JOIN ai_influencers i ON c.influencer_id = i.id
                  LEFT JOIN messages m ON c.id = m.conversation_id
-                 WHERE c.user_id = ? AND c.influencer_id = ?
+                 WHERE c.user_id = ? AND c.influencer_id = ? AND i.is_active != 'discontinued'
                  GROUP BY c.id, i.id
                  ORDER BY c.updated_at DESC
                  LIMIT ? OFFSET ?",
@@ -227,7 +227,7 @@ impl ConversationRepository {
                  FROM conversations c
                  JOIN ai_influencers i ON c.influencer_id = i.id
                  LEFT JOIN messages m ON c.id = m.conversation_id
-                 WHERE c.user_id = ?
+                 WHERE c.user_id = ? AND i.is_active != 'discontinued'
                  GROUP BY c.id, i.id
                  ORDER BY c.updated_at DESC
                  LIMIT ? OFFSET ?",
@@ -261,7 +261,7 @@ impl ConversationRepository {
     ) -> Result<i64, sqlx::Error> {
         if let Some(inf_id) = influencer_id {
             let count: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM conversations WHERE user_id = ? AND influencer_id = ?",
+                "SELECT COUNT(*) FROM conversations c JOIN ai_influencers i ON c.influencer_id = i.id WHERE c.user_id = ? AND c.influencer_id = ? AND i.is_active != 'discontinued'",
             )
             .bind(user_id)
             .bind(inf_id)
@@ -270,7 +270,7 @@ impl ConversationRepository {
             Ok(count.0)
         } else {
             let count: (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM conversations WHERE user_id = ?")
+                sqlx::query_as("SELECT COUNT(*) FROM conversations c JOIN ai_influencers i ON c.influencer_id = i.id WHERE c.user_id = ? AND i.is_active != 'discontinued'")
                     .bind(user_id)
                     .fetch_one(&self.pool)
                     .await?;
