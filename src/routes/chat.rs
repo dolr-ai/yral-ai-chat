@@ -34,10 +34,10 @@ async fn can_access_conversation(
         return Ok(true);
     }
     // Check if caller is the bot's owner
-    if let Some(parent) = inf_repo.get_parent_principal(&conv.influencer_id).await? {
-        if parent == user_id {
-            return Ok(true);
-        }
+    if let Some(parent) = inf_repo.get_parent_principal(&conv.influencer_id).await?
+        && parent == user_id
+    {
+        return Ok(true);
     }
     Ok(false)
 }
