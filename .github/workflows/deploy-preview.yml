@@ -52,7 +52,35 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Set secrets
+      - name: Import Secrets from Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: https://vault.yral.com
+          method: jwt
+          role: yral-ai-chat-role
+          jwtGithubAudience: "https://github.com/dolr-ai"
+          secrets: |
+            secret/data/yral-ai-chat/JWT_SECRET_KEY value | JWT_SECRET_KEY
+            secret/data/yral-ai-chat/GEMINI_API_KEY value | GEMINI_API_KEY
+            secret/data/yral-ai-chat/OPENROUTER_API_KEY value | OPENROUTER_API_KEY
+            secret/data/yral-ai-chat/OPENROUTER_MODEL value | OPENROUTER_MODEL
+            secret/data/yral-ai-chat/REPLICATE_API_TOKEN value | REPLICATE_API_TOKEN
+            secret/data/yral-ai-chat/AWS_ACCESS_KEY_ID value | AWS_ACCESS_KEY_ID
+            secret/data/yral-ai-chat/AWS_SECRET_ACCESS_KEY value | AWS_SECRET_ACCESS_KEY
+            secret/data/yral-ai-chat/AWS_S3_BUCKET value | AWS_S3_BUCKET
+            secret/data/yral-ai-chat/AWS_REGION value | AWS_REGION
+            secret/data/yral-ai-chat/S3_ENDPOINT_URL value | S3_ENDPOINT_URL
+            secret/data/yral-ai-chat/S3_PUBLIC_URL_BASE value | S3_PUBLIC_URL_BASE
+            secret/data/yral-ai-chat/YRAL_METADATA_NOTIFICATION_API_KEY value | YRAL_METADATA_NOTIFICATION_API_KEY
+            secret/data/yral-ai-chat/CORS_ORIGINS value | CORS_ORIGINS
+            secret/data/yral-ai-chat/LITESTREAM_ACCESS_KEY_ID value | LITESTREAM_ACCESS_KEY_ID
+            secret/data/yral-ai-chat/LITESTREAM_SECRET_ACCESS_KEY value | LITESTREAM_SECRET_ACCESS_KEY
+            secret/data/yral-ai-chat/LITESTREAM_BUCKET value | LITESTREAM_BUCKET
+            secret/data/yral-ai-chat/LITESTREAM_ENDPOINT value | LITESTREAM_ENDPOINT
+            secret/data/yral-ai-chat/LITESTREAM_REGION value | LITESTREAM_REGION
+            secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL
+
+      - name: Set secrets and deploy
         if: ${{ github.event.pull_request.merged == false }}
         run: |
           APP_NAME="pr-${{ github.event.number }}-${{ github.repository_owner }}-yral-ai-chat"
@@ -85,25 +113,25 @@ jobs:
           flyctl deploy --app "$APP_NAME"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: ${{ secrets.OPENROUTER_MODEL }}
-          REPLICATE_API_TOKEN: ${{ secrets.REPLICATE_API_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
-          S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
-          S3_PUBLIC_URL_BASE: ${{ secrets.S3_PUBLIC_URL_BASE }}
-          YRAL_METADATA_NOTIFICATION_API_KEY: ${{ secrets.YRAL_METADATA_NOTIFICATION_API_KEY }}
-          CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
-          LITESTREAM_ACCESS_KEY_ID: ${{ secrets.LITESTREAM_ACCESS_KEY_ID }}
-          LITESTREAM_SECRET_ACCESS_KEY: ${{ secrets.LITESTREAM_SECRET_ACCESS_KEY }}
-          LITESTREAM_BUCKET: ${{ secrets.LITESTREAM_BUCKET }}
-          LITESTREAM_ENDPOINT: ${{ secrets.LITESTREAM_ENDPOINT }}
-          LITESTREAM_REGION: ${{ secrets.LITESTREAM_REGION }}
-          PG_DATABASE_URL: ${{ secrets.PG_DATABASE_URL }}
+          JWT_SECRET_KEY: ${{ env.JWT_SECRET_KEY }}
+          GEMINI_API_KEY: ${{ env.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ env.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ env.OPENROUTER_MODEL }}
+          REPLICATE_API_TOKEN: ${{ env.REPLICATE_API_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ env.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.AWS_SECRET_ACCESS_KEY }}
+          AWS_S3_BUCKET: ${{ env.AWS_S3_BUCKET }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          S3_ENDPOINT_URL: ${{ env.S3_ENDPOINT_URL }}
+          S3_PUBLIC_URL_BASE: ${{ env.S3_PUBLIC_URL_BASE }}
+          YRAL_METADATA_NOTIFICATION_API_KEY: ${{ env.YRAL_METADATA_NOTIFICATION_API_KEY }}
+          CORS_ORIGINS: ${{ env.CORS_ORIGINS }}
+          LITESTREAM_ACCESS_KEY_ID: ${{ env.LITESTREAM_ACCESS_KEY_ID }}
+          LITESTREAM_SECRET_ACCESS_KEY: ${{ env.LITESTREAM_SECRET_ACCESS_KEY }}
+          LITESTREAM_BUCKET: ${{ env.LITESTREAM_BUCKET }}
+          LITESTREAM_ENDPOINT: ${{ env.LITESTREAM_ENDPOINT }}
+          LITESTREAM_REGION: ${{ env.LITESTREAM_REGION }}
+          PG_DATABASE_URL: ${{ env.PG_DATABASE_URL }}
 
   integration_tests:
     needs: preview
