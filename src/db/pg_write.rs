@@ -2,6 +2,7 @@ use sqlx::PgPool;
 
 // ── Message writes ──
 
+#[allow(clippy::too_many_arguments)]
 pub async fn pg_insert_message(
     pool: &PgPool,
     id: &str,
@@ -111,6 +112,7 @@ pub async fn pg_delete_conversation(
 
 // ── Influencer writes ──
 
+#[allow(clippy::too_many_arguments)]
 pub async fn pg_insert_influencer(
     pool: &PgPool,
     id: &str,
