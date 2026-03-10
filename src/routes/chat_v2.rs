@@ -206,7 +206,7 @@ pub async fn list_conversations_v2(
     _user: AuthenticatedUser,
     Query(params): Query<ListConversationsV2Params>,
 ) -> Result<Json<ListConversationsResponseV2>, AppError> {
-    let conv_repo = ConversationRepository::new(state.db.pool.clone());
+    let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
     let limit = params.limit();
     let offset = params.offset();
     let principal = &params.principal;

@@ -61,6 +61,20 @@ pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> 
         },
     );
 
+    // PostgreSQL health (optional, does NOT affect overall status)
+    if let Some(pg_health) = state.db.pg_health_check().await {
+        services.insert(
+            "postgresql".to_string(),
+            ServiceHealth {
+                status: pg_health.status,
+                latency_ms: pg_health.latency_ms,
+                error: pg_health.error,
+                pool_size: Some(state.settings.pg_pool_size),
+                pool_free: None,
+            },
+        );
+    }
+
     let overall_status = if db_health.status == "up" {
         "healthy"
     } else {
