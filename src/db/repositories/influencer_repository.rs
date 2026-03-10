@@ -211,6 +211,18 @@ impl InfluencerRepository {
         Ok(row.map(AIInfluencer::from))
     }
 
+    pub async fn get_parent_principal(
+        &self,
+        influencer_id: &str,
+    ) -> Result<Option<String>, sqlx::Error> {
+        let row: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT parent_principal_id FROM ai_influencers WHERE id = ?")
+                .bind(influencer_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.and_then(|r| r.0).filter(|s| !s.is_empty()))
+    }
+
     pub async fn get_by_name(&self, name: &str) -> Result<Option<AIInfluencer>, sqlx::Error> {
         let sql = format!("SELECT {SELECT_COLS} FROM ai_influencers WHERE name = ?");
 

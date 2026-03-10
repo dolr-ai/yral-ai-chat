@@ -327,9 +327,7 @@ impl MessageRepository {
             let pg = pg.clone();
             let conv_id = conversation_id.to_string();
             tokio::spawn(async move {
-                if let Err(e) =
-                    pg_write::pg_delete_messages_by_conversation(&pg, &conv_id).await
-                {
+                if let Err(e) = pg_write::pg_delete_messages_by_conversation(&pg, &conv_id).await {
                     tracing::warn!(error = %e, "PG dual-write failed for delete_messages_by_conversation");
                 }
             });

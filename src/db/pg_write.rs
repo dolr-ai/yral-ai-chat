@@ -53,10 +53,7 @@ pub async fn pg_delete_messages_by_conversation(
     Ok(())
 }
 
-pub async fn pg_mark_as_read(
-    pool: &PgPool,
-    conversation_id: &str,
-) -> Result<(), sqlx::Error> {
+pub async fn pg_mark_as_read(pool: &PgPool, conversation_id: &str) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE messages SET is_read = TRUE, status = 'read'
          WHERE conversation_id = $1 AND is_read = FALSE AND role = 'assistant'",
@@ -93,13 +90,11 @@ pub async fn pg_update_conversation_metadata(
     conversation_id: &str,
     metadata_json: &str,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "UPDATE conversations SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2",
-    )
-    .bind(metadata_json)
-    .bind(conversation_id)
-    .execute(pool)
-    .await?;
+    sqlx::query("UPDATE conversations SET metadata = $1::jsonb, updated_at = NOW() WHERE id = $2")
+        .bind(metadata_json)
+        .bind(conversation_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

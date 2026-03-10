@@ -42,6 +42,38 @@ struct LastMessageRow {
     is_read: i32,
 }
 
+#[derive(sqlx::FromRow)]
+struct ConversationForBotRow {
+    id: String,
+    user_id: String,
+    influencer_id: String,
+    created_at: String,
+    updated_at: String,
+    metadata: String,
+    #[sqlx(default)]
+    message_count: Option<i64>,
+    #[sqlx(default)]
+    unread_count: Option<i64>,
+}
+
+impl From<ConversationForBotRow> for Conversation {
+    fn from(row: ConversationForBotRow) -> Self {
+        Self {
+            id: row.id,
+            user_id: row.user_id,
+            influencer_id: row.influencer_id,
+            created_at: parse_dt(&row.created_at),
+            updated_at: parse_dt(&row.updated_at),
+            metadata: parse_json(&row.metadata),
+            influencer: None,
+            message_count: row.message_count,
+            unread_count: row.unread_count.unwrap_or(0),
+            last_message: None,
+            recent_messages: None,
+        }
+    }
+}
+
 impl From<ConversationRow> for Conversation {
     fn from(row: ConversationRow) -> Self {
         let created_at = parse_dt(&row.created_at);
@@ -190,7 +222,8 @@ impl ConversationRepository {
                  FROM conversations c
                  JOIN ai_influencers i ON c.influencer_id = i.id
                  LEFT JOIN messages m ON c.id = m.conversation_id
-                 WHERE c.user_id = ? AND c.influencer_id = ?
+                 WHERE c.user_id = ? AND c.influencer_id = ? AND i.is_active != 'discontinued'
+                 AND c.user_id NOT IN (SELECT id FROM ai_influencers)
                  GROUP BY c.id, i.id
                  ORDER BY c.updated_at DESC
                  LIMIT ? OFFSET ?",
@@ -210,7 +243,8 @@ impl ConversationRepository {
                  FROM conversations c
                  JOIN ai_influencers i ON c.influencer_id = i.id
                  LEFT JOIN messages m ON c.id = m.conversation_id
-                 WHERE c.user_id = ?
+                 WHERE c.user_id = ? AND i.is_active != 'discontinued'
+                 AND c.user_id NOT IN (SELECT id FROM ai_influencers)
                  GROUP BY c.id, i.id
                  ORDER BY c.updated_at DESC
                  LIMIT ? OFFSET ?",
@@ -244,7 +278,7 @@ impl ConversationRepository {
     ) -> Result<i64, sqlx::Error> {
         if let Some(inf_id) = influencer_id {
             let count: (i64,) = sqlx::query_as(
-                "SELECT COUNT(*) FROM conversations WHERE user_id = ? AND influencer_id = ?",
+                "SELECT COUNT(*) FROM conversations c JOIN ai_influencers i ON c.influencer_id = i.id WHERE c.user_id = ? AND c.influencer_id = ? AND i.is_active != 'discontinued' AND c.user_id NOT IN (SELECT id FROM ai_influencers)",
             )
             .bind(user_id)
             .bind(inf_id)
@@ -253,12 +287,60 @@ impl ConversationRepository {
             Ok(count.0)
         } else {
             let count: (i64,) =
-                sqlx::query_as("SELECT COUNT(*) FROM conversations WHERE user_id = ?")
+                sqlx::query_as("SELECT COUNT(*) FROM conversations c JOIN ai_influencers i ON c.influencer_id = i.id WHERE c.user_id = ? AND i.is_active != 'discontinued' AND c.user_id NOT IN (SELECT id FROM ai_influencers)")
                     .bind(user_id)
                     .fetch_one(&self.pool)
                     .await?;
             Ok(count.0)
         }
+    }
+
+    /// List conversations where the given influencer_id is the bot (for bot callers).
+    pub async fn list_by_influencer(
+        &self,
+        influencer_id: &str,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<Conversation>, sqlx::Error> {
+        let rows = sqlx::query_as::<_, ConversationForBotRow>(
+            "SELECT c.id, c.user_id, c.influencer_id, c.created_at, c.updated_at, c.metadata,
+                    COUNT(m.id) as message_count,
+                    (SELECT COUNT(*) FROM messages m2 WHERE m2.conversation_id = c.id AND m2.is_read = 0 AND m2.role = 'user') as unread_count
+             FROM conversations c
+             LEFT JOIN messages m ON c.id = m.conversation_id
+             WHERE c.influencer_id = ?
+             GROUP BY c.id
+             ORDER BY c.updated_at DESC
+             LIMIT ? OFFSET ?",
+        )
+        .bind(influencer_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut conversations: Vec<Conversation> =
+            rows.into_iter().map(Conversation::from).collect();
+
+        // Batch fetch last messages
+        if !conversations.is_empty() {
+            let conv_ids: Vec<String> = conversations.iter().map(|c| c.id.clone()).collect();
+            let last_messages = self.get_last_messages_batch(&conv_ids).await?;
+            for conv in &mut conversations {
+                conv.last_message = last_messages.get(&conv.id).cloned();
+            }
+        }
+
+        Ok(conversations)
+    }
+
+    pub async fn count_by_influencer(&self, influencer_id: &str) -> Result<i64, sqlx::Error> {
+        let count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM conversations WHERE influencer_id = ?")
+                .bind(influencer_id)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(count.0)
     }
 
     pub async fn update_metadata(
@@ -281,8 +363,7 @@ impl ConversationRepository {
             let conv_id = conversation_id.to_string();
             let mj = metadata_json.clone();
             tokio::spawn(async move {
-                if let Err(e) =
-                    pg_write::pg_update_conversation_metadata(&pg, &conv_id, &mj).await
+                if let Err(e) = pg_write::pg_update_conversation_metadata(&pg, &conv_id, &mj).await
                 {
                     tracing::warn!(error = %e, "PG dual-write failed for update_conversation_metadata");
                 }

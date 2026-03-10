@@ -54,6 +54,7 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::models::responses::MessageResponse,
         crate::models::responses::ConversationResponse,
         crate::models::responses::ConversationResponseV2,
+        crate::models::responses::UserBasicInfo,
         crate::models::responses::SendMessageResponse,
         crate::models::responses::ListConversationsResponse,
         crate::models::responses::ListConversationsResponseV2,
@@ -118,5 +119,5 @@ impl utoipa::Modify for SecurityAddon {
 }
 
 pub fn swagger_ui() -> SwaggerUi {
-    SwaggerUi::new("/explorer").url("/api-docs/openapi.json", ApiDoc::openapi())
+    SwaggerUi::new("/explore").url("/api-docs/openapi.json", ApiDoc::openapi())
 }

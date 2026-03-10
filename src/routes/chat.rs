@@ -23,6 +23,25 @@ use crate::models::responses::{
 const FALLBACK_ERROR_MESSAGE: &str =
     "I'm having trouble generating a response right now. Please try again.";
 
+/// Check if a user can access a conversation.
+/// Allowed if they are the user, the bot, or the bot's parent (owner).
+async fn can_access_conversation(
+    user_id: &str,
+    conv: &crate::models::entities::Conversation,
+    inf_repo: &InfluencerRepository,
+) -> Result<bool, AppError> {
+    if conv.user_id == user_id || conv.influencer_id == user_id {
+        return Ok(true);
+    }
+    // Check if caller is the bot's owner
+    if let Some(parent) = inf_repo.get_parent_principal(&conv.influencer_id).await?
+        && parent == user_id
+    {
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 impl From<Message> for MessageResponse {
     fn from(m: Message) -> Self {
         Self {
@@ -249,13 +268,14 @@ pub async fn list_messages(
 ) -> Result<Json<ListMessagesResponse>, AppError> {
     let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
     let msg_repo = MessageRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
+    let inf_repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
 
     let conv = conv_repo
         .get_by_id(&conversation_id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation not found"))?;
 
-    if conv.user_id != user.user_id {
+    if !can_access_conversation(&user.user_id, &conv, &inf_repo).await? {
         return Err(AppError::forbidden("Not your conversation"));
     }
 
@@ -317,7 +337,7 @@ pub async fn send_message(
         .await?
         .ok_or_else(|| AppError::not_found("Conversation not found"))?;
 
-    if conv.user_id != user.user_id {
+    if !can_access_conversation(&user.user_id, &conv, &inf_repo).await? {
         return Err(AppError::forbidden("Not your conversation"));
     }
 
@@ -576,13 +596,14 @@ pub async fn mark_as_read(
 ) -> Result<Json<MarkConversationAsReadResponse>, AppError> {
     let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
     let msg_repo = MessageRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
+    let inf_repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
 
     let conv = conv_repo
         .get_by_id(&conversation_id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation not found"))?;
 
-    if conv.user_id != user.user_id {
+    if !can_access_conversation(&user.user_id, &conv, &inf_repo).await? {
         return Err(AppError::forbidden("Not your conversation"));
     }
 
@@ -642,7 +663,7 @@ pub async fn generate_image(
         .await?
         .ok_or_else(|| AppError::not_found("Conversation not found"))?;
 
-    if conv.user_id != user.user_id {
+    if !can_access_conversation(&user.user_id, &conv, &inf_repo).await? {
         return Err(AppError::forbidden("Not your conversation"));
     }
 
@@ -773,13 +794,14 @@ pub async fn delete_conversation(
 ) -> Result<Json<DeleteConversationResponse>, AppError> {
     let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
     let msg_repo = MessageRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
+    let inf_repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
 
     let conv = conv_repo
         .get_by_id(&conversation_id)
         .await?
         .ok_or_else(|| AppError::not_found("Conversation not found"))?;
 
-    if conv.user_id != user.user_id {
+    if !can_access_conversation(&user.user_id, &conv, &inf_repo).await? {
         return Err(AppError::forbidden("Not your conversation"));
     }
 

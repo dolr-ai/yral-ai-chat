@@ -171,10 +171,7 @@ impl Database {
     pub async fn pg_health_check(&self) -> Option<HealthCheckResult> {
         let pg = self.pg_pool.as_ref()?;
         let start = Instant::now();
-        match sqlx::query_scalar::<_, i32>("SELECT 1")
-            .fetch_one(pg)
-            .await
-        {
+        match sqlx::query_scalar::<_, i32>("SELECT 1").fetch_one(pg).await {
             Ok(_) => Some(HealthCheckResult {
                 status: "up".to_string(),
                 latency_ms: Some(start.elapsed().as_millis() as i64),
@@ -198,7 +195,10 @@ pub struct HealthCheckResult {
     pub size_mb: f64,
 }
 
+#[cfg(feature = "staging")]
 pub async fn run_migrations(pool: &SqlitePool, migrations_dir: &str) -> Result<(), sqlx::Error> {
+    use sqlx::migrate::Migrator;
+
     let path = Path::new(migrations_dir);
 
     if !path.exists() {
@@ -229,7 +229,8 @@ pub async fn run_pg_migrations(pool: &PgPool, migrations_dir: &str) -> Result<()
 }
 
 async fn connect_pg(url: &str, pool_size: u32, timeout_secs: u64) -> Result<PgPool, sqlx::Error> {
-    let connect_options: PgConnectOptions = url.parse::<PgConnectOptions>()?.disable_statement_logging();
+    let connect_options: PgConnectOptions =
+        url.parse::<PgConnectOptions>()?.disable_statement_logging();
 
     let pool = PgPoolOptions::new()
         .max_connections(pool_size)

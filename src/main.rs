@@ -34,6 +34,7 @@ pub struct AppState {
     pub replicate: ReplicateClient,
     pub push_notifications: PushNotificationService,
     pub ws_manager: Arc<WsManager>,
+    pub ic_agent: ic_agent::Agent,
 }
 
 #[tokio::main]
@@ -56,16 +57,19 @@ async fn main() {
         .await
         .expect("Failed to connect to database");
 
-    // Run migrations
-    let migrations_dir = if std::path::Path::new("/app/migrations/sqlite").exists() {
-        "/app/migrations/sqlite"
-    } else {
-        "./migrations/sqlite"
-    };
+    // Run migrations (only on staging builds)
+    #[cfg(feature = "staging")]
+    {
+        let migrations_dir = if std::path::Path::new("/app/migrations/sqlite").exists() {
+            "/app/migrations/sqlite"
+        } else {
+            "./migrations/sqlite"
+        };
 
-    db::run_migrations(&database.pool, migrations_dir)
-        .await
-        .expect("Failed to run migrations");
+        db::run_migrations(&database.pool, migrations_dir)
+            .await
+            .expect("Failed to run migrations");
+    }
 
     // Run PostgreSQL migrations if PG is configured
     if let Some(ref pg_pool) = database.pg_pool {
@@ -122,6 +126,12 @@ async fn main() {
 
     let ws_manager = Arc::new(WsManager::new());
 
+    // Build IC agent for canister calls
+    let ic_agent = ic_agent::Agent::builder()
+        .with_url("https://ic0.app")
+        .build()
+        .expect("Failed to create IC agent");
+
     // Build app state
     let state = Arc::new(AppState {
         db: database,
@@ -134,6 +144,7 @@ async fn main() {
         replicate,
         push_notifications,
         ws_manager,
+        ic_agent,
     });
 
     // Start periodic WAL checkpoint (every 5 minutes)
