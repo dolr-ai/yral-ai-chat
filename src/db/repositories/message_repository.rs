@@ -134,6 +134,12 @@ impl MessageRepository {
                 {
                     tracing::warn!(error = %e, "PG dual-write failed for insert_message");
                 }
+                // Also bump conversation updated_at in PG
+                if let Err(e) =
+                    pg_write::pg_bump_conversation_updated_at(&pg, &conv_id).await
+                {
+                    tracing::warn!(error = %e, "PG dual-write failed for bump_conversation_updated_at");
+                }
             });
         }
 

@@ -180,6 +180,17 @@ pub async fn pg_update_system_prompt(
     Ok(())
 }
 
+pub async fn pg_bump_conversation_updated_at(
+    pool: &PgPool,
+    conversation_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE conversations SET updated_at = NOW() WHERE id = $1")
+        .bind(conversation_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn pg_soft_delete_influencer(
     pool: &PgPool,
     influencer_id: &str,
