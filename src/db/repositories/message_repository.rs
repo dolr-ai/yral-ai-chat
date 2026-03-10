@@ -105,6 +105,16 @@ impl MessageRepository {
 
         // Dual-write to PG
         if let Some(ref pg) = self.pg_pool {
+            // Look up conversation owner info for upsert
+            let conv_info: Option<(String, String)> = sqlx::query_as(
+                "SELECT user_id, influencer_id FROM conversations WHERE id = ?",
+            )
+            .bind(conversation_id)
+            .fetch_optional(&self.pool)
+            .await
+            .ok()
+            .flatten();
+
             let pg = pg.clone();
             let id = message_id.clone();
             let conv_id = conversation_id.to_string();
@@ -115,6 +125,14 @@ impl MessageRepository {
             let au = audio_url.map(|s| s.to_string());
             let cmid = client_message_id.map(|s| s.to_string());
             tokio::spawn(async move {
+                // Ensure conversation exists in PG (backfill for pre-migration data)
+                if let Some((user_id, influencer_id)) = conv_info
+                    && let Err(e) =
+                        pg_write::pg_insert_conversation(&pg, &conv_id, &user_id, &influencer_id)
+                            .await
+                {
+                    tracing::warn!(error = %e, "PG dual-write failed for ensure_conversation");
+                }
                 if let Err(e) = pg_write::pg_insert_message(
                     &pg,
                     &id,
