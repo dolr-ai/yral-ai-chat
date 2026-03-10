@@ -131,13 +131,12 @@ jobs:
             secret/data/yral-ai-chat/LITESTREAM_BUCKET value | LITESTREAM_BUCKET ;
             secret/data/yral-ai-chat/LITESTREAM_ENDPOINT value | LITESTREAM_ENDPOINT ;
             secret/data/yral-ai-chat/LITESTREAM_REGION value | LITESTREAM_REGION ;
-            secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL ;
-            secret/data/yral-ai-chat/HETZNER_SSH_KEY value | HETZNER_SSH_KEY
+            secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL
 
       - name: Setup SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ env.HETZNER_SSH_KEY }}
+          ssh-private-key: ${{ secrets.HETZNER_BARE_METAL_GITHUB_ACTIONS_SSH_PRIVATE_KEY }}
 
       - name: Add server to known hosts
         run: |
