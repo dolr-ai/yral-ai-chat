@@ -106,14 +106,13 @@ impl MessageRepository {
         // Dual-write to PG
         if let Some(ref pg) = self.pg_pool {
             // Look up conversation owner info for upsert
-            let conv_info: Option<(String, String)> = sqlx::query_as(
-                "SELECT user_id, influencer_id FROM conversations WHERE id = ?",
-            )
-            .bind(conversation_id)
-            .fetch_optional(&self.pool)
-            .await
-            .ok()
-            .flatten();
+            let conv_info: Option<(String, String)> =
+                sqlx::query_as("SELECT user_id, influencer_id FROM conversations WHERE id = ?")
+                    .bind(conversation_id)
+                    .fetch_optional(&self.pool)
+                    .await
+                    .ok()
+                    .flatten();
 
             let pg = pg.clone();
             let id = message_id.clone();
