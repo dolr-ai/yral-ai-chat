@@ -1,0 +1,38 @@
+name: Postgres Backup
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      s3_prefix:
+        description: "Override S3 prefix (optional)"
+        required: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run backup via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: root
+          key: ${{ secrets.SERVER_SSH_KEY }}
+
+          script: |
+            PREFIX="${{ github.event.inputs.s3_prefix }}"
+
+            if [ -z "$PREFIX" ]; then
+              PREFIX="${{ secrets.WALG_S3_PREFIX }}"
+            fi
+
+            /usr/local/bin/run-postgres-backup.sh \
+            "${{ secrets.AWS_ACCESS_KEY_ID }}" \
+            "${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+            "${{ secrets.AWS_REGION }}" \
+            "$PREFIX"
+
+
+            
