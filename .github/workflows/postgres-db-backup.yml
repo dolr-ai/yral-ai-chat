@@ -9,6 +9,11 @@ on:
         description: "Override S3 prefix (optional)"
         required: false
 
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
 jobs:
   backup:
     runs-on: ubuntu-latest
