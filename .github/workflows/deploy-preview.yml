@@ -20,6 +20,7 @@ jobs:
     uses: ./.github/workflows/build-check.yml
     with:
       publish-artifact: true
+      cargo-features: staging
 
   preview:
     needs: build_check

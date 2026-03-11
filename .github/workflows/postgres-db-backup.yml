@@ -1,0 +1,58 @@
+name: Postgres Backup
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      s3_prefix:
+        description: "Override S3 prefix (optional)"
+        required: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Import Secrets from Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: https://vault.yral.com
+          method: jwt
+          role: yral-ai-chat-role
+          jwtGithubAudience: "https://github.com/dolr-ai"
+          secrets: |
+            secret/data/yral-ai-chat/PG_AWS_ACCESS_KEY_ID value | PG_AWS_ACCESS_KEY_ID ;
+            secret/data/yral-ai-chat/PG_AWS_SECRET_ACCESS_KEY value | PG_AWS_SECRET_ACCESS_KEY ;
+            secret/data/yral-ai-chat/PG_AWS_REGION value | PG_AWS_REGION ;
+
+      - name: Setup SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.HETZNER_BARE_METAL_GITHUB_ACTIONS_SSH_PRIVATE_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          ssh-keyscan -H ${{ vars.PG_SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Check server connectivity
+        run: |
+          ssh -o ConnectTimeout=10 root@${{ vars.PG_SERVER_IP }} "echo 'Server connection successful'"
+
+      - name: Run backup via SSH
+        run: |
+          PREFIX="${{ github.event.inputs.s3_prefix }}"
+
+          if [ -z "$PREFIX" ]; then
+            PREFIX="${{ vars.WALG_S3_PREFIX }}"
+          fi
+
+          ssh root@${{ vars.PG_SERVER_IP }} \
+            "/usr/local/bin/run-postgres-backup.sh \
+            '${{ env.PG_AWS_ACCESS_KEY_ID }}' \
+            '${{ env.PG_AWS_SECRET_ACCESS_KEY }}' \
+            '${{ env.PG_AWS_REGION }}' \
+            '$PREFIX'"
