@@ -257,11 +257,19 @@ impl From<PgLastMessageRow> for LastMessageInfo {
 
 impl ConversationRepository {
     pub fn new(pool: SqlitePool, pg_pool: Option<PgPool>, pg_read: bool) -> Self {
-        Self { pool, pg_pool, pg_read }
+        Self {
+            pool,
+            pg_pool,
+            pg_read,
+        }
     }
 
     fn use_pg(&self) -> Option<&PgPool> {
-        if self.pg_read { self.pg_pool.as_ref() } else { None }
+        if self.pg_read {
+            self.pg_pool.as_ref()
+        } else {
+            None
+        }
     }
 
     // ── Writes ────────────────────────────────────────────────────────────────

@@ -127,11 +127,19 @@ const SELECT_COLS: &str =
 
 impl InfluencerRepository {
     pub fn new(pool: SqlitePool, pg_pool: Option<PgPool>, pg_read: bool) -> Self {
-        Self { pool, pg_pool, pg_read }
+        Self {
+            pool,
+            pg_pool,
+            pg_read,
+        }
     }
 
     fn use_pg(&self) -> Option<&PgPool> {
-        if self.pg_read { self.pg_pool.as_ref() } else { None }
+        if self.pg_read {
+            self.pg_pool.as_ref()
+        } else {
+            None
+        }
     }
 
     // ── Writes ────────────────────────────────────────────────────────────────
@@ -165,8 +173,18 @@ impl InfluencerRepository {
         .bind(influencer.is_nsfw as i32)
         .bind(&influencer.parent_principal_id)
         .bind(&influencer.source)
-        .bind(influencer.created_at.format("%Y-%m-%d %H:%M:%S").to_string())
-        .bind(influencer.updated_at.format("%Y-%m-%d %H:%M:%S").to_string())
+        .bind(
+            influencer
+                .created_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+        )
+        .bind(
+            influencer
+                .updated_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+        )
         .bind(&metadata)
         .execute(&self.pool)
         .await?;
@@ -187,8 +205,14 @@ impl InfluencerRepository {
             let is_nsfw = influencer.is_nsfw;
             let parent_principal_id = influencer.parent_principal_id.clone();
             let source = influencer.source.clone();
-            let created_at = influencer.created_at.format("%Y-%m-%d %H:%M:%S").to_string();
-            let updated_at = influencer.updated_at.format("%Y-%m-%d %H:%M:%S").to_string();
+            let created_at = influencer
+                .created_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
+            let updated_at = influencer
+                .updated_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
             let md = metadata.clone();
             tokio::spawn(async move {
                 if let Err(e) = pg_write::pg_insert_influencer(

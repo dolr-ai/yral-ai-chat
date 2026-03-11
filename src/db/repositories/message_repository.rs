@@ -114,7 +114,11 @@ impl MessageRepository {
     }
 
     fn use_pg(&self) -> Option<&PgPool> {
-        if self.pg_read { self.pg_pool.as_ref() } else { None }
+        if self.pg_read {
+            self.pg_pool.as_ref()
+        } else {
+            None
+        }
     }
 
     // ── Writes ────────────────────────────────────────────────────────────────
