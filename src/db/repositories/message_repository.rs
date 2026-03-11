@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::{PgPool, SqlitePool};
 use uuid::Uuid;
 
@@ -8,7 +10,10 @@ use crate::models::entities::{Message, MessageRole, MessageType};
 pub struct MessageRepository {
     pool: SqlitePool,
     pg_pool: Option<PgPool>,
+    pg_read: bool,
 }
+
+// ── SQLite row ────────────────────────────────────────────────────────────────
 
 #[derive(sqlx::FromRow)]
 struct MessageRow {
@@ -27,10 +32,6 @@ struct MessageRow {
     status: Option<String>,
     is_read: Option<i32>,
 }
-
-const SELECT_COLS: &str = "id, conversation_id, role, content, message_type, media_urls, audio_url,
-     audio_duration_seconds, token_count, client_message_id, created_at, metadata,
-     status, is_read";
 
 impl From<MessageRow> for Message {
     fn from(row: MessageRow) -> Self {
@@ -54,10 +55,69 @@ impl From<MessageRow> for Message {
     }
 }
 
-impl MessageRepository {
-    pub fn new(pool: SqlitePool, pg_pool: Option<PgPool>) -> Self {
-        Self { pool, pg_pool }
+// ── PostgreSQL row ────────────────────────────────────────────────────────────
+
+#[derive(sqlx::FromRow)]
+struct PgMessageRow {
+    id: String,
+    conversation_id: String,
+    role: String,
+    content: Option<String>,
+    message_type: String,
+    media_urls: serde_json::Value,
+    audio_url: Option<String>,
+    audio_duration_seconds: Option<i32>,
+    token_count: Option<i32>,
+    client_message_id: Option<String>,
+    created_at: chrono::NaiveDateTime,
+    metadata: serde_json::Value,
+    status: Option<String>,
+    is_read: Option<bool>,
+}
+
+impl From<PgMessageRow> for Message {
+    fn from(row: PgMessageRow) -> Self {
+        Self {
+            id: row.id,
+            conversation_id: row.conversation_id,
+            role: row.role.parse().unwrap_or(MessageRole::User),
+            content: row.content,
+            message_type: row.message_type.parse().unwrap_or(MessageType::Text),
+            media_urls: serde_json::from_value(row.media_urls).unwrap_or_default(),
+            audio_url: row.audio_url,
+            audio_duration_seconds: row.audio_duration_seconds,
+            token_count: row.token_count,
+            client_message_id: row.client_message_id,
+            created_at: row.created_at,
+            metadata: row.metadata,
+            status: row.status.unwrap_or("delivered".to_string()),
+            is_read: row.is_read.unwrap_or(false),
+        }
     }
+}
+
+// ── Column list (same names for both DBs) ─────────────────────────────────────
+
+const SELECT_COLS: &str = "id, conversation_id, role, content, message_type, media_urls, audio_url,
+     audio_duration_seconds, token_count, client_message_id, created_at, metadata,
+     status, is_read";
+
+// ── Repository ────────────────────────────────────────────────────────────────
+
+impl MessageRepository {
+    pub fn new(pool: SqlitePool, pg_pool: Option<PgPool>, pg_read: bool) -> Self {
+        Self {
+            pool,
+            pg_pool,
+            pg_read,
+        }
+    }
+
+    fn use_pg(&self) -> Option<&PgPool> {
+        if self.pg_read { self.pg_pool.as_ref() } else { None }
+    }
+
+    // ── Writes ────────────────────────────────────────────────────────────────
 
     #[allow(clippy::too_many_arguments)]
     pub async fn create(
@@ -105,7 +165,6 @@ impl MessageRepository {
 
         // Dual-write to PG
         if let Some(ref pg) = self.pg_pool {
-            // Look up conversation owner info for upsert
             let conv_info: Option<(String, String)> =
                 sqlx::query_as("SELECT user_id, influencer_id FROM conversations WHERE id = ?")
                     .bind(conversation_id)
@@ -124,7 +183,6 @@ impl MessageRepository {
             let au = audio_url.map(|s| s.to_string());
             let cmid = client_message_id.map(|s| s.to_string());
             tokio::spawn(async move {
-                // Ensure conversation exists in PG (backfill for pre-migration data)
                 if let Some((user_id, influencer_id)) = conv_info
                     && let Err(e) =
                         pg_write::pg_insert_conversation(&pg, &conv_id, &user_id, &influencer_id)
@@ -151,7 +209,6 @@ impl MessageRepository {
                 {
                     tracing::warn!(error = %e, "PG dual-write failed for insert_message");
                 }
-                // Also bump conversation updated_at in PG
                 if let Err(e) = pg_write::pg_bump_conversation_updated_at(&pg, &conv_id).await {
                     tracing::warn!(error = %e, "PG dual-write failed for bump_conversation_updated_at");
                 }
@@ -163,14 +220,74 @@ impl MessageRepository {
             .ok_or(sqlx::Error::RowNotFound)
     }
 
+    pub async fn delete_by_conversation(&self, conversation_id: &str) -> Result<i64, sqlx::Error> {
+        let count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM messages WHERE conversation_id = ?")
+                .bind(conversation_id)
+                .fetch_one(&self.pool)
+                .await?;
+
+        if count.0 > 0 {
+            sqlx::query("DELETE FROM messages WHERE conversation_id = ?")
+                .bind(conversation_id)
+                .execute(&self.pool)
+                .await?;
+        }
+
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let conv_id = conversation_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = pg_write::pg_delete_messages_by_conversation(&pg, &conv_id).await {
+                    tracing::warn!(error = %e, "PG dual-write failed for delete_messages_by_conversation");
+                }
+            });
+        }
+
+        Ok(count.0)
+    }
+
+    pub async fn mark_as_read(&self, conversation_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE messages SET is_read = 1, status = 'read'
+             WHERE conversation_id = ? AND is_read = 0 AND role = 'assistant'",
+        )
+        .bind(conversation_id)
+        .execute(&self.pool)
+        .await?;
+
+        if let Some(ref pg) = self.pg_pool {
+            let pg = pg.clone();
+            let conv_id = conversation_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = pg_write::pg_mark_as_read(&pg, &conv_id).await {
+                    tracing::warn!(error = %e, "PG dual-write failed for mark_as_read");
+                }
+            });
+        }
+
+        Ok(())
+    }
+
+    // ── Reads ─────────────────────────────────────────────────────────────────
+
     pub async fn get_by_id(&self, message_id: &str) -> Result<Option<Message>, sqlx::Error> {
-        let sql = format!("SELECT {SELECT_COLS} FROM messages WHERE id = ?");
-
-        let row = sqlx::query_as::<_, MessageRow>(&sql)
+        if let Some(pg) = self.use_pg() {
+            let row = sqlx::query_as::<_, PgMessageRow>(&format!(
+                "SELECT {SELECT_COLS} FROM messages WHERE id = $1"
+            ))
             .bind(message_id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(pg)
             .await?;
+            return Ok(row.map(Message::from));
+        }
 
+        let row = sqlx::query_as::<_, MessageRow>(&format!(
+            "SELECT {SELECT_COLS} FROM messages WHERE id = ?"
+        ))
+        .bind(message_id)
+        .fetch_optional(&self.pool)
+        .await?;
         Ok(row.map(Message::from))
     }
 
@@ -179,16 +296,25 @@ impl MessageRepository {
         conversation_id: &str,
         client_message_id: &str,
     ) -> Result<Option<Message>, sqlx::Error> {
-        let sql = format!(
-            "SELECT {SELECT_COLS} FROM messages WHERE conversation_id = ? AND client_message_id = ?"
-        );
-
-        let row = sqlx::query_as::<_, MessageRow>(&sql)
+        if let Some(pg) = self.use_pg() {
+            let row = sqlx::query_as::<_, PgMessageRow>(&format!(
+                "SELECT {SELECT_COLS} FROM messages
+                 WHERE conversation_id = $1 AND client_message_id = $2"
+            ))
             .bind(conversation_id)
             .bind(client_message_id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(pg)
             .await?;
+            return Ok(row.map(Message::from));
+        }
 
+        let row = sqlx::query_as::<_, MessageRow>(&format!(
+            "SELECT {SELECT_COLS} FROM messages WHERE conversation_id = ? AND client_message_id = ?"
+        ))
+        .bind(conversation_id)
+        .bind(client_message_id)
+        .fetch_optional(&self.pool)
+        .await?;
         Ok(row.map(Message::from))
     }
 
@@ -196,12 +322,31 @@ impl MessageRepository {
         &self,
         message_id: &str,
     ) -> Result<Option<Message>, sqlx::Error> {
+        // get_by_id already dispatches to PG when pg_read is true
         let msg = match self.get_by_id(message_id).await? {
             Some(m) => m,
             None => return Ok(None),
         };
 
-        let sql = format!(
+        if let Some(pg) = self.use_pg() {
+            let row = sqlx::query_as::<_, PgMessageRow>(&format!(
+                "SELECT {SELECT_COLS} FROM messages
+                 WHERE conversation_id = $1
+                   AND role = 'assistant'
+                   AND created_at >= $2
+                   AND id != $3
+                 ORDER BY created_at ASC
+                 LIMIT 1"
+            ))
+            .bind(&msg.conversation_id)
+            .bind(msg.created_at)
+            .bind(message_id)
+            .fetch_optional(pg)
+            .await?;
+            return Ok(row.map(Message::from));
+        }
+
+        let row = sqlx::query_as::<_, MessageRow>(&format!(
             "SELECT {SELECT_COLS} FROM messages
              WHERE conversation_id = ?
                AND role = 'assistant'
@@ -209,15 +354,12 @@ impl MessageRepository {
                AND id != ?
              ORDER BY created_at ASC
              LIMIT 1"
-        );
-
-        let row = sqlx::query_as::<_, MessageRow>(&sql)
-            .bind(&msg.conversation_id)
-            .bind(msg.created_at.format("%Y-%m-%d %H:%M:%S").to_string())
-            .bind(message_id)
-            .fetch_optional(&self.pool)
-            .await?;
-
+        ))
+        .bind(&msg.conversation_id)
+        .bind(msg.created_at.format("%Y-%m-%d %H:%M:%S").to_string())
+        .bind(message_id)
+        .fetch_optional(&self.pool)
+        .await?;
         Ok(row.map(Message::from))
     }
 
@@ -229,20 +371,35 @@ impl MessageRepository {
         order: &str,
     ) -> Result<Vec<Message>, sqlx::Error> {
         let order_clause = if order == "asc" { "ASC" } else { "DESC" };
+
+        if let Some(pg) = self.use_pg() {
+            let sql = format!(
+                "SELECT {SELECT_COLS} FROM messages
+                 WHERE conversation_id = $1
+                 ORDER BY created_at {order_clause}
+                 LIMIT $2 OFFSET $3"
+            );
+            let rows = sqlx::query_as::<_, PgMessageRow>(&sql)
+                .bind(conversation_id)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(pg)
+                .await?;
+            return Ok(rows.into_iter().map(Message::from).collect());
+        }
+
         let sql = format!(
             "SELECT {SELECT_COLS} FROM messages
              WHERE conversation_id = ?
              ORDER BY created_at {order_clause}
              LIMIT ? OFFSET ?"
         );
-
         let rows = sqlx::query_as::<_, MessageRow>(&sql)
             .bind(conversation_id)
             .bind(limit)
             .bind(offset)
             .fetch_all(&self.pool)
             .await?;
-
         Ok(rows.into_iter().map(Message::from).collect())
     }
 
@@ -251,19 +408,32 @@ impl MessageRepository {
         conversation_id: &str,
         limit: i64,
     ) -> Result<Vec<Message>, sqlx::Error> {
-        let sql = format!(
+        if let Some(pg) = self.use_pg() {
+            let rows = sqlx::query_as::<_, PgMessageRow>(&format!(
+                "SELECT {SELECT_COLS} FROM messages
+                 WHERE conversation_id = $1
+                 ORDER BY created_at DESC
+                 LIMIT $2"
+            ))
+            .bind(conversation_id)
+            .bind(limit)
+            .fetch_all(pg)
+            .await?;
+            let mut messages: Vec<Message> = rows.into_iter().map(Message::from).collect();
+            messages.reverse();
+            return Ok(messages);
+        }
+
+        let rows = sqlx::query_as::<_, MessageRow>(&format!(
             "SELECT {SELECT_COLS} FROM messages
              WHERE conversation_id = ?
              ORDER BY created_at DESC
              LIMIT ?"
-        );
-
-        let rows = sqlx::query_as::<_, MessageRow>(&sql)
-            .bind(conversation_id)
-            .bind(limit)
-            .fetch_all(&self.pool)
-            .await?;
-
+        ))
+        .bind(conversation_id)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
         let mut messages: Vec<Message> = rows.into_iter().map(Message::from).collect();
         messages.reverse();
         Ok(messages)
@@ -273,9 +443,43 @@ impl MessageRepository {
         &self,
         conversation_ids: &[String],
         limit_per_conv: i64,
-    ) -> Result<std::collections::HashMap<String, Vec<Message>>, sqlx::Error> {
+    ) -> Result<HashMap<String, Vec<Message>>, sqlx::Error> {
         if conversation_ids.is_empty() {
-            return Ok(std::collections::HashMap::new());
+            return Ok(HashMap::new());
+        }
+
+        if let Some(pg) = self.use_pg() {
+            let rows = sqlx::query_as::<_, PgMessageRow>(&format!(
+                "WITH RankedMessages AS (
+                    SELECT {SELECT_COLS},
+                           ROW_NUMBER() OVER (
+                               PARTITION BY conversation_id
+                               ORDER BY created_at DESC
+                           ) as rn
+                    FROM messages
+                    WHERE conversation_id = ANY($1)
+                )
+                SELECT {SELECT_COLS}
+                FROM RankedMessages
+                WHERE rn <= $2
+                ORDER BY conversation_id, created_at ASC"
+            ))
+            .bind(conversation_ids.to_vec())
+            .bind(limit_per_conv)
+            .fetch_all(pg)
+            .await?;
+
+            let mut result: HashMap<String, Vec<Message>> = conversation_ids
+                .iter()
+                .map(|id| (id.clone(), Vec::new()))
+                .collect();
+            for row in rows {
+                let conv_id = row.conversation_id.clone();
+                if let Some(messages) = result.get_mut(&conv_id) {
+                    messages.push(Message::from(row));
+                }
+            }
+            return Ok(result);
         }
 
         let placeholders: Vec<&str> = conversation_ids.iter().map(|_| "?").collect();
@@ -304,83 +508,48 @@ impl MessageRepository {
 
         let rows = query.fetch_all(&self.pool).await?;
 
-        let mut result: std::collections::HashMap<String, Vec<Message>> = conversation_ids
+        let mut result: HashMap<String, Vec<Message>> = conversation_ids
             .iter()
             .map(|id| (id.clone(), Vec::new()))
             .collect();
-
         for row in rows {
             let conv_id = row.conversation_id.clone();
-            let msg = Message::from(row);
             if let Some(messages) = result.get_mut(&conv_id) {
-                messages.push(msg);
+                messages.push(Message::from(row));
             }
         }
-
         Ok(result)
     }
 
     pub async fn count_by_conversation(&self, conversation_id: &str) -> Result<i64, sqlx::Error> {
+        if let Some(pg) = self.use_pg() {
+            let count: (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM messages WHERE conversation_id = $1")
+                    .bind(conversation_id)
+                    .fetch_one(pg)
+                    .await?;
+            return Ok(count.0);
+        }
+
         let count: (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM messages WHERE conversation_id = ?")
                 .bind(conversation_id)
                 .fetch_one(&self.pool)
                 .await?;
         Ok(count.0)
-    }
-
-    pub async fn delete_by_conversation(&self, conversation_id: &str) -> Result<i64, sqlx::Error> {
-        let count: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM messages WHERE conversation_id = ?")
-                .bind(conversation_id)
-                .fetch_one(&self.pool)
-                .await?;
-
-        if count.0 > 0 {
-            sqlx::query("DELETE FROM messages WHERE conversation_id = ?")
-                .bind(conversation_id)
-                .execute(&self.pool)
-                .await?;
-        }
-
-        // Dual-write to PG
-        if let Some(ref pg) = self.pg_pool {
-            let pg = pg.clone();
-            let conv_id = conversation_id.to_string();
-            tokio::spawn(async move {
-                if let Err(e) = pg_write::pg_delete_messages_by_conversation(&pg, &conv_id).await {
-                    tracing::warn!(error = %e, "PG dual-write failed for delete_messages_by_conversation");
-                }
-            });
-        }
-
-        Ok(count.0)
-    }
-
-    pub async fn mark_as_read(&self, conversation_id: &str) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE messages SET is_read = 1, status = 'read'
-             WHERE conversation_id = ? AND is_read = 0 AND role = 'assistant'",
-        )
-        .bind(conversation_id)
-        .execute(&self.pool)
-        .await?;
-
-        // Dual-write to PG
-        if let Some(ref pg) = self.pg_pool {
-            let pg = pg.clone();
-            let conv_id = conversation_id.to_string();
-            tokio::spawn(async move {
-                if let Err(e) = pg_write::pg_mark_as_read(&pg, &conv_id).await {
-                    tracing::warn!(error = %e, "PG dual-write failed for mark_as_read");
-                }
-            });
-        }
-
-        Ok(())
     }
 
     pub async fn count_unread(&self, conversation_id: &str) -> Result<i64, sqlx::Error> {
+        if let Some(pg) = self.use_pg() {
+            let count: (i64,) = sqlx::query_as(
+                "SELECT COUNT(*) FROM messages WHERE conversation_id = $1 AND is_read = FALSE AND role = 'assistant'",
+            )
+            .bind(conversation_id)
+            .fetch_one(pg)
+            .await?;
+            return Ok(count.0);
+        }
+
         let count: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM messages WHERE conversation_id = ? AND is_read = 0 AND role = 'assistant'",
         )

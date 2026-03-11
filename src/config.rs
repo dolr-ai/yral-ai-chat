@@ -19,6 +19,7 @@ pub struct Settings {
     pub pg_database_url: Option<String>,
     pub pg_pool_size: u32,
     pub pg_pool_timeout: u64,
+    pub pg_read_enabled: bool,
 
     // JWT
     pub jwt_secret_key: String,
@@ -117,6 +118,10 @@ impl Settings {
                 .unwrap_or("10".into())
                 .parse()
                 .unwrap_or(10),
+            pg_read_enabled: env::var("PG_READ_ENABLED")
+                .unwrap_or("false".into())
+                .parse()
+                .unwrap_or(false),
 
             jwt_secret_key: env::var("JWT_SECRET_KEY").expect("JWT_SECRET_KEY is required"),
             jwt_algorithm: env::var("JWT_ALGORITHM").unwrap_or("HS256".into()),
