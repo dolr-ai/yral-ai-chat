@@ -16,6 +16,7 @@ pub struct Database {
     pub pool: SqlitePool,
     pub pg_pool: Option<PgPool>,
     pub db_path: String,
+    pub pg_read_enabled: bool,
 }
 
 impl Database {
@@ -96,6 +97,7 @@ impl Database {
             pool,
             pg_pool,
             db_path: db_path.clone(),
+            pg_read_enabled: settings.pg_read_enabled,
         })
     }
 
@@ -144,6 +146,30 @@ impl Database {
                 }
             }
         });
+    }
+
+    pub fn conv_repo(&self) -> repositories::ConversationRepository {
+        repositories::ConversationRepository::new(
+            self.pool.clone(),
+            self.pg_pool.clone(),
+            self.pg_read_enabled,
+        )
+    }
+
+    pub fn msg_repo(&self) -> repositories::MessageRepository {
+        repositories::MessageRepository::new(
+            self.pool.clone(),
+            self.pg_pool.clone(),
+            self.pg_read_enabled,
+        )
+    }
+
+    pub fn inf_repo(&self) -> repositories::InfluencerRepository {
+        repositories::InfluencerRepository::new(
+            self.pool.clone(),
+            self.pg_pool.clone(),
+            self.pg_read_enabled,
+        )
     }
 
     pub async fn health_check(&self) -> HealthCheckResult {
