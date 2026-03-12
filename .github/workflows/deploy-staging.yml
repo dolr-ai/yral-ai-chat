@@ -91,6 +91,7 @@ jobs:
             "GEMINI_MODEL=gemini-2.5-flash" \
             "GEMINI_MAX_TOKENS=2048" \
             "GEMINI_TEMPERATURE=0.7" \
+            "PG_READ_ENABLED=true" \
             "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
             "OPENROUTER_MODEL=google/gemini-2.5-flash" \
             "REPLICATE_API_TOKEN=$REPLICATE_API_TOKEN" \
