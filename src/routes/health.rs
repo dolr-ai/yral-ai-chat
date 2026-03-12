@@ -26,7 +26,10 @@ pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> 
             status: db_health.status.clone(),
             latency_ms: db_health.latency_ms,
             error: db_health.error,
+            #[cfg(feature = "staging")]
             pool_size: Some(state.settings.database_pool_size),
+            #[cfg(not(feature = "staging"))]
+            pool_size: Some(state.settings.pg_pool_size),
             pool_free: None,
         },
     );
@@ -97,21 +100,31 @@ pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> 
 pub async fn status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> {
     let uptime = state.start_time.elapsed().as_secs();
 
+    #[cfg(feature = "staging")]
+    let db_pool = &state.db.pool;
+    #[cfg(not(feature = "staging"))]
+    let db_pool = &state.db.pg_pool;
+
     let total_conversations: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM conversations")
-        .fetch_one(&state.db.pool)
+        .fetch_one(db_pool)
         .await
         .unwrap_or(0);
 
     let total_messages: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM messages")
-        .fetch_one(&state.db.pool)
+        .fetch_one(db_pool)
         .await
         .unwrap_or(0);
 
     let active_influencers: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM ai_influencers WHERE is_active = 'active'")
-            .fetch_one(&state.db.pool)
+            .fetch_one(db_pool)
             .await
             .unwrap_or(0);
+
+    #[cfg(feature = "staging")]
+    let pool_size = state.settings.database_pool_size;
+    #[cfg(not(feature = "staging"))]
+    let pool_size = state.settings.pg_pool_size;
 
     Json(StatusResponse {
         service: state.settings.app_name.clone(),
@@ -120,8 +133,8 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<StatusResponse> 
         uptime_seconds: uptime,
         database: DatabaseStats {
             connected: true,
-            pool_size: Some(state.settings.database_pool_size),
-            active_connections: Some(state.settings.database_pool_size),
+            pool_size: Some(pool_size),
+            active_connections: Some(pool_size),
         },
         statistics: SystemStatistics {
             total_conversations,

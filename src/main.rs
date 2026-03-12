@@ -57,7 +57,7 @@ async fn main() {
         .await
         .expect("Failed to connect to database");
 
-    // Run migrations (only on staging builds)
+    // Run migrations
     #[cfg(feature = "staging")]
     {
         let migrations_dir = if std::path::Path::new("/app/migrations/sqlite").exists() {
@@ -65,27 +65,25 @@ async fn main() {
         } else {
             "./migrations/sqlite"
         };
-
         db::run_migrations(&database.pool, migrations_dir)
             .await
-            .expect("Failed to run migrations");
+            .expect("Failed to run SQLite migrations");
+
+        // Eager WAL checkpoint on startup to drain any existing WAL
+        database.run_checkpoint().await;
     }
 
-    // Run PostgreSQL migrations if PG is configured
-    if let Some(ref pg_pool) = database.pg_pool {
+    #[cfg(not(feature = "staging"))]
+    {
         let pg_migrations_dir = if std::path::Path::new("/app/migrations/postgres").exists() {
             "/app/migrations/postgres"
         } else {
             "./migrations/postgres"
         };
-
-        if let Err(e) = db::run_pg_migrations(pg_pool, pg_migrations_dir).await {
-            tracing::warn!(error = %e, "Failed to run PostgreSQL migrations (continuing without PG)");
-        }
+        db::run_pg_migrations(&database.pg_pool, pg_migrations_dir)
+            .await
+            .expect("Failed to run PostgreSQL migrations");
     }
-
-    // Eager WAL checkpoint on startup to drain any existing WAL
-    database.run_checkpoint().await;
 
     // Build shared HTTP client
     let http_client = reqwest::Client::new();
@@ -147,7 +145,8 @@ async fn main() {
         ic_agent,
     });
 
-    // Start periodic WAL checkpoint (every 5 minutes)
+    // Start periodic WAL checkpoint (every 5 minutes) - staging only
+    #[cfg(feature = "staging")]
     Database::spawn_periodic_checkpoint(state.db.pool.clone(), 300);
 
     // Build CORS layer

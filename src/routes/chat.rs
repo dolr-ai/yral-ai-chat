@@ -6,7 +6,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 
 use crate::AppState;
-use crate::db::repositories::{ConversationRepository, InfluencerRepository, MessageRepository};
+use crate::db::repositories::{InfluencerRepository, MessageRepository};
 use crate::error::{AppError, ErrorBody};
 use crate::middleware::AuthenticatedUser;
 use crate::models::entities::{AIInfluencer, InfluencerStatus, Message, MessageRole, MessageType};
@@ -745,7 +745,7 @@ async fn generate_image_prompt_from_context(
     msg_repo: &MessageRepository,
     conversation_id: &str,
 ) -> Result<String, AppError> {
-    let mut messages = msg_repo
+    let mut messages: Vec<crate::models::entities::Message> = msg_repo
         .list_by_conversation(conversation_id, 10, 0, "desc")
         .await?;
     messages.reverse();
@@ -852,9 +852,7 @@ fn spawn_memory_extraction(
     memories: &HashMap<String, String>,
     is_nsfw: bool,
 ) {
-    let pool = state.db.pool.clone();
-    let pg_pool = state.db.pg_pool.clone();
-    let pg_read = state.db.pg_read_enabled;
+    let db = state.db.clone();
     let conv_id = conversation_id.to_string();
     let ai_input = user_input.to_string();
     let response = response_text.to_string();
@@ -875,7 +873,7 @@ fn spawn_memory_extraction(
 
         match result {
             Ok(updated) if updated != memories => {
-                let conv_repo = ConversationRepository::new(pool, pg_pool, pg_read);
+                let conv_repo = db.conv_repo();
                 let mut metadata = serde_json::json!({});
                 metadata["memories"] = serde_json::to_value(&updated).unwrap_or_default();
                 if let Err(e) = conv_repo.update_metadata(&conv_id, &metadata).await {
@@ -899,9 +897,7 @@ fn spawn_notifications(
 ) {
     let push = state.push_notifications.clone();
     let ws = state.ws_manager.clone();
-    let pool = state.db.pool.clone();
-    let pg_pool = state.db.pg_pool.clone();
-    let pg_read = state.db.pg_read_enabled;
+    let db = state.db.clone();
     let user_id = user_id.to_string();
     let conv_id = conversation_id.to_string();
     let influencer_id = influencer_id.to_string();
@@ -912,7 +908,8 @@ fn spawn_notifications(
         serde_json::to_value(MessageResponse::from(assistant_message.clone())).unwrap_or_default();
 
     tokio::spawn(async move {
-        let unread_count = MessageRepository::new(pool, pg_pool, pg_read)
+        let unread_count = db
+            .msg_repo()
             .count_unread(&conv_id)
             .await
             .unwrap_or(0);
