@@ -69,7 +69,14 @@ impl Database {
             "Connected to SQLite database"
         );
 
-        // Connect to PostgreSQL if configured
+        // Connect to PostgreSQL if configured (skip on staging builds)
+        #[cfg(feature = "staging")]
+        let pg_pool: Option<PgPool> = {
+            tracing::info!("Staging build: skipping PostgreSQL dual-write");
+            None
+        };
+
+        #[cfg(not(feature = "staging"))]
         let pg_pool = if let Some(ref pg_url) = settings.pg_database_url {
             match connect_pg(pg_url, settings.pg_pool_size, settings.pg_pool_timeout).await {
                 Ok(pg) => {
