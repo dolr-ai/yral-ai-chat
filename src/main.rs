@@ -73,18 +73,6 @@ async fn main() {
         database.run_checkpoint().await;
     }
 
-    #[cfg(not(feature = "staging"))]
-    {
-        let pg_migrations_dir = if std::path::Path::new("/app/migrations/postgres").exists() {
-            "/app/migrations/postgres"
-        } else {
-            "./migrations/postgres"
-        };
-        db::run_pg_migrations(&database.pg_pool, pg_migrations_dir)
-            .await
-            .expect("Failed to run PostgreSQL migrations");
-    }
-
     // Build shared HTTP client
     let http_client = reqwest::Client::new();
 
