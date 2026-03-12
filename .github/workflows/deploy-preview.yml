@@ -17,12 +17,14 @@ env:
 
 jobs:
   build_check:
+    if: github.head_ref != 'staging'
     uses: ./.github/workflows/build-check.yml
     with:
       publish-artifact: true
       cargo-features: staging
 
   preview:
+    if: github.head_ref != 'staging'
     needs: build_check
     runs-on: ubuntu-latest
 
@@ -137,7 +139,7 @@ jobs:
 
   integration_tests:
     needs: preview
-    if: ${{ github.event.action != 'closed' && needs.preview.outputs.url != '' }}
+    if: ${{ github.head_ref != 'staging' && github.event.action != 'closed' && needs.preview.outputs.url != '' }}
     runs-on: ubuntu-latest
 
     steps:
