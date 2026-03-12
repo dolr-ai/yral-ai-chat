@@ -6,7 +6,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 
 use crate::AppState;
-use crate::db::repositories::{ConversationRepository, InfluencerRepository, MessageRepository};
+use crate::db::repositories::{InfluencerRepository, MessageRepository};
 use crate::error::{AppError, ErrorBody};
 use crate::middleware::AuthenticatedUser;
 use crate::models::entities::{AIInfluencer, InfluencerStatus, Message, MessageRole, MessageType};
@@ -125,9 +125,9 @@ pub async fn create_conversation(
     user: AuthenticatedUser,
     Json(body): Json<CreateConversationRequest>,
 ) -> Result<(StatusCode, Json<ConversationResponse>), AppError> {
-    let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let inf_repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let msg_repo = MessageRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
+    let conv_repo = state.db.conv_repo();
+    let inf_repo = state.db.inf_repo();
+    let msg_repo = state.db.msg_repo();
 
     // Verify influencer exists
     let influencer = inf_repo
@@ -206,8 +206,8 @@ pub async fn list_conversations(
     user: AuthenticatedUser,
     Query(params): Query<ListConversationsParams>,
 ) -> Result<Json<ListConversationsResponse>, AppError> {
-    let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let msg_repo = MessageRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
+    let conv_repo = state.db.conv_repo();
+    let msg_repo = state.db.msg_repo();
 
     let limit = params.limit();
     let offset = params.offset();
@@ -266,9 +266,9 @@ pub async fn list_messages(
     Path(conversation_id): Path<String>,
     Query(params): Query<ListMessagesParams>,
 ) -> Result<Json<ListMessagesResponse>, AppError> {
-    let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let msg_repo = MessageRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let inf_repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
+    let conv_repo = state.db.conv_repo();
+    let msg_repo = state.db.msg_repo();
+    let inf_repo = state.db.inf_repo();
 
     let conv = conv_repo
         .get_by_id(&conversation_id)
@@ -319,9 +319,9 @@ pub async fn send_message(
     Path(conversation_id): Path<String>,
     Json(body): Json<SendMessageRequest>,
 ) -> Result<(StatusCode, Json<SendMessageResponse>), AppError> {
-    let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let msg_repo = MessageRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let inf_repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
+    let conv_repo = state.db.conv_repo();
+    let msg_repo = state.db.msg_repo();
+    let inf_repo = state.db.inf_repo();
 
     // Validate
     body.validate_content()
@@ -594,9 +594,9 @@ pub async fn mark_as_read(
     user: AuthenticatedUser,
     Path(conversation_id): Path<String>,
 ) -> Result<Json<MarkConversationAsReadResponse>, AppError> {
-    let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let msg_repo = MessageRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let inf_repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
+    let conv_repo = state.db.conv_repo();
+    let msg_repo = state.db.msg_repo();
+    let inf_repo = state.db.inf_repo();
 
     let conv = conv_repo
         .get_by_id(&conversation_id)
@@ -654,9 +654,9 @@ pub async fn generate_image(
         ));
     }
 
-    let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let inf_repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let msg_repo = MessageRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
+    let conv_repo = state.db.conv_repo();
+    let inf_repo = state.db.inf_repo();
+    let msg_repo = state.db.msg_repo();
 
     let conv = conv_repo
         .get_by_id(&conversation_id)
@@ -745,7 +745,7 @@ async fn generate_image_prompt_from_context(
     msg_repo: &MessageRepository,
     conversation_id: &str,
 ) -> Result<String, AppError> {
-    let mut messages = msg_repo
+    let mut messages: Vec<crate::models::entities::Message> = msg_repo
         .list_by_conversation(conversation_id, 10, 0, "desc")
         .await?;
     messages.reverse();
@@ -792,9 +792,9 @@ pub async fn delete_conversation(
     user: AuthenticatedUser,
     Path(conversation_id): Path<String>,
 ) -> Result<Json<DeleteConversationResponse>, AppError> {
-    let conv_repo = ConversationRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let msg_repo = MessageRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
-    let inf_repo = InfluencerRepository::new(state.db.pool.clone(), state.db.pg_pool.clone());
+    let conv_repo = state.db.conv_repo();
+    let msg_repo = state.db.msg_repo();
+    let inf_repo = state.db.inf_repo();
 
     let conv = conv_repo
         .get_by_id(&conversation_id)
@@ -852,8 +852,7 @@ fn spawn_memory_extraction(
     memories: &HashMap<String, String>,
     is_nsfw: bool,
 ) {
-    let pool = state.db.pool.clone();
-    let pg_pool = state.db.pg_pool.clone();
+    let db = state.db.clone();
     let conv_id = conversation_id.to_string();
     let ai_input = user_input.to_string();
     let response = response_text.to_string();
@@ -874,7 +873,7 @@ fn spawn_memory_extraction(
 
         match result {
             Ok(updated) if updated != memories => {
-                let conv_repo = ConversationRepository::new(pool, pg_pool);
+                let conv_repo = db.conv_repo();
                 let mut metadata = serde_json::json!({});
                 metadata["memories"] = serde_json::to_value(&updated).unwrap_or_default();
                 if let Err(e) = conv_repo.update_metadata(&conv_id, &metadata).await {
@@ -898,8 +897,7 @@ fn spawn_notifications(
 ) {
     let push = state.push_notifications.clone();
     let ws = state.ws_manager.clone();
-    let pool = state.db.pool.clone();
-    let pg_pool = state.db.pg_pool.clone();
+    let db = state.db.clone();
     let user_id = user_id.to_string();
     let conv_id = conversation_id.to_string();
     let influencer_id = influencer_id.to_string();
@@ -910,10 +908,7 @@ fn spawn_notifications(
         serde_json::to_value(MessageResponse::from(assistant_message.clone())).unwrap_or_default();
 
     tokio::spawn(async move {
-        let unread_count = MessageRepository::new(pool, pg_pool)
-            .count_unread(&conv_id)
-            .await
-            .unwrap_or(0);
+        let unread_count = db.msg_repo().count_unread(&conv_id).await.unwrap_or(0);
 
         let influencer_json = serde_json::json!({
             "id": influencer_id,

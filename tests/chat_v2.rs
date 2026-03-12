@@ -14,7 +14,7 @@ async fn test_list_conversations_v2() {
     let _ = create_test_conversation(&client, &base, &user, &influencer_id).await;
 
     let resp = client
-        .get(format!("{base}/api/v2/chat/conversations"))
+        .get(format!("{base}/api/v2/chat/conversations?principal={user}"))
         .header("Authorization", &auth)
         .send()
         .await
@@ -31,10 +31,13 @@ async fn test_list_conversations_v2() {
 async fn test_list_conversations_v2_with_pagination() {
     let base = base_url();
     let client = http_client();
-    let auth = auth_header("test_user_default");
+    let user = "test_user_default";
+    let auth = auth_header(user);
 
     let resp = client
-        .get(format!("{base}/api/v2/chat/conversations?limit=5&offset=0"))
+        .get(format!(
+            "{base}/api/v2/chat/conversations?principal={user}&limit=5&offset=0"
+        ))
         .header("Authorization", &auth)
         .send()
         .await
@@ -56,7 +59,7 @@ async fn test_list_conversations_v2_response_structure() {
     let _ = create_test_conversation(&client, &base, &user, &influencer_id).await;
 
     let resp = client
-        .get(format!("{base}/api/v2/chat/conversations"))
+        .get(format!("{base}/api/v2/chat/conversations?principal={user}"))
         .header("Authorization", &auth)
         .send()
         .await
@@ -94,7 +97,7 @@ async fn test_list_conversations_v2_filtered_by_influencer() {
 
     let resp = client
         .get(format!(
-            "{base}/api/v2/chat/conversations?influencer_id={influencer_id}"
+            "{base}/api/v2/chat/conversations?principal={user}&influencer_id={influencer_id}"
         ))
         .header("Authorization", &auth)
         .send()
