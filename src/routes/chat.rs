@@ -908,11 +908,7 @@ fn spawn_notifications(
         serde_json::to_value(MessageResponse::from(assistant_message.clone())).unwrap_or_default();
 
     tokio::spawn(async move {
-        let unread_count = db
-            .msg_repo()
-            .count_unread(&conv_id)
-            .await
-            .unwrap_or(0);
+        let unread_count = db.msg_repo().count_unread(&conv_id).await.unwrap_or(0);
 
         let influencer_json = serde_json::json!({
             "id": influencer_id,

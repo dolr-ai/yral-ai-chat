@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-#[cfg(feature = "staging")]
-use sqlx::SqlitePool;
 #[cfg(not(feature = "staging"))]
 use sqlx::PgPool;
+#[cfg(feature = "staging")]
+use sqlx::SqlitePool;
 
 use uuid::Uuid;
 
@@ -62,8 +62,7 @@ impl From<MessageRow> for Message {
 }
 
 #[cfg(feature = "staging")]
-const SELECT_COLS: &str =
-    "id, conversation_id, role, content, message_type, media_urls, audio_url,
+const SELECT_COLS: &str = "id, conversation_id, role, content, message_type, media_urls, audio_url,
      audio_duration_seconds, token_count, client_message_id, created_at, metadata,
      status, is_read";
 
@@ -272,8 +271,10 @@ impl MessageRepository {
         query = query.bind(limit_per_conv);
 
         let rows = query.fetch_all(&self.pool).await?;
-        let mut result: HashMap<String, Vec<Message>> =
-            conversation_ids.iter().map(|id| (id.clone(), Vec::new())).collect();
+        let mut result: HashMap<String, Vec<Message>> = conversation_ids
+            .iter()
+            .map(|id| (id.clone(), Vec::new()))
+            .collect();
         for row in rows {
             let conv_id = row.conversation_id.clone();
             if let Some(messages) = result.get_mut(&conv_id) {
@@ -352,8 +353,7 @@ impl From<PgMessageRow> for Message {
 }
 
 #[cfg(not(feature = "staging"))]
-const SELECT_COLS: &str =
-    "id, conversation_id, role, content, message_type, media_urls, audio_url,
+const SELECT_COLS: &str = "id, conversation_id, role, content, message_type, media_urls, audio_url,
      audio_duration_seconds, token_count, client_message_id, created_at, metadata,
      status, is_read";
 
@@ -559,8 +559,10 @@ impl MessageRepository {
         .fetch_all(&self.pg_pool)
         .await?;
 
-        let mut result: HashMap<String, Vec<Message>> =
-            conversation_ids.iter().map(|id| (id.clone(), Vec::new())).collect();
+        let mut result: HashMap<String, Vec<Message>> = conversation_ids
+            .iter()
+            .map(|id| (id.clone(), Vec::new()))
+            .collect();
         for row in rows {
             let conv_id = row.conversation_id.clone();
             if let Some(messages) = result.get_mut(&conv_id) {

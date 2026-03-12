@@ -1,7 +1,7 @@
-#[cfg(feature = "staging")]
-use sqlx::SqlitePool;
 #[cfg(not(feature = "staging"))]
 use sqlx::PgPool;
+#[cfg(feature = "staging")]
+use sqlx::SqlitePool;
 
 #[cfg(feature = "staging")]
 use super::{parse_dt, parse_json};
@@ -111,8 +111,18 @@ impl InfluencerRepository {
         .bind(influencer.is_nsfw as i32)
         .bind(&influencer.parent_principal_id)
         .bind(&influencer.source)
-        .bind(influencer.created_at.format("%Y-%m-%d %H:%M:%S").to_string())
-        .bind(influencer.updated_at.format("%Y-%m-%d %H:%M:%S").to_string())
+        .bind(
+            influencer
+                .created_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+        )
+        .bind(
+            influencer
+                .updated_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string(),
+        )
         .bind(&metadata)
         .execute(&self.pool)
         .await?;

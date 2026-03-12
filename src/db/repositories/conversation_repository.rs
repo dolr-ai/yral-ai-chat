@@ -1,7 +1,7 @@
-#[cfg(feature = "staging")]
-use sqlx::SqlitePool;
 #[cfg(not(feature = "staging"))]
 use sqlx::PgPool;
+#[cfg(feature = "staging")]
+use sqlx::SqlitePool;
 
 use uuid::Uuid;
 
@@ -539,14 +539,12 @@ impl ConversationRepository {
     ) -> Result<Conversation, sqlx::Error> {
         let conversation_id = Uuid::new_v4().to_string();
 
-        sqlx::query(
-            "INSERT INTO conversations (id, user_id, influencer_id) VALUES ($1, $2, $3)",
-        )
-        .bind(&conversation_id)
-        .bind(user_id)
-        .bind(influencer_id)
-        .execute(&self.pg_pool)
-        .await?;
+        sqlx::query("INSERT INTO conversations (id, user_id, influencer_id) VALUES ($1, $2, $3)")
+            .bind(&conversation_id)
+            .bind(user_id)
+            .bind(influencer_id)
+            .execute(&self.pg_pool)
+            .await?;
 
         self.get_by_id(&conversation_id)
             .await?
@@ -558,13 +556,11 @@ impl ConversationRepository {
         conversation_id: &str,
         metadata: &serde_json::Value,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE conversations SET metadata = $1, updated_at = NOW() WHERE id = $2",
-        )
-        .bind(metadata)
-        .bind(conversation_id)
-        .execute(&self.pg_pool)
-        .await?;
+        sqlx::query("UPDATE conversations SET metadata = $1, updated_at = NOW() WHERE id = $2")
+            .bind(metadata)
+            .bind(conversation_id)
+            .execute(&self.pg_pool)
+            .await?;
         Ok(())
     }
 
