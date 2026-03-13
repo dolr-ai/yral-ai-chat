@@ -45,11 +45,7 @@ jobs:
 
       - name: Check server connectivity
         run: |
-          ssh -o HostKeyAlgorithms=+ssh-ed25519 \
-              -o PubkeyAcceptedAlgorithms=+ssh-ed25519 \
-              -o ConnectTimeout=10 \
-              yral-ai-chat@${{ vars.PG_SERVER_IP }} \
-              "echo 'Server connection successful'"
+          ssh -o ConnectTimeout=10 yral-ai-chat@${{ vars.PG_SERVER_IP }} "echo 'Server connection successful'"
 
       - name: Run backup via SSH
         run: |
