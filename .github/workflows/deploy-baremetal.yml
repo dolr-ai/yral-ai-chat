@@ -144,23 +144,23 @@ jobs:
 
       - name: Check server connectivity
         run: |
-          ssh -o ConnectTimeout=10 root@${{ matrix.server }} "echo 'Server ${{ matrix.server }} connection successful'"
+          ssh -o ConnectTimeout=10 yral-ai-chat@${{ matrix.server }} "echo 'Server ${{ matrix.server }} connection successful'"
 
       - name: Sync deployment files to server
         run: |
           rsync -avz --delete \
             ./deploy-baremetal/ \
-            root@${{ matrix.server }}:/home/yral-ai-chat/
+            yral-ai-chat@${{ matrix.server }}:/home/yral-ai-chat/
 
       - name: Log in to GHCR on server
         run: |
-          ssh root@${{ matrix.server }} "
+          ssh yral-ai-chat@${{ matrix.server }} "
             echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           "
 
       - name: Deploy with Docker Compose
         run: |
-          ssh root@${{ matrix.server }} "
+          ssh yral-ai-chat@${{ matrix.server }} "
             cd /home/yral-ai-chat
 
             echo 'Pulling latest images...'
@@ -211,7 +211,7 @@ jobs:
 
       - name: Verify deployment
         run: |
-          ssh root@${{ matrix.server }} "
+          ssh yral-ai-chat@${{ matrix.server }} "
             cd /home/yral-ai-chat
             echo '=== Container Status ==='
             docker compose ps
