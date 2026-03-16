@@ -5,31 +5,13 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: yral_chat
-      POSTGRES_USER: ${POSTGRES_USER:-yral_chat}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - ai-chat-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-yral_chat} -d yral_chat"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  metabase-db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: metabase
-      POSTGRES_USER: ${METABASE_DB_USER:-metabase}
-      POSTGRES_PASSWORD: ${METABASE_DB_PASSWORD}
-    volumes:
-      - metabase_db_data:/var/lib/postgresql/data
-    networks:
-      - ai-chat-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${METABASE_DB_USER:-metabase} -d metabase"]
+      test: ["CMD-SHELL", "pg_isready -d yral_chat"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,19 +20,12 @@ services:
     image: metabase/metabase:latest
     restart: unless-stopped
     environment:
-      MB_DB_TYPE: postgres
-      MB_DB_HOST: metabase-db
-      MB_DB_PORT: 5432
-      MB_DB_DBNAME: metabase
-      MB_DB_USER: ${METABASE_DB_USER:-metabase}
-      MB_DB_PASS: ${METABASE_DB_PASSWORD}
       MB_SITE_URL: ${METABASE_SITE_URL:-https://metabase-chat.yral.com}
       JAVA_TIMEZONE: UTC
+    volumes:
+      - metabase_data:/metabase-data
     networks:
       - ai-chat-net
-    depends_on:
-      metabase-db:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
       interval: 30s
@@ -107,7 +82,7 @@ services:
       # === CORS ===
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
 
-      # === PostgreSQL (dual-write — also used by Metabase for analytics) ===
+      # === PostgreSQL (also used by Metabase for analytics) ===
       PG_DATABASE_URL: ${PG_DATABASE_URL}
 
       # === Litestream (SQLite Replication) ===
@@ -156,6 +131,6 @@ networks:
 volumes:
   app_data:
   postgres_data:
-  metabase_db_data:
+  metabase_data:
   caddy_data:
   caddy_config:
