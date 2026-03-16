@@ -1,21 +1,5 @@
 services:
 
-  app-postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: yral_chat
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - ai-chat-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d yral_chat"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   metabase:
     image: metabase/metabase:latest
     restart: unless-stopped
@@ -97,9 +81,6 @@ services:
       - app_data:/app/data
     networks:
       - ai-chat-net
-    depends_on:
-      app-postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/health"]
       interval: 30s
@@ -130,7 +111,6 @@ networks:
 
 volumes:
   app_data:
-  postgres_data:
   metabase_data:
   caddy_data:
   caddy_config:

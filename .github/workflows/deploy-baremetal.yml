@@ -130,7 +130,7 @@ jobs:
             secret/data/yral-ai-chat/LITESTREAM_BUCKET value | LITESTREAM_BUCKET ;
             secret/data/yral-ai-chat/LITESTREAM_ENDPOINT value | LITESTREAM_ENDPOINT ;
             secret/data/yral-ai-chat/LITESTREAM_REGION value | LITESTREAM_REGION ;
-            secret/data/yral-ai-chat/POSTGRES_PASSWORD value | POSTGRES_PASSWORD ;
+            secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL ;
 
       - name: Setup SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -198,7 +198,7 @@ jobs:
             LITESTREAM_ENDPOINT='${{ env.LITESTREAM_ENDPOINT }}' \
             LITESTREAM_REGION='${{ env.LITESTREAM_REGION }}' \
             LITESTREAM_PATH='yral-ai-chat/yral_chat.db' \
-            POSTGRES_PASSWORD='${{ env.POSTGRES_PASSWORD }}' \
+            PG_DATABASE_URL='${{ env.PG_DATABASE_URL }}' \
             docker compose up -d
 
             echo 'Waiting for services to start...'
