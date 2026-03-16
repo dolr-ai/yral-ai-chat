@@ -283,19 +283,15 @@ jobs:
               echo 'New key added to $ip'
             "
           done
-      - name: Get Vault token via JWT
-        run: |
-          OIDC_TOKEN=$(curl -sLS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://github.com/dolr-ai" | jq -r .value)
 
-          VAULT_TOKEN=$(curl -s --fail \
-            -X POST \
-            -d "{\"role\": \"yral-ai-chat-role\", \"jwt\": \"$OIDC_TOKEN\"}" \
-            https://vault.yral.com/v1/auth/jwt/login | jq -r .auth.client_token)
-
-          # This masks it immediately before it ever hits logs
-          echo "::add-mask::$VAULT_TOKEN"
-          echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_ENV
+      - name: Authenticate to Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: https://vault.yral.com
+          method: jwt
+          role: yral-ai-chat-write-role
+          jwtGithubAudience: "https://github.com/dolr-ai"
+          exportToken: true
 
       - name: Install Vault CLI
         run: |
@@ -305,16 +301,7 @@ jobs:
 
       - name: Update private key in Vault
         run: |
-          NEW_PRIVATE_KEY=$(cat /tmp/new_deploy_key)
-
-          OIDC_TOKEN=$(curl -sLS \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://github.com/dolr-ai" | jq -r .value)
-
-          vault login \
-            -method=jwt \
-            role=yral-ai-chat-role \
-            jwt="$OIDC_TOKEN"
+          NEW_PRIVATE_KEY=$(cat /tmp/new_deploy_key)s
 
           vault kv put secret/yral-ai-chat/SSH_PRIVATE_KEY value="$NEW_PRIVATE_KEY"
         env:
