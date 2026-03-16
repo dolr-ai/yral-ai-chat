@@ -1,5 +1,24 @@
 services:
 
+  metabase:
+    image: metabase/metabase:latest
+    restart: unless-stopped
+    environment:
+      MB_SITE_URL: ${METABASE_SITE_URL:-https://metabase-chat.yral.com}
+      JAVA_TIMEZONE: UTC
+      MB_DB_TYPE: h2
+      MB_DB_FILE: /metabase-data/metabase.db
+    volumes:
+      - metabase_data:/metabase-data
+    networks:
+      - ai-chat-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
   yral-ai-chat:
     image: ${APP_IMAGE:-ghcr.io/dolr-ai/yral-ai-chat}:${IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -49,8 +68,8 @@ services:
       # === CORS ===
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
 
-      # === PostgreSQL (optional dual-write) ===
-      PG_DATABASE_URL: ${PG_DATABASE_URL:-}
+      # === PostgreSQL (also used by Metabase for analytics) ===
+      PG_DATABASE_URL: ${PG_DATABASE_URL}
 
       # === Litestream (SQLite Replication) ===
       ENABLE_LITESTREAM: ${ENABLE_LITESTREAM:-true}
@@ -94,5 +113,6 @@ networks:
 
 volumes:
   app_data:
+  metabase_data:
   caddy_data:
   caddy_config:
