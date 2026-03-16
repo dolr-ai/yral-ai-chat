@@ -6,7 +6,7 @@ services:
     environment:
       POSTGRES_DB: yral_chat
       POSTGRES_USER: ${POSTGRES_USER:-yral_chat}
-      METABASE_READER_APP_DB_PASSWORD: ${METABASE_READER_APP_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -23,7 +23,7 @@ services:
     environment:
       POSTGRES_DB: metabase
       POSTGRES_USER: ${METABASE_DB_USER:-metabase}
-      METABASE_READER_APP_DB_PASSWORD: ${METABASE_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${METABASE_DB_PASSWORD}
     volumes:
       - metabase_db_data:/var/lib/postgresql/data
     networks:
@@ -108,7 +108,7 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
 
       # === PostgreSQL (dual-write — also used by Metabase for analytics) ===
-      PG_DATABASE_URL: postgres://${POSTGRES_USER:-yral_chat}:${METABASE_READER_APP_DB_PASSWORD}@app-postgres:5432/yral_chat
+      PG_DATABASE_URL: ${PG_DATABASE_URL}
 
       # === Litestream (SQLite Replication) ===
       ENABLE_LITESTREAM: ${ENABLE_LITESTREAM:-true}
