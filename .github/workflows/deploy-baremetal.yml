@@ -297,19 +297,28 @@ jobs:
           echo "::add-mask::$VAULT_TOKEN"
           echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_ENV
 
-      - name: Update private key in Vault
-        run: |
-          NEW_PRIVATE_KEY=$(cat /tmp/new_deploy_key)
+      - name: Install Vault CLI
+          run: |
+            wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+            echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+            sudo apt-get update && sudo apt-get install -y vault
 
-          # Vault KV v2 write
-          curl -s --fail \
-            -H "X-Vault-Token: ${{ env.VAULT_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -X POST \
-            -d "{\"data\": {\"value\": $(echo "$NEW_PRIVATE_KEY" | jq -Rs .)}}" \
-            https://vault.yral.com/v1/secret/data/yral-ai-chat/SSH_PRIVATE_KEY
+        - name: Update private key in Vault
+          run: |
+            NEW_PRIVATE_KEY=$(cat /tmp/new_deploy_key)
 
-          echo "Vault updated with new private key"
+            OIDC_TOKEN=$(curl -sLS \
+              -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://github.com/dolr-ai" | jq -r .value)
+
+            vault login \
+              -method=jwt \
+              role=yral-ai-chat-role \
+              jwt="$OIDC_TOKEN"
+
+            vault kv put secret/yral-ai-chat/SSH_PRIVATE_KEY value="$NEW_PRIVATE_KEY"
+          env:
+            VAULT_ADDR: https://vault.yral.com
 
       - name: Verify new key works on all servers
         run: |
