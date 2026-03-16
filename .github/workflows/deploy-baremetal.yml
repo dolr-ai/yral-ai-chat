@@ -293,6 +293,8 @@ jobs:
             -d "{\"role\": \"yral-ai-chat-role\", \"jwt\": \"$OIDC_TOKEN\"}" \
             https://vault.yral.com/v1/auth/jwt/login | jq -r .auth.client_token)
 
+          # This masks it immediately before it ever hits logs
+          echo "::add-mask::$VAULT_TOKEN"
           echo "VAULT_TOKEN=$VAULT_TOKEN" >> $GITHUB_ENV
 
       - name: Update private key in Vault
