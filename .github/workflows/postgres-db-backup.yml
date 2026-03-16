@@ -33,11 +33,11 @@ jobs:
             secret/data/yral-ai-chat/PG_AWS_ACCESS_KEY_ID value | PG_AWS_ACCESS_KEY_ID ;
             secret/data/yral-ai-chat/PG_AWS_SECRET_ACCESS_KEY value | PG_AWS_SECRET_ACCESS_KEY ;
             secret/data/yral-ai-chat/PG_AWS_REGION value | PG_AWS_REGION ;
-            secret/data/yral-ai-chat/SSH_PRIVATE_KEY value | SSH_PRIVATE_KEY ;
+            secret/data/yral-ai-chat/PG_SSH_PRIVATE_KEY value | PG_SSH_PRIVATE_KEY ;
       - name: Setup SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ env.PG_SSH_PRIVATE_KEY }}
 
       - name: Add server to known hosts
         run: |
@@ -76,12 +76,12 @@ jobs:
           role: yral-ai-chat-role
           jwtGithubAudience: "https://github.com/dolr-ai"
           secrets: |
-            secret/data/yral-ai-chat/SSH_PRIVATE_KEY value | SSH_PRIVATE_KEY ;
+            secret/data/yral-ai-chat/PG_SSH_PRIVATE_KEY value | PG_SSH_PRIVATE_KEY ;
 
       - name: Setup current SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ env.PG_SSH_PRIVATE_KEY }}
 
       - name: Add server to known hosts
         run: |
@@ -119,7 +119,7 @@ jobs:
         run: |
           NEW_PRIVATE_KEY=$(cat /tmp/new_deploy_key)
           echo "::add-mask::$NEW_PRIVATE_KEY"
-          vault kv put secret/yral-ai-chat/SSH_PRIVATE_KEY value="$NEW_PRIVATE_KEY"
+          vault kv put secret/yral-ai-chat/PG_SSH_PRIVATE_KEY value="$NEW_PRIVATE_KEY"
           echo "Vault updated with new private key"
         env:
           VAULT_ADDR: https://vault.yral.com
