@@ -144,11 +144,7 @@ jobs:
 
       - name: Check server connectivity
         run: |
-          ssh -o HostKeyAlgorithms=+ssh-ed25519 \
-              -o PubkeyAcceptedAlgorithms=+ssh-ed25519 \
-              -o ConnectTimeout=10 \
-              yral-ai-chat@${{ matrix.server }} \
-              "echo 'Server ${{ matrix.server }} connection successful'"
+          ssh -o ConnectTimeout=10 yral-ai-chat@${{ matrix.server }} "echo 'Server ${{ matrix.server }} connection successful'"
 
       - name: Sync deployment files to server
         run: |
