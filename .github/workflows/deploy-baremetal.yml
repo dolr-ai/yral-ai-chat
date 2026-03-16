@@ -301,7 +301,7 @@ jobs:
 
       - name: Update private key in Vault
         run: |
-          NEW_PRIVATE_KEY=$(cat /tmp/new_deploy_key)s
+          NEW_PRIVATE_KEY=$(cat /tmp/new_deploy_key)
 
           vault kv put secret/yral-ai-chat/SSH_PRIVATE_KEY value="$NEW_PRIVATE_KEY"
         env:
