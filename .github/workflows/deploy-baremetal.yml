@@ -1,260 +1,27 @@
-name: Deploy to Bare Metal Servers
+name: Update YRAL SSH KEY
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 permissions:
   id-token: write
   contents: read
-  packages: write
-
-concurrency:
-  group: deploy-baremetal-${{ github.ref }}
-  cancel-in-progress: false
-
-env:
-  DOCKER_REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build_check:
-    uses: ./.github/workflows/build-check.yml
-    with:
-      publish-artifact: true
-    secrets: inherit
-
-  build-and-push:
-    name: Build and Push Docker Image
-    needs: [build_check]
+  fix-ssh-key:
+    name: Fix SSH Key
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    outputs:
-      image_tag: ${{ github.sha }}
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: build-glibc
-
-      - name: Make binary executable
-        run: chmod +x target/x86_64-unknown-linux-gnu/release/yral-ai-chat
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,format=long,prefix=
-            type=raw,value=latest
-
-      - name: Build and push image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./deploy-baremetal/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  prepare-servers:
-    name: Prepare Server List
-    runs-on: ubuntu-latest
-    outputs:
-      servers: ${{ steps.parse.outputs.servers }}
-    steps:
-      - name: Parse server IPs
-        id: parse
+      - name: Generate new SSH key pair
         run: |
-          IPS="${{ vars.BAREMETAL_SERVER_IPS }}"
-          JSON=$(echo "$IPS" | tr ',' '\n' | jq -R . | jq -s -c .)
-          echo "servers=$JSON" >> $GITHUB_OUTPUT
+          ssh-keygen -t ed25519 -C "yral-ai-chat-deploy-$(date +%Y%m%d)" -f /tmp/new_deploy_key -N ""
+          echo "NEW_PUBLIC_KEY=$(cat /tmp/new_deploy_key.pub)" >> $GITHUB_ENV
 
-  deploy:
-    name: Deploy to Server
-    needs: [build-and-push, prepare-servers]
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        server: ${{ fromJson(needs.prepare-servers.outputs.servers) }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Import Secrets from Vault
-        uses: hashicorp/vault-action@v3
-        with:
-          url: https://vault.yral.com
-          method: jwt
-          role: yral-ai-chat-role
-          jwtGithubAudience: "https://github.com/dolr-ai"
-          secrets: |
-            secret/data/yral-ai-chat/JWT_SECRET_KEY value | JWT_SECRET_KEY ;
-            secret/data/yral-ai-chat/GEMINI_API_KEY value | GEMINI_API_KEY ;
-            secret/data/yral-ai-chat/OPENROUTER_API_KEY value | OPENROUTER_API_KEY ;
-            secret/data/yral-ai-chat/REPLICATE_API_TOKEN value | REPLICATE_API_TOKEN ;
-            secret/data/yral-ai-chat/AWS_ACCESS_KEY_ID value | AWS_ACCESS_KEY_ID ;
-            secret/data/yral-ai-chat/AWS_SECRET_ACCESS_KEY value | AWS_SECRET_ACCESS_KEY ;
-            secret/data/yral-ai-chat/AWS_S3_BUCKET value | AWS_S3_BUCKET ;
-            secret/data/yral-ai-chat/AWS_REGION value | AWS_REGION ;
-            secret/data/yral-ai-chat/S3_ENDPOINT_URL value | S3_ENDPOINT_URL ;
-            secret/data/yral-ai-chat/S3_PUBLIC_URL_BASE value | S3_PUBLIC_URL_BASE ;
-            secret/data/yral-ai-chat/YRAL_METADATA_NOTIFICATION_API_KEY value | YRAL_METADATA_NOTIFICATION_API_KEY ;
-            secret/data/yral-ai-chat/CORS_ORIGINS value | CORS_ORIGINS ;
-            secret/data/yral-ai-chat/LITESTREAM_ACCESS_KEY_ID value | LITESTREAM_ACCESS_KEY_ID ;
-            secret/data/yral-ai-chat/LITESTREAM_SECRET_ACCESS_KEY value | LITESTREAM_SECRET_ACCESS_KEY ;
-            secret/data/yral-ai-chat/LITESTREAM_BUCKET value | LITESTREAM_BUCKET ;
-            secret/data/yral-ai-chat/LITESTREAM_ENDPOINT value | LITESTREAM_ENDPOINT ;
-            secret/data/yral-ai-chat/LITESTREAM_REGION value | LITESTREAM_REGION ;
-            secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL ;
-            secret/data/yral-ai-chat/SSH_PRIVATE_KEY value | SSH_PRIVATE_KEY ;
-
-      - name: Setup SSH key
+      - name: Setup root SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
-
-      - name: Add server to known hosts
-        run: |
-          ssh-keyscan -H ${{ matrix.server }} >> ~/.ssh/known_hosts
-
-      - name: Check server connectivity
-        run: |
-          ssh -o HostKeyAlgorithms=+ssh-ed25519 \
-              -o PubkeyAcceptedAlgorithms=+ssh-ed25519 \
-              -o ConnectTimeout=10 \
-              yral-ai-chat@${{ matrix.server }} \
-              "echo 'Server ${{ matrix.server }} connection successful'"
-
-      - name: Sync deployment files to server
-        run: |
-          rsync -avz --delete \
-            --exclude='.ssh/' \
-            ./deploy-baremetal/ \
-            yral-ai-chat@${{ matrix.server }}:/home/yral-ai-chat/
-
-      - name: Log in to GHCR on server
-        run: |
-          ssh yral-ai-chat@${{ matrix.server }} \
-            "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin"
-
-      - name: Deploy with Docker Compose
-        run: |
-          ssh yral-ai-chat@${{ matrix.server }} "
-            cd /home/yral-ai-chat
-
-            echo 'Pulling latest images...'
-            APP_IMAGE=ghcr.io/${{ github.repository }} \
-            IMAGE_TAG=${{ github.sha }} \
-            docker compose pull yral-ai-chat
-
-            echo 'Stopping existing containers...'
-            docker compose down --remove-orphans || true
-
-            echo 'Starting services...'
-            APP_IMAGE=ghcr.io/${{ github.repository }} \
-            IMAGE_TAG=${{ github.sha }} \
-            JWT_SECRET_KEY='${{ env.JWT_SECRET_KEY }}' \
-            GEMINI_API_KEY='${{ env.GEMINI_API_KEY }}' \
-            GEMINI_MODEL='gemini-2.5-flash' \
-            GEMINI_MAX_TOKENS='2048' \
-            GEMINI_TEMPERATURE='0.7' \
-            OPENROUTER_API_KEY='${{ env.OPENROUTER_API_KEY }}' \
-            OPENROUTER_MODEL='google/gemini-2.5-flash' \
-            REPLICATE_API_TOKEN='${{ env.REPLICATE_API_TOKEN }}' \
-            REPLICATE_MODEL='black-forest-labs/flux-dev' \
-            AWS_ACCESS_KEY_ID='${{ env.AWS_ACCESS_KEY_ID }}' \
-            AWS_SECRET_ACCESS_KEY='${{ env.AWS_SECRET_ACCESS_KEY }}' \
-            AWS_S3_BUCKET='${{ env.AWS_S3_BUCKET }}' \
-            AWS_REGION='${{ env.AWS_REGION }}' \
-            S3_ENDPOINT_URL='${{ env.S3_ENDPOINT_URL }}' \
-            S3_PUBLIC_URL_BASE='${{ env.S3_PUBLIC_URL_BASE }}' \
-            METADATA_URL='https://metadata.yral.com' \
-            YRAL_METADATA_NOTIFICATION_API_KEY='${{ env.YRAL_METADATA_NOTIFICATION_API_KEY }}' \
-            CORS_ORIGINS='${{ env.CORS_ORIGINS }}' \
-            ENABLE_LITESTREAM='true' \
-            LITESTREAM_ACCESS_KEY_ID='${{ env.LITESTREAM_ACCESS_KEY_ID }}' \
-            LITESTREAM_SECRET_ACCESS_KEY='${{ env.LITESTREAM_SECRET_ACCESS_KEY }}' \
-            LITESTREAM_BUCKET='${{ env.LITESTREAM_BUCKET }}' \
-            LITESTREAM_ENDPOINT='${{ env.LITESTREAM_ENDPOINT }}' \
-            LITESTREAM_REGION='${{ env.LITESTREAM_REGION }}' \
-            LITESTREAM_PATH='yral-ai-chat/yral_chat.db' \
-            PG_DATABASE_URL='${{ env.PG_DATABASE_URL }}' \
-            docker compose up -d
-
-            echo 'Waiting for services to start...'
-            sleep 30
-
-            echo 'Services status:'
-            docker compose ps
-          "
-
-      - name: Verify deployment
-        run: |
-          ssh yral-ai-chat@${{ matrix.server }} "
-            cd /home/yral-ai-chat
-            echo '=== Container Status ==='
-            docker compose ps
-            echo ''
-            echo '=== Health Check ==='
-            for i in 1 2 3 4 5 6 7 8 9 10; do
-              if curl -sf http://127.0.0.1:80/health > /dev/null 2>&1; then
-                echo 'Health check passed!'
-                exit 0
-              fi
-              echo \"Attempt \$i/10 failed, retrying in 3s...\"
-              sleep 3
-            done
-            echo 'Health check failed after 10 attempts'
-            echo '=== Container Logs (last 30 lines) ==='
-            docker compose logs --tail=30 yral-ai-chat 2>/dev/null || echo 'Logs not yet available'
-            exit 1
-          "
-  rotate-ssh-keys:
-    name: Rotate SSH Keys
-    needs: [deploy]
-    runs-on: ubuntu-latest
-    if: success()
-
-    steps:
-      - name: Import Secrets from Vault
-        uses: hashicorp/vault-action@v3
-        with:
-          url: https://vault.yral.com
-          method: jwt
-          role: yral-ai-chat-role
-          jwtGithubAudience: "https://github.com/dolr-ai"
-          secrets: |
-            secret/data/yral-ai-chat/SSH_PRIVATE_KEY value | SSH_PRIVATE_KEY ;
-
-      - name: Setup current SSH key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ secrets.HETZNER_BARE_METAL_GITHUB_ACTIONS_SSH_PRIVATE_KEY }}
 
       - name: Add servers to known hosts
         run: |
@@ -263,26 +30,24 @@ jobs:
             ssh-keyscan -H "$ip" >> ~/.ssh/known_hosts
           done
 
-      - name: Generate new SSH key pair
-        run: |
-          ssh-keygen -t ed25519 -C "yral-ai-chat-deploy-$(date +%Y%m%d)" -f /tmp/new_deploy_key -N ""
-          echo "NEW_PUBLIC_KEY=$(cat /tmp/new_deploy_key.pub)" >> $GITHUB_ENV
-
-      - name: Rotate public key on all servers
+      - name: Update authorized_keys on servers
         run: |
           IPS="${{ vars.BAREMETAL_SERVER_IPS }}"
           NEW_PUB_KEY="${{ env.NEW_PUBLIC_KEY }}"
           for ip in $(echo "$IPS" | tr ',' ' '); do
-            echo "Rotating key on $ip..."
-            ssh yral-ai-chat@$ip "
-              set -e
-
-              # Append new key first (so we don't lock ourselves out)
-              echo '$NEW_PUB_KEY' >> ~/.ssh/authorized_keys
-
-              echo 'New key added to $ip'
+            ssh root@$ip "
+              echo '$NEW_PUB_KEY' > /home/yral-ai-chat/.ssh/authorized_keys
+              chmod 600 /home/yral-ai-chat/.ssh/authorized_keys
+              chown yral-ai-chat:yral-ai-chat /home/yral-ai-chat/.ssh/authorized_keys
+              echo 'authorized_keys updated on $ip'
             "
           done
+
+      - name: Install Vault CLI
+        run: |
+          wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt-get update && sudo apt-get install -y vault
 
       - name: Authenticate to Vault
         uses: hashicorp/vault-action@v3
@@ -293,73 +58,29 @@ jobs:
           jwtGithubAudience: "https://github.com/dolr-ai"
           exportToken: true
 
-      - name: Install Vault CLI
-        run: |
-          wget -O- https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
-          sudo apt-get update && sudo apt-get install -y vault
-
-      - name: Update private key in Vault
+      - name: Write new private key to Vault
         run: |
           NEW_PRIVATE_KEY=$(cat /tmp/new_deploy_key)
-
+          echo "::add-mask::$NEW_PRIVATE_KEY"
           vault kv put secret/yral-ai-chat/SSH_PRIVATE_KEY value="$NEW_PRIVATE_KEY"
+          echo "Vault SSH_PRIVATE_KEY updated successfully"
         env:
           VAULT_ADDR: https://vault.yral.com
 
-      - name: Verify new key works on all servers
+      - name: Verify new key works
         run: |
-          # Load the new private key
-          ssh-add -D  # Remove old keys from agent
+          ssh-add -D
           ssh-add /tmp/new_deploy_key
 
           IPS="${{ vars.BAREMETAL_SERVER_IPS }}"
           for ip in $(echo "$IPS" | tr ',' ' '); do
-            echo "Verifying new key on $ip..."
             ssh -o PasswordAuthentication=no \
                 yral-ai-chat@$ip \
                 "echo 'New key verified on $ip'"
           done
 
-      - name: Remove old public key from all servers
-        run: |
-          IPS="${{ vars.BAREMETAL_SERVER_IPS }}"
-          OLD_PUB_KEY=$(ssh-add -L | head -1)
-          NEW_PUB_KEY="${{ env.NEW_PUBLIC_KEY }}"
-
-          for ip in $(echo "$IPS" | tr ',' ' '); do
-            echo "Removing old key from $ip..."
-            ssh yral-ai-chat@$ip "
-              set -e
-              # Keep only lines matching the new public key
-              grep -F '$NEW_PUB_KEY' ~/.ssh/authorized_keys > /tmp/authorized_keys_new
-              mv /tmp/authorized_keys_new ~/.ssh/authorized_keys
-              chmod 600 ~/.ssh/authorized_keys
-              echo 'Old key removed from $ip'
-            "
-          done
-
-      - name: Cleanup key material
+      - name: Cleanup
         if: always()
         run: |
           rm -f /tmp/new_deploy_key /tmp/new_deploy_key.pub
           ssh-add -D || true
-  deployment-summary:
-    name: Deployment Summary
-    needs: [deploy]
-    runs-on: ubuntu-latest
-    if: always()
-
-    steps:
-      - name: Deployment summary
-        run: |
-          echo "## Bare Metal Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment Status: ${{ needs.deploy.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Image" >> $GITHUB_STEP_SUMMARY
-          echo "- ghcr.io/${{ github.repository }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Services" >> $GITHUB_STEP_SUMMARY
-          echo "- yral-ai-chat (HTTP + WebSocket service on port 8000)" >> $GITHUB_STEP_SUMMARY
-          echo "- caddy (TLS termination + HTTP/2/HTTP/3 reverse proxy)" >> $GITHUB_STEP_SUMMARY
