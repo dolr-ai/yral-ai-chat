@@ -135,10 +135,10 @@ jobs:
           secrets: |
             secret/data/yral-ai-chat/SSH_PRIVATE_KEY value | SSH_PRIVATE_KEY ;
 
-      - name: Verify SSH access with new key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
+      - name: Switch to new key for verification
+        run: |
+          ssh-add -D  # Clear root key from agent
+          echo "${{ env.SSH_PRIVATE_KEY }}" | ssh-add -
 
       - name: Test SSH and docker group
         run: |
