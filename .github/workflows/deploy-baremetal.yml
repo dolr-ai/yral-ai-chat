@@ -31,7 +31,7 @@ jobs:
       - name: Setup current SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ env.HETZNER_BARE_METAL_GITHUB_ACTIONS_SSH_PRIVATE_KEY  }}
  
       - name: Add servers to known hosts
         run: |
@@ -49,10 +49,10 @@ jobs:
           NEW_PUB_KEY="${{ env.NEW_PUBLIC_KEY }}"
           for ip in $(echo "${{ env.ALL_SERVER_IPS }}" | tr ',' ' '); do
             echo "Rotating key on $ip..."
-            ssh yral-ai-chat@$ip "
+            ssh root@$ip "
               set -e
               # Append new key first (so we don't lock ourselves out)
-              echo '$NEW_PUB_KEY' >> ~/.ssh/authorized_keys
+              echo '$NEW_PUB_KEY' >> /home/yral-ai-chat/.ssh/authorized_keys
               echo 'New key added to $ip'
             "
           done
