@@ -98,7 +98,7 @@ jobs:
         run: |
           PUB_KEY="${{ needs.generate-and-store-key.outputs.public_key }}"
 
-          ssh root@${{ matrix.server }} "
+          ssh root@${{ matrix.server }} bash -s << EOF
             set -e
 
             # Create user if not exists
@@ -109,21 +109,34 @@ jobs:
               echo 'User yral-ai-chat created'
             fi
 
-            # Setup .ssh directory
+            # Ensure home directory exists and is owned correctly
+            # (may be wrong if user was created manually or previously misconfigured)
+            mkdir -p /home/yral-ai-chat
+            chown yral-ai-chat:yral-ai-chat /home/yral-ai-chat
+            chmod 755 /home/yral-ai-chat
+
+            # Setup .ssh directory with strict permissions
             mkdir -p /home/yral-ai-chat/.ssh
             chmod 700 /home/yral-ai-chat/.ssh
+            chown yral-ai-chat:yral-ai-chat /home/yral-ai-chat/.ssh
 
-            # Add public key
+            # Write public key and enforce permissions
             echo '$PUB_KEY' > /home/yral-ai-chat/.ssh/authorized_keys
             chmod 600 /home/yral-ai-chat/.ssh/authorized_keys
-            chown -R yral-ai-chat:yral-ai-chat /home/yral-ai-chat/.ssh
+            chown yral-ai-chat:yral-ai-chat /home/yral-ai-chat/.ssh/authorized_keys
+
+            # Confirm what was written
+            echo '=== authorized_keys ==='
+            cat /home/yral-ai-chat/.ssh/authorized_keys
+            echo '=== permissions ==='
+            ls -la /home/yral-ai-chat/.ssh/
 
             # Add to docker group
             usermod -aG docker yral-ai-chat
             echo 'User yral-ai-chat added to docker group'
 
-            echo 'Setup complete on ${{ matrix.server }}'
-          "
+            echo 'Setup complete on $(hostname)'
+          EOF
 
       - name: Import SSH key from Vault to verify
         uses: hashicorp/vault-action@v3
