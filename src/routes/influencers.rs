@@ -10,12 +10,13 @@ use crate::error::{AppError, ErrorBody};
 use crate::middleware::AuthenticatedUser;
 use crate::models::entities::{AIInfluencer, InfluencerStatus};
 use crate::models::requests::{
-    CreateInfluencerRequest, GeneratePromptRequest, PaginationParams, UpdateSystemPromptRequest,
-    ValidateMetadataRequest,
+    CreateInfluencerRequest, GeneratePromptRequest, GenerateVideoPromptRequest, PaginationParams,
+    UpdateSystemPromptRequest, ValidateMetadataRequest,
 };
 use crate::models::responses::{
     GeneratedMetadataResponse, InfluencerResponse, ListInfluencersResponse,
     ListTrendingInfluencersResponse, SystemPromptResponse, TrendingInfluencerResponse,
+    VideoPromptResponse,
 };
 use crate::services::character_generator::CharacterGeneratorService;
 use crate::services::moderation;
@@ -375,6 +376,63 @@ pub async fn update_system_prompt(
         .ok_or_else(|| AppError::not_found("Influencer not found"))?;
 
     Ok(Json(InfluencerResponse::from(updated)))
+}
+
+/// Generate a video prompt for subsequent bot videos
+/// This endpoint creates an LTX-optimized video prompt with full context from the bot's system instructions
+#[utoipa::path(
+    post,
+    path = "/api/v1/influencers/{influencer_id}/generate-video-prompt",
+    params(("influencer_id" = String, Path, description = "Influencer ID")),
+    request_body = GenerateVideoPromptRequest,
+    responses(
+        (status = 200, body = VideoPromptResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 404, body = ErrorBody, description = "Not found"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
+    tag = "Influencers",
+    security(("BearerAuth" = []))
+)]
+pub async fn generate_video_prompt(
+    State(state): State<Arc<AppState>>,
+    _user: AuthenticatedUser,
+    Path(influencer_id): Path<String>,
+    Json(body): Json<GenerateVideoPromptRequest>,
+) -> Result<Json<VideoPromptResponse>, AppError> {
+    // Validate request body
+    body.validate()
+        .map_err(|e| AppError::validation_error(format!("{e}")))?;
+
+    let repo = state.db.inf_repo();
+
+    // Try to get the influencer - if not found, generate base prompt without bot context
+    let video_prompt = match repo.get_by_id(&influencer_id).await? {
+        Some(influencer) => {
+            // Bot context available - generate prompt with bot's system instructions
+            let system_instructions = moderation::strip_guardrails(&influencer.system_instructions);
+            CharacterGeneratorService::generate_subsequent_video_prompt(
+                &state.gemini,
+                &influencer.display_name,
+                &system_instructions,
+                &body.scene_description,
+            )
+            .await?
+        }
+        None => {
+            // No bot context - generate base video prompt
+            CharacterGeneratorService::generate_base_video_prompt(
+                &state.gemini,
+                &body.scene_description,
+            )
+            .await?
+        }
+    };
+
+    Ok(Json(VideoPromptResponse {
+        video_prompt,
+        scene_description: body.scene_description,
+    }))
 }
 
 /// Delete an influencer (soft delete)
