@@ -96,12 +96,12 @@ System Instructions: {system_instructions}
 Return ONLY the flowing paragraph prompt. Do not use bullet points or labels."#;
 
 const SUBSEQUENT_VIDEO_PROMPT: &str = r#"You are a Cinematic Director and LTX Prompt Engineer.
-Based on the character's System Instructions and the Scene Description, write a high-impact, single-flowing paragraph (4-8 sentences) for a 5-second video.
+Based on the character's System Instructions and the Scene Description, and looking at the provided reference images, write a high-impact, single-flowing paragraph (4-8 sentences) for a 5-second video.
 
 Follow these LTX Prompting Guide rules:
 1. [ESTABLISH THE SHOT]: Start with the shot scale (e.g., Close-up, Medium shot) and the setting
-2. [SET THE SCENE]: Describe specific lighting, textures, and atmosphere
-3. [CHARACTER & ACTION]: Describe the character's physical features (consistent with their persona in system instructions) and their core action in present tense
+2. [SET THE SCENE]: Describe specific lighting, textures, and atmosphere  
+3. [CHARACTER & ACTION]: Describe the character's physical features (must match the reference images for visual consistency) and their core action in present tense
 4. [CAMERA MOVEMENT]: Explicitly state camera movement (e.g., 'The camera pushes in slowly' or 'A handheld tracking shot follows')
 5. [AUDIO & DIALOGUE]: Include ambient sounds and one short line of spoken dialogue in quotation marks, matching the character's linguistic style
 
@@ -112,15 +112,16 @@ Scene Description: {scene_description}
 Return ONLY the flowing paragraph prompt. Do not use bullet points or labels."#;
 
 const BASE_VIDEO_PROMPT: &str = r#"You are a Cinematic Director and LTX Prompt Engineer.
-Based on the Scene Description, write a high-impact, single-flowing paragraph (4-8 sentences) for a 5-second video.
+Based on the Display Name and Scene Description, and looking at the provided reference images, write a high-impact, single-flowing paragraph (4-8 sentences) for a 5-second video.
 
 Follow these LTX Prompting Guide rules:
 1. [ESTABLISH THE SHOT]: Start with the shot scale (e.g., Close-up, Medium shot) and the setting
 2. [SET THE SCENE]: Describe specific lighting, textures, and atmosphere
-3. [CHARACTER & ACTION]: Describe the subject's physical features and their core action in present tense
+3. [CHARACTER & ACTION]: Describe the person's physical features (use the reference images for visual consistency) and their core action in present tense
 4. [CAMERA MOVEMENT]: Explicitly state camera movement (e.g., 'The camera pushes in slowly' or 'A handheld tracking shot follows')
 5. [AUDIO & DIALOGUE]: Include ambient sounds and one short line of spoken dialogue in quotation marks if appropriate
 
+Display Name: {display_name}
 Scene Description: {scene_description}
 
 Return ONLY the flowing paragraph prompt. Do not use bullet points or labels."#;
@@ -311,14 +312,34 @@ impl CharacterGeneratorService {
         display_name: &str,
         system_instructions: &str,
         scene_description: &str,
+        avatar_url: Option<&str>,
+        reference_image_url: Option<&str>,
     ) -> Result<String, AppError> {
         let prompt = SUBSEQUENT_VIDEO_PROMPT
             .replace("{display_name}", display_name)
             .replace("{system_instructions}", system_instructions)
             .replace("{scene_description}", scene_description);
 
+        // Collect image URLs to send as media
+        let mut media_urls: Vec<String> = Vec::new();
+        if let Some(url) = avatar_url {
+            media_urls.push(url.to_string());
+        }
+        if let Some(url) = reference_image_url {
+            media_urls.push(url.to_string());
+        }
+
         let (text, _) = gemini
-            .generate_response(&prompt, "You are a helpful assistant.", &[], None)
+            .generate_response(
+                &prompt,
+                "You are a helpful assistant.",
+                &[],
+                if media_urls.is_empty() {
+                    None
+                } else {
+                    Some(&media_urls)
+                },
+            )
             .await?;
 
         Ok(text.trim().to_string())
@@ -326,12 +347,35 @@ impl CharacterGeneratorService {
 
     pub async fn generate_base_video_prompt(
         gemini: &AiClient,
+        display_name: &str,
         scene_description: &str,
+        avatar_url: Option<&str>,
+        reference_image_url: Option<&str>,
     ) -> Result<String, AppError> {
-        let prompt = BASE_VIDEO_PROMPT.replace("{scene_description}", scene_description);
+        let prompt = BASE_VIDEO_PROMPT
+            .replace("{display_name}", display_name)
+            .replace("{scene_description}", scene_description);
+
+        // Collect image URLs to send as media
+        let mut media_urls: Vec<String> = Vec::new();
+        if let Some(url) = avatar_url {
+            media_urls.push(url.to_string());
+        }
+        if let Some(url) = reference_image_url {
+            media_urls.push(url.to_string());
+        }
 
         let (text, _) = gemini
-            .generate_response(&prompt, "You are a helpful assistant.", &[], None)
+            .generate_response(
+                &prompt,
+                "You are a helpful assistant.",
+                &[],
+                if media_urls.is_empty() {
+                    None
+                } else {
+                    Some(&media_urls)
+                },
+            )
             .await?;
 
         Ok(text.trim().to_string())

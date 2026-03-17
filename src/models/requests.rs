@@ -170,6 +170,8 @@ pub struct GenerateVideoPromptRequest {
         message = "scene_description must be 1-500 characters"
     ))]
     pub scene_description: String,
+    /// Optional user-provided reference image URL
+    pub reference_image_url: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

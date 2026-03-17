@@ -21,6 +21,67 @@ use crate::models::responses::{
 use crate::services::character_generator::CharacterGeneratorService;
 use crate::services::moderation;
 
+/// Fetch profile picture from User Info Service canister for main user accounts
+async fn fetch_user_profile_pic(agent: &ic_agent::Agent, principal_id: &str) -> Option<String> {
+    let principal = candid::Principal::from_text(principal_id).ok()?;
+
+    let canister_id = yral_canisters_client::ic::USER_INFO_SERVICE_ID;
+    let service = yral_canisters_client::user_info_service::UserInfoService(canister_id, agent);
+
+    match service.get_users_profile_details(vec![principal]).await {
+        Ok(yral_canisters_client::user_info_service::Result9::Ok(details)) => details
+            .into_iter()
+            .next()
+            .and_then(|d| d.profile_picture.map(|p| p.url)),
+        Ok(yral_canisters_client::user_info_service::Result9::Err(e)) => {
+            tracing::warn!(error = %e, "Canister error fetching user profile");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "IC agent error fetching user profile");
+            None
+        }
+    }
+}
+
+/// Fetch username from metadata server for main user accounts
+async fn fetch_username_from_metadata(
+    http_client: &reqwest::Client,
+    metadata_url: &str,
+    principal_id: &str,
+) -> Option<String> {
+    let url = format!(
+        "{}/user-profile/{}?user_id={}",
+        metadata_url.trim_end_matches('/'),
+        principal_id,
+        principal_id
+    );
+
+    match http_client.get(&url).send().await {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                tracing::warn!(status = %resp.status(), "Metadata server returned error for user profile");
+                return None;
+            }
+            match resp.json::<serde_json::Value>().await {
+                Ok(json) => json
+                    .get("Ok")
+                    .and_then(|v| v.get("user_name"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to parse metadata user profile response");
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to fetch username from metadata server");
+            None
+        }
+    }
+}
+
 impl From<AIInfluencer> for InfluencerResponse {
     fn from(i: AIInfluencer) -> Self {
         Self {
@@ -406,7 +467,7 @@ pub async fn generate_video_prompt(
 
     let repo = state.db.inf_repo();
 
-    // Try to get the influencer - if not found, generate base prompt without bot context
+    // Try to get the influencer - if not found, try to fetch profile from canister for main accounts
     let video_prompt = match repo.get_by_id(&influencer_id).await? {
         Some(influencer) => {
             // Bot context available - generate prompt with bot's system instructions
@@ -416,14 +477,34 @@ pub async fn generate_video_prompt(
                 &influencer.display_name,
                 &system_instructions,
                 &body.scene_description,
+                influencer.avatar_url.as_deref(),
+                body.reference_image_url.as_deref(),
             )
             .await?
         }
         None => {
-            // No bot context - generate base video prompt
+            // Not a bot - fetch profile info for main user account
+            let (avatar_url, username) = tokio::join!(
+                fetch_user_profile_pic(&state.ic_agent, &influencer_id),
+                fetch_username_from_metadata(
+                    &state.http_client,
+                    &state.settings.metadata_url,
+                    &influencer_id
+                )
+            );
+
+            // Use username from metadata, or fallback to short principal
+            let display_name = username.unwrap_or_else(|| {
+                format!("User {}", &influencer_id[..8.min(influencer_id.len())])
+            });
+
+            // Generate base prompt with avatar (if found) since main accounts don't have system instructions
             CharacterGeneratorService::generate_base_video_prompt(
                 &state.gemini,
+                &display_name,
                 &body.scene_description,
+                avatar_url.as_deref(),
+                body.reference_image_url.as_deref(),
             )
             .await?
         }
