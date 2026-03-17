@@ -10,15 +10,77 @@ use crate::error::{AppError, ErrorBody};
 use crate::middleware::AuthenticatedUser;
 use crate::models::entities::{AIInfluencer, InfluencerStatus};
 use crate::models::requests::{
-    CreateInfluencerRequest, GeneratePromptRequest, PaginationParams, UpdateSystemPromptRequest,
-    ValidateMetadataRequest,
+    CreateInfluencerRequest, GeneratePromptRequest, GenerateVideoPromptRequest, PaginationParams,
+    UpdateSystemPromptRequest, ValidateMetadataRequest,
 };
 use crate::models::responses::{
     GeneratedMetadataResponse, InfluencerResponse, ListInfluencersResponse,
     ListTrendingInfluencersResponse, SystemPromptResponse, TrendingInfluencerResponse,
+    VideoPromptResponse,
 };
 use crate::services::character_generator::CharacterGeneratorService;
 use crate::services::moderation;
+
+/// Fetch profile picture from User Info Service canister for main user accounts
+async fn fetch_user_profile_pic(agent: &ic_agent::Agent, principal_id: &str) -> Option<String> {
+    let principal = candid::Principal::from_text(principal_id).ok()?;
+
+    let canister_id = yral_canisters_client::ic::USER_INFO_SERVICE_ID;
+    let service = yral_canisters_client::user_info_service::UserInfoService(canister_id, agent);
+
+    match service.get_users_profile_details(vec![principal]).await {
+        Ok(yral_canisters_client::user_info_service::Result9::Ok(details)) => details
+            .into_iter()
+            .next()
+            .and_then(|d| d.profile_picture.map(|p| p.url)),
+        Ok(yral_canisters_client::user_info_service::Result9::Err(e)) => {
+            tracing::warn!(error = %e, "Canister error fetching user profile");
+            None
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "IC agent error fetching user profile");
+            None
+        }
+    }
+}
+
+/// Fetch username from metadata server for main user accounts
+async fn fetch_username_from_metadata(
+    http_client: &reqwest::Client,
+    metadata_url: &str,
+    principal_id: &str,
+) -> Option<String> {
+    let url = format!(
+        "{}/user-profile/{}?user_id={}",
+        metadata_url.trim_end_matches('/'),
+        principal_id,
+        principal_id
+    );
+
+    match http_client.get(&url).send().await {
+        Ok(resp) => {
+            if !resp.status().is_success() {
+                tracing::warn!(status = %resp.status(), "Metadata server returned error for user profile");
+                return None;
+            }
+            match resp.json::<serde_json::Value>().await {
+                Ok(json) => json
+                    .get("Ok")
+                    .and_then(|v| v.get("user_name"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to parse metadata user profile response");
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Failed to fetch username from metadata server");
+            None
+        }
+    }
+}
 
 impl From<AIInfluencer> for InfluencerResponse {
     fn from(i: AIInfluencer) -> Self {
@@ -375,6 +437,83 @@ pub async fn update_system_prompt(
         .ok_or_else(|| AppError::not_found("Influencer not found"))?;
 
     Ok(Json(InfluencerResponse::from(updated)))
+}
+
+/// Generate a video prompt for subsequent bot videos
+/// This endpoint creates an LTX-optimized video prompt with full context from the bot's system instructions
+#[utoipa::path(
+    post,
+    path = "/api/v1/influencers/{influencer_id}/generate-video-prompt",
+    params(("influencer_id" = String, Path, description = "Influencer ID")),
+    request_body = GenerateVideoPromptRequest,
+    responses(
+        (status = 200, body = VideoPromptResponse, description = "Successful response"),
+        (status = 401, body = ErrorBody, description = "Unauthorized"),
+        (status = 404, body = ErrorBody, description = "Not found"),
+        (status = 422, body = ErrorBody, description = "Validation error")
+    ),
+    tag = "Influencers",
+    security(("BearerAuth" = []))
+)]
+pub async fn generate_video_prompt(
+    State(state): State<Arc<AppState>>,
+    _user: AuthenticatedUser,
+    Path(influencer_id): Path<String>,
+    Json(body): Json<GenerateVideoPromptRequest>,
+) -> Result<Json<VideoPromptResponse>, AppError> {
+    // Validate request body
+    body.validate()
+        .map_err(|e| AppError::validation_error(format!("{e}")))?;
+
+    let repo = state.db.inf_repo();
+
+    // Try to get the influencer - if not found, try to fetch profile from canister for main accounts
+    let video_prompt = match repo.get_by_id(&influencer_id).await? {
+        Some(influencer) => {
+            // Bot context available - generate prompt with bot's system instructions
+            let system_instructions = moderation::strip_guardrails(&influencer.system_instructions);
+            CharacterGeneratorService::generate_subsequent_video_prompt(
+                &state.gemini,
+                &influencer.display_name,
+                &system_instructions,
+                &body.scene_description,
+                influencer.avatar_url.as_deref(),
+                body.reference_image_url.as_deref(),
+            )
+            .await?
+        }
+        None => {
+            // Not a bot - fetch profile info for main user account
+            let (avatar_url, username) = tokio::join!(
+                fetch_user_profile_pic(&state.ic_agent, &influencer_id),
+                fetch_username_from_metadata(
+                    &state.http_client,
+                    &state.settings.metadata_url,
+                    &influencer_id
+                )
+            );
+
+            // Use username from metadata, or fallback to short principal
+            let display_name = username.unwrap_or_else(|| {
+                format!("User {}", &influencer_id[..8.min(influencer_id.len())])
+            });
+
+            // Generate base prompt with avatar (if found) since main accounts don't have system instructions
+            CharacterGeneratorService::generate_base_video_prompt(
+                &state.gemini,
+                &display_name,
+                &body.scene_description,
+                avatar_url.as_deref(),
+                body.reference_image_url.as_deref(),
+            )
+            .await?
+        }
+    };
+
+    Ok(Json(VideoPromptResponse {
+        video_prompt,
+        scene_description: body.scene_description,
+    }))
 }
 
 /// Delete an influencer (soft delete)

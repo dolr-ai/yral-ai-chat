@@ -162,6 +162,18 @@ pub struct GeneratePromptRequest {
     pub prompt: String,
 }
 
+#[derive(Debug, Deserialize, Validate, ToSchema)]
+pub struct GenerateVideoPromptRequest {
+    #[validate(length(
+        min = 1,
+        max = 500,
+        message = "scene_description must be 1-500 characters"
+    ))]
+    pub scene_description: String,
+    /// Optional user-provided reference image URL
+    pub reference_image_url: Option<String>,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ValidateMetadataRequest {
     pub system_instructions: String,

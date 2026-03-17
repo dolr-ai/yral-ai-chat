@@ -175,6 +175,10 @@ async fn main() {
             "/api/v1/influencers/{influencer_id}/system-prompt",
             patch(influencers::update_system_prompt),
         )
+        .route(
+            "/api/v1/influencers/{influencer_id}/generate-video-prompt",
+            post(influencers::generate_video_prompt),
+        )
         // Chat V1
         .route(
             "/api/v1/chat/conversations",
