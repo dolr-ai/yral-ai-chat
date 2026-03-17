@@ -31,7 +31,7 @@ jobs:
       - name: Setup current SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ env.HETZNER_BARE_METAL_GITHUB_ACTIONS_SSH_PRIVATE_KEY  }}
+          ssh-private-key: ${{ secrets.HETZNER_BARE_METAL_GITHUB_ACTIONS_SSH_PRIVATE_KEY }}
  
       - name: Add servers to known hosts
         run: |
