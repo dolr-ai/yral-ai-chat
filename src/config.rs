@@ -224,7 +224,7 @@ impl Settings {
                 .ok()
                 .filter(|s| !s.is_empty()),
 
-            google_chat_webhook_url: env::var("GOOGLE_CHAT").ok().filter(|s| !s.is_empty()),
+            google_chat_webhook_url: env::var("GOOGLE_CHAT_WEBHOOK_URL").ok().filter(|s| !s.is_empty()),
 
             admin_key_to_delete_influencer: env::var("ADMIN_KEY_TO_DELETE_INFLUENCER")
                 .ok()
