@@ -81,6 +81,9 @@ pub struct Settings {
 
     // Notifications
     pub google_chat_webhook_url: Option<String>,
+
+    // Admin
+    pub admin_key_to_delete_influencer: Option<String>,
 }
 
 impl Settings {
@@ -222,6 +225,10 @@ impl Settings {
                 .filter(|s| !s.is_empty()),
 
             google_chat_webhook_url: env::var("GOOGLE_CHAT").ok().filter(|s| !s.is_empty()),
+
+            admin_key_to_delete_influencer: env::var("ADMIN_KEY_TO_DELETE_INFLUENCER")
+                .ok()
+                .filter(|s| !s.is_empty()),
         }
     }
 
