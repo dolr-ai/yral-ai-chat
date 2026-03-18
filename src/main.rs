@@ -172,6 +172,10 @@ async fn main() {
             get(influencers::get_influencer).delete(influencers::delete_influencer),
         )
         .route(
+            "/api/v1/admin/influencers/{influencer_id}",
+            delete(influencers::admin_ban_influencer),
+        )
+        .route(
             "/api/v1/influencers/{influencer_id}/system-prompt",
             patch(influencers::update_system_prompt),
         )

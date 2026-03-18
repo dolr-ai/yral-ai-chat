@@ -131,6 +131,7 @@ jobs:
             secret/data/yral-ai-chat/LITESTREAM_ENDPOINT value | LITESTREAM_ENDPOINT ;
             secret/data/yral-ai-chat/LITESTREAM_REGION value | LITESTREAM_REGION ;
             secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL ;
+            secret/data/yral-ai-chat/ADMIN_KEY_TO_DELETE_INFLUENCER value | ADMIN_KEY_TO_DELETE_INFLUENCER ;
 
       - name: Setup SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -199,6 +200,7 @@ jobs:
             LITESTREAM_REGION='${{ env.LITESTREAM_REGION }}' \
             LITESTREAM_PATH='yral-ai-chat/yral_chat.db' \
             PG_DATABASE_URL='${{ env.PG_DATABASE_URL }}' \
+            ADMIN_KEY_TO_DELETE_INFLUENCER='${{ env.ADMIN_KEY_TO_DELETE_INFLUENCER }}' \
             docker compose up -d
 
             echo 'Waiting for services to start...'

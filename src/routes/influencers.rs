@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
-use axum::http::header;
+use axum::http::{HeaderMap, header};
 use validator::Validate;
 
 use crate::AppState;
@@ -516,7 +516,7 @@ pub async fn generate_video_prompt(
     }))
 }
 
-/// Delete an influencer (soft delete)
+/// Delete an influencer (soft delete) — owner only
 #[utoipa::path(
     delete,
     path = "/api/v1/influencers/{influencer_id}",
@@ -548,6 +548,50 @@ pub async fn delete_influencer(
             "Only the bot owner can delete this bot",
         ));
     }
+
+    repo.soft_delete(&influencer_id).await?;
+
+    let updated = repo
+        .get_by_id(&influencer_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Influencer not found"))?;
+
+    Ok(Json(InfluencerResponse::from(updated)))
+}
+
+/// Ban an influencer (admin only) — requires X-Admin-Key header
+#[utoipa::path(
+    delete,
+    path = "/api/v1/admin/influencers/{influencer_id}",
+    params(("influencer_id" = String, Path, description = "Influencer ID")),
+    responses(
+        (status = 200, body = InfluencerResponse, description = "Influencer banned"),
+        (status = 401, body = ErrorBody, description = "Missing or invalid admin key"),
+        (status = 404, body = ErrorBody, description = "Not found")
+    ),
+    tag = "Admin"
+)]
+pub async fn admin_ban_influencer(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(influencer_id): Path<String>,
+) -> Result<Json<InfluencerResponse>, AppError> {
+    let provided_key = headers
+        .get("X-Admin-Key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let valid = state
+        .settings
+        .admin_key_to_delete_influencer
+        .as_deref()
+        .is_some_and(|key| provided_key == key);
+
+    if !valid {
+        return Err(AppError::unauthorized("Invalid or missing admin key"));
+    }
+
+    let repo = state.db.inf_repo();
 
     repo.soft_delete(&influencer_id).await?;
 
