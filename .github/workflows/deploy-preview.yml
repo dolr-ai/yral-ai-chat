@@ -82,6 +82,7 @@ jobs:
             secret/data/yral-ai-chat/LITESTREAM_REGION value | LITESTREAM_REGION ;
             secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL ;
             secret/data/yral-ai-chat/ADMIN_KEY_TO_DELETE_INFLUENCER value | ADMIN_KEY_TO_DELETE_INFLUENCER ;
+            secret/data/yral-ai-chat/GOOGLE_CHAT_WEBHOOK_URL value | GOOGLE_CHAT_WEBHOOK_URL ;
 
       - name: Set secrets and deploy
         if: ${{ github.event.pull_request.merged == false }}
@@ -114,6 +115,7 @@ jobs:
           flyctl secrets set "LITESTREAM_PATH=yral-ai-chat/pr-${{ github.event.number }}" --app "$APP_NAME" --stage
           flyctl secrets set "PG_DATABASE_URL=$PG_DATABASE_URL" --app "$APP_NAME" --stage
           flyctl secrets set "ADMIN_KEY_TO_DELETE_INFLUENCER=$ADMIN_KEY_TO_DELETE_INFLUENCER" --app "$APP_NAME" --stage
+          flyctl secrets set "GOOGLE_CHAT_WEBHOOK_URL=$GOOGLE_CHAT_WEBHOOK_URL" --app "$APP_NAME" --stage
           flyctl deploy --app "$APP_NAME"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -136,6 +138,7 @@ jobs:
           LITESTREAM_ENDPOINT: ${{ env.LITESTREAM_ENDPOINT }}
           LITESTREAM_REGION: ${{ env.LITESTREAM_REGION }}
           PG_DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+          GOOGLE_CHAT_WEBHOOK_URL: ${{ env.GOOGLE_CHAT_WEBHOOK_URL }}
 
   integration_tests:
     needs: preview

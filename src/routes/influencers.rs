@@ -593,12 +593,23 @@ pub async fn admin_ban_influencer(
 
     let repo = state.db.inf_repo();
 
-    repo.soft_delete(&influencer_id).await?;
+    if let Err(e) = repo.soft_delete(&influencer_id).await {
+        state
+            .google_chat
+            .notify_influencer_ban_failed(&influencer_id, &e.to_string())
+            .await;
+        return Err(e.into());
+    }
 
     let updated = repo
         .get_by_id(&influencer_id)
         .await?
         .ok_or_else(|| AppError::not_found("Influencer not found"))?;
+
+    state
+        .google_chat
+        .notify_influencer_banned(&influencer_id, &updated.name)
+        .await;
 
     Ok(Json(InfluencerResponse::from(updated)))
 }

@@ -82,6 +82,7 @@ jobs:
             secret/data/yral-ai-chat/LITESTREAM_ENDPOINT value | LITESTREAM_ENDPOINT ;
             secret/data/yral-ai-chat/LITESTREAM_REGION value | LITESTREAM_REGION ;
             secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL ;
+            secret/data/yral-ai-chat/GOOGLE_CHAT_WEBHOOK_URL value | GOOGLE_CHAT_WEBHOOK_URL ;
 
       - name: Set secrets
         run: |
@@ -112,6 +113,7 @@ jobs:
             "LITESTREAM_REGION=$LITESTREAM_REGION" \
             "LITESTREAM_PATH=yral-ai-chat-staging/yral_chat.db" \
             "PG_DATABASE_URL=$PG_DATABASE_URL" \
+            "GOOGLE_CHAT_WEBHOOK_URL=$GOOGLE_CHAT_WEBHOOK_URL" \
             --app "$APP_NAME" --stage
         env:
           JWT_SECRET_KEY: ${{ env.JWT_SECRET_KEY }}
@@ -133,6 +135,7 @@ jobs:
           LITESTREAM_ENDPOINT: ${{ env.LITESTREAM_ENDPOINT }}
           LITESTREAM_REGION: ${{ env.LITESTREAM_REGION }}
           PG_DATABASE_URL: ${{ env.PG_DATABASE_URL }}
+          GOOGLE_CHAT_WEBHOOK_URL: ${{ env.GOOGLE_CHAT_WEBHOOK_URL }}
 
       - name: Scale to single machine
         run: flyctl scale count 1 --app "$APP_NAME" --yes || true
