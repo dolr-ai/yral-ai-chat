@@ -41,4 +41,11 @@ impl GoogleChatService {
         ))
         .await;
     }
+
+    pub async fn notify_influencer_ban_failed(&self, influencer_id: &str, error: &str) {
+        self.send_message(&format!(
+            "❌ Failed to ban AI Influencer\nID: {influencer_id}\nError: {error}"
+        ))
+        .await;
+    }
 }
