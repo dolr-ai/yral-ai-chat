@@ -48,4 +48,18 @@ impl GoogleChatService {
         ))
         .await;
     }
+
+    pub async fn notify_influencer_unbanned(&self, influencer_id: &str, influencer_name: &str) {
+        self.send_message(&format!(
+            "✅ AI Influencer unbanned\nID: {influencer_id}\nName: {influencer_name}"
+        ))
+        .await;
+    }
+
+    pub async fn notify_influencer_unban_failed(&self, influencer_id: &str, error: &str) {
+        self.send_message(&format!(
+            "❌ Failed to unban AI Influencer\nID: {influencer_id}\nError: {error}"
+        ))
+        .await;
+    }
 }
