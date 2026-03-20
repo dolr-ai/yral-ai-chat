@@ -184,6 +184,10 @@ async fn main() {
             delete(influencers::admin_ban_influencer),
         )
         .route(
+            "/api/v1/admin/influencers/{influencer_id}/unban",
+            post(influencers::admin_unban_influencer),
+        )
+        .route(
             "/api/v1/influencers/{influencer_id}/system-prompt",
             patch(influencers::update_system_prompt),
         )

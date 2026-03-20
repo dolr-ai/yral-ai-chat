@@ -593,23 +593,78 @@ pub async fn admin_ban_influencer(
 
     let repo = state.db.inf_repo();
 
-    if let Err(e) = repo.soft_delete(&influencer_id).await {
+    let influencer = repo
+        .get_by_id_or_name(&influencer_id)
+        .await?
+        .ok_or_else(|| AppError::not_found("Influencer not found"))?;
+
+    if let Err(e) = repo.ban(&influencer.id).await {
         state
             .google_chat
-            .notify_influencer_ban_failed(&influencer_id, &e.to_string())
+            .notify_influencer_ban_failed(&influencer.id, &e.to_string())
             .await;
         return Err(e.into());
     }
 
-    let updated = repo
-        .get_by_id(&influencer_id)
+    state
+        .google_chat
+        .notify_influencer_banned(&influencer.id, &influencer.name)
+        .await;
+
+    Ok(Json(InfluencerResponse::from(influencer)))
+}
+
+/// Unban an influencer (admin only) — requires X-Admin-Key header
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/influencers/{influencer_id}/unban",
+    params(("influencer_id" = String, Path, description = "Influencer ID")),
+    responses(
+        (status = 200, body = InfluencerResponse, description = "Influencer unbanned"),
+        (status = 401, body = ErrorBody, description = "Missing or invalid admin key"),
+        (status = 404, body = ErrorBody, description = "Not found")
+    ),
+    tag = "Admin"
+)]
+pub async fn admin_unban_influencer(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(influencer_id): Path<String>,
+) -> Result<Json<InfluencerResponse>, AppError> {
+    let provided_key = headers
+        .get("X-Admin-Key")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    let valid = state
+        .settings
+        .admin_key_to_delete_influencer
+        .as_deref()
+        .is_some_and(|key| provided_key == key);
+
+    if !valid {
+        return Err(AppError::unauthorized("Invalid or missing admin key"));
+    }
+
+    let repo = state.db.inf_repo();
+
+    let influencer = repo
+        .get_by_id_or_name(&influencer_id)
         .await?
         .ok_or_else(|| AppError::not_found("Influencer not found"))?;
 
+    if let Err(e) = repo.unban(&influencer.id).await {
+        state
+            .google_chat
+            .notify_influencer_unban_failed(&influencer.id, &e.to_string())
+            .await;
+        return Err(e.into());
+    }
+
     state
         .google_chat
-        .notify_influencer_banned(&influencer_id, &updated.name)
+        .notify_influencer_unbanned(&influencer.id, &influencer.name)
         .await;
 
-    Ok(Json(InfluencerResponse::from(updated)))
+    Ok(Json(InfluencerResponse::from(influencer)))
 }

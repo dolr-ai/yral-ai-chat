@@ -155,6 +155,26 @@ impl InfluencerRepository {
         Ok(())
     }
 
+    pub async fn ban(&self, influencer_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE ai_influencers SET is_active = 'discontinued', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        )
+        .bind(influencer_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn unban(&self, influencer_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE ai_influencers SET is_active = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        )
+        .bind(influencer_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     // ── Reads ─────────────────────────────────────────────────────────────────
 
     pub async fn list_all(
@@ -192,6 +212,20 @@ impl InfluencerRepository {
             "SELECT {SELECT_COLS} FROM ai_influencers WHERE name = ?"
         ))
         .bind(name)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(AIInfluencer::from))
+    }
+
+    pub async fn get_by_id_or_name(
+        &self,
+        id_or_name: &str,
+    ) -> Result<Option<AIInfluencer>, sqlx::Error> {
+        let row = sqlx::query_as::<_, InfluencerRow>(&format!(
+            "SELECT {SELECT_COLS} FROM ai_influencers WHERE id = ? OR name = ? LIMIT 1"
+        ))
+        .bind(id_or_name)
+        .bind(id_or_name)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.map(AIInfluencer::from))
@@ -402,6 +436,26 @@ impl InfluencerRepository {
         Ok(())
     }
 
+    pub async fn ban(&self, influencer_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE ai_influencers SET is_active = 'discontinued', updated_at = NOW() WHERE id = $1",
+        )
+        .bind(influencer_id)
+        .execute(&self.pg_pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn unban(&self, influencer_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE ai_influencers SET is_active = 'active', updated_at = NOW() WHERE id = $1",
+        )
+        .bind(influencer_id)
+        .execute(&self.pg_pool)
+        .await?;
+        Ok(())
+    }
+
     // ── Reads ─────────────────────────────────────────────────────────────────
 
     pub async fn list_all(
@@ -439,6 +493,19 @@ impl InfluencerRepository {
             "SELECT {SELECT_COLS} FROM ai_influencers WHERE name = $1"
         ))
         .bind(name)
+        .fetch_optional(&self.pg_pool)
+        .await?;
+        Ok(row.map(AIInfluencer::from))
+    }
+
+    pub async fn get_by_id_or_name(
+        &self,
+        id_or_name: &str,
+    ) -> Result<Option<AIInfluencer>, sqlx::Error> {
+        let row = sqlx::query_as::<_, PgInfluencerRow>(&format!(
+            "SELECT {SELECT_COLS} FROM ai_influencers WHERE id = $1 OR name = $1 LIMIT 1"
+        ))
+        .bind(id_or_name)
         .fetch_optional(&self.pg_pool)
         .await?;
         Ok(row.map(AIInfluencer::from))
