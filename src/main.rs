@@ -236,6 +236,10 @@ async fn main() {
         .route("/api/v1/media/upload", post(media::upload_media))
         // OpenAPI / Swagger UI
         .merge(routes::openapi::swagger_ui())
+        // Set Sentry transaction name to route pattern after routing
+        .route_layer(axum::middleware::from_fn(
+            middleware::sentry_transaction_name,
+        ))
         .layer(middleware::RateLimitLayer::new(
             settings.rate_limit_per_minute,
             settings.rate_limit_per_hour,
