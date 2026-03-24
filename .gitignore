@@ -1,43 +1,21 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# Rust
+target/
 
-# Virtual Environment
-venv/
-env/
-ENV/
-.venv
-
-#adhoc
-adhoc/
-
-# Environment Variables
+# Environment
 .env
 .env.local
 .env.production
 .env.deploy
 .secrets
 !.env.example
-!env.example
+
+# Database
+*.db
+*.sqlite
+data/
+
+# Litestream config (contains S3 credentials)
+config/litestream-local.yml
 
 # IDE
 .vscode/
@@ -46,54 +24,15 @@ adhoc/
 *.swo
 *~
 .DS_Store
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-*.cover
+Thumbs.db
 
 # Logs
 *.log
 logs/
 
-# Database
-*.db
-*.sqlite
-*.sql
-!migrations/**/*.sql
-data/
-
-# Litestream config (contains S3 credentials)
-config/litestream-local.yml
-# Keep config/litestream.yml as it uses env vars
-
-# Uploads
-uploads/*
-!uploads/.gitkeep
-
-# Alembic
-alembic.ini
-
-# OS
-Thumbs.db
-
-# Local binaries
-bin/
-
-# Gradio cache
-gradio-demo/.gradio/
-
-#Certificates
+# Certs
 *.pem
 
-#Addon files
-*.jpg
-*.jpeg
-media_upload.py
-.github/copilot-instructions.md
-
-# Beszel Monitoring
-beszel_agent_data/
-target/
+# Misc
 tmp/
+adhoc/

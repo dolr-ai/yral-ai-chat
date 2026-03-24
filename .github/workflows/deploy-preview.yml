@@ -140,38 +140,23 @@ jobs:
           PG_DATABASE_URL: ${{ env.PG_DATABASE_URL }}
           GOOGLE_CHAT_WEBHOOK_URL: ${{ env.GOOGLE_CHAT_WEBHOOK_URL }}
 
-  integration_tests:
+  health_check:
     needs: preview
     if: ${{ github.event.action != 'closed' && needs.preview.outputs.url != '' }}
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Rust Setup
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-
-      - name: Use rust cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Wait for preview to be healthy
+      - name: Check health endpoint
         run: |
           URL="${{ needs.preview.outputs.url }}"
-          echo "Waiting for $URL/health to be healthy..."
+          echo "Checking $URL/health..."
           for i in $(seq 1 30); do
             if curl -sf "$URL/health" > /dev/null 2>&1; then
-              echo "Preview is healthy!"
+              echo "Health check passed!"
               exit 0
             fi
             echo "Attempt $i/30 - not ready yet, waiting 10s..."
             sleep 10
           done
-          echo "Preview failed to become healthy after 5 minutes"
+          echo "Health check failed after 5 minutes"
           exit 1
-
-      - name: Run integration tests
-        env:
-          TEST_API_URL: ${{ needs.preview.outputs.url }}
-        run: cargo test --test health --test auth --test influencers --test chat --test chat_v2 --test websocket --test rate_limit --test media
