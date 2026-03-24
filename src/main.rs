@@ -50,10 +50,7 @@ async fn main() {
 
     // Initialize Sentry (guard must stay alive for the duration of main)
     let _sentry_guard = sentry::init(sentry::ClientOptions {
-        dsn: settings
-            .sentry_dsn
-            .as_deref()
-            .and_then(|s| s.parse().ok()),
+        dsn: settings.sentry_dsn.as_deref().and_then(|s| s.parse().ok()),
         traces_sample_rate: settings.sentry_traces_sample_rate as f32,
         release: sentry::release_name!(),
         ..Default::default()
