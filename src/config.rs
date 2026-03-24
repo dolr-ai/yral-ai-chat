@@ -77,8 +77,6 @@ pub struct Settings {
     pub sentry_dsn: Option<String>,
     pub sentry_traces_sample_rate: f64,
     pub sentry_profiles_sample_rate: f64,
-    pub sentry_webhook_secret: Option<String>,
-
     // Notifications
     pub google_chat_webhook_url: Option<String>,
 
@@ -220,10 +218,6 @@ impl Settings {
                 .unwrap_or("1.0".into())
                 .parse()
                 .unwrap_or(1.0),
-            sentry_webhook_secret: env::var("SENTRY_WEBHOOK_SECRET")
-                .ok()
-                .filter(|s| !s.is_empty()),
-
             google_chat_webhook_url: env::var("GOOGLE_CHAT_WEBHOOK_URL")
                 .ok()
                 .filter(|s| !s.is_empty()),

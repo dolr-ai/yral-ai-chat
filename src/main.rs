@@ -48,6 +48,17 @@ async fn main() {
     let settings = Settings::from_env();
     init_tracing(&settings);
 
+    // Initialize Sentry (guard must stay alive for the duration of main)
+    let _sentry_guard = sentry::init(sentry::ClientOptions {
+        dsn: settings
+            .sentry_dsn
+            .as_deref()
+            .and_then(|s| s.parse().ok()),
+        traces_sample_rate: settings.sentry_traces_sample_rate as f32,
+        release: sentry::release_name!(),
+        ..Default::default()
+    });
+
     tracing::info!(
         app = %settings.app_name,
         version = %settings.app_version,
@@ -235,6 +246,7 @@ async fn main() {
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(cors)
+        .layer(sentry_tower::SentryHttpLayer::with_transaction())
         .with_state(state);
 
     // Start server
