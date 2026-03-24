@@ -18,6 +18,7 @@ use tower_http::trace::TraceLayer;
 use config::Settings;
 use db::Database;
 use services::ai::AiClient;
+use services::google_chat::GoogleChatService;
 use services::notification::PushNotificationService;
 use services::replicate::ReplicateClient;
 use services::storage::StorageService;
@@ -35,6 +36,7 @@ pub struct AppState {
     pub push_notifications: PushNotificationService,
     pub ws_manager: Arc<WsManager>,
     pub ic_agent: ic_agent::Agent,
+    pub google_chat: GoogleChatService,
 }
 
 #[tokio::main]
@@ -118,6 +120,11 @@ async fn main() {
         .build()
         .expect("Failed to create IC agent");
 
+    let google_chat = GoogleChatService::new(
+        http_client.clone(),
+        settings.google_chat_webhook_url.clone(),
+    );
+
     // Build app state
     let state = Arc::new(AppState {
         db: database,
@@ -131,6 +138,7 @@ async fn main() {
         push_notifications,
         ws_manager,
         ic_agent,
+        google_chat,
     });
 
     // Start periodic WAL checkpoint (every 5 minutes) - staging only
@@ -172,8 +180,20 @@ async fn main() {
             get(influencers::get_influencer).delete(influencers::delete_influencer),
         )
         .route(
+            "/api/v1/admin/influencers/{influencer_id}",
+            delete(influencers::admin_ban_influencer),
+        )
+        .route(
+            "/api/v1/admin/influencers/{influencer_id}/unban",
+            post(influencers::admin_unban_influencer),
+        )
+        .route(
             "/api/v1/influencers/{influencer_id}/system-prompt",
             patch(influencers::update_system_prompt),
+        )
+        .route(
+            "/api/v1/influencers/{influencer_id}/generate-video-prompt",
+            post(influencers::generate_video_prompt),
         )
         // Chat V1
         .route(

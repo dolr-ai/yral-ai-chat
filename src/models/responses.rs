@@ -176,6 +176,12 @@ pub struct GeneratedMetadataResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct VideoPromptResponse {
+    pub video_prompt: String,
+    pub scene_description: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MarkConversationAsReadResponse {
     pub id: String,
     pub unread_count: i64,

@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod character_generator;
+pub mod google_chat;
 pub mod moderation;
 pub mod notification;
 pub mod replicate;
