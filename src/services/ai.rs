@@ -22,6 +22,7 @@ pub struct AiClient {
     max_tokens: u32,
     temperature: f32,
     configured: bool,
+    provider: &'static str,
     // For Gemini transcription (native API, not OpenAI-compatible)
     gemini_api_key: Option<String>,
     gemini_model: Option<String>,
@@ -49,6 +50,7 @@ impl AiClient {
             max_tokens,
             temperature,
             configured: !api_key.is_empty(),
+            provider: "gemini",
             gemini_api_key: Some(api_key.to_string()),
             gemini_model: Some(model.to_string()),
             raw_http: http,
@@ -83,6 +85,7 @@ impl AiClient {
             max_tokens,
             temperature,
             configured: !api_key.is_empty(),
+            provider: "openrouter",
             gemini_api_key: None,
             gemini_model: None,
             raw_http: http,
@@ -152,12 +155,22 @@ impl AiClient {
             .build()
             .map_err(|e| AppError::service_unavailable(format!("Failed to build request: {e}")))?;
 
+        let parent = sentry::configure_scope(|s| s.get_span());
+        let sentry_span = parent
+            .as_ref()
+            .map(|p| p.start_child("ai.generate", self.provider));
+
         let response = self
             .client
             .chat()
             .create(request)
             .await
-            .map_err(|e| AppError::service_unavailable(format!("AI API error: {e}")))?;
+            .map_err(|e| AppError::service_unavailable(format!("AI API error: {e}")));
+
+        if let Some(span) = sentry_span {
+            span.finish();
+        }
+        let response = response?;
 
         let choice = response
             .choices
