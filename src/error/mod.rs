@@ -78,9 +78,7 @@ impl AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code) = self.status_and_code();
-        if status.is_server_error() {
-            sentry::capture_error(&self);
-        }
+        sentry::capture_error(&self);
         let body = ErrorBody {
             error: code,
             message: self.to_string(),
