@@ -29,6 +29,7 @@ pub struct AuthRejection(pub StatusCode, pub String);
 
 impl IntoResponse for AuthRejection {
     fn into_response(self) -> Response {
+        tracing::error!(status = %self.0, error = %self.1, "Auth rejected");
         (self.0, Json(serde_json::json!({"detail": self.1}))).into_response()
     }
 }
