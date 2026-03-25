@@ -131,6 +131,7 @@ jobs:
             secret/data/yral-ai-chat/LITESTREAM_ENDPOINT value | LITESTREAM_ENDPOINT ;
             secret/data/yral-ai-chat/LITESTREAM_REGION value | LITESTREAM_REGION ;
             secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL ;
+            secret/data/yral-ai-chat/SSH_PRIVATE_KEY value | SSH_PRIVATE_KEY ;
             secret/data/yral-ai-chat/ADMIN_KEY_TO_DELETE_INFLUENCER value | ADMIN_KEY_TO_DELETE_INFLUENCER ;
             secret/data/yral-ai-chat/GOOGLE_CHAT_WEBHOOK_URL value | GOOGLE_CHAT_WEBHOOK_URL ;
             secret/data/yral-ai-chat/SENTRY_DSN value | SENTRY_DSN ;
@@ -138,7 +139,7 @@ jobs:
       - name: Setup SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.HETZNER_BARE_METAL_GITHUB_ACTIONS_SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ env.SSH_PRIVATE_KEY }}
 
       - name: Add server to known hosts
         run: |
@@ -146,23 +147,23 @@ jobs:
 
       - name: Check server connectivity
         run: |
-          ssh -o ConnectTimeout=10 root@${{ matrix.server }} "echo 'Server ${{ matrix.server }} connection successful'"
+          ssh -o ConnectTimeout=10 yral-ai-chat@${{ matrix.server }} "echo 'Server ${{ matrix.server }} connection successful'"
 
       - name: Sync deployment files to server
         run: |
           rsync -avz --delete \
+            --exclude='.ssh/' \
             ./deploy-baremetal/ \
-            root@${{ matrix.server }}:/home/yral-ai-chat/
+            yral-ai-chat@${{ matrix.server }}:/home/yral-ai-chat/
 
       - name: Log in to GHCR on server
         run: |
-          ssh root@${{ matrix.server }} "
-            echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          "
+          ssh yral-ai-chat@${{ matrix.server }} \
+            "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin"
 
       - name: Deploy with Docker Compose
         run: |
-          ssh root@${{ matrix.server }} "
+          ssh yral-ai-chat@${{ matrix.server }} "
             cd /home/yral-ai-chat
 
             echo 'Pulling latest images...'
@@ -216,7 +217,7 @@ jobs:
 
       - name: Verify deployment
         run: |
-          ssh root@${{ matrix.server }} "
+          ssh yral-ai-chat@${{ matrix.server }} "
             cd /home/yral-ai-chat
             echo '=== Container Status ==='
             docker compose ps
@@ -235,7 +236,6 @@ jobs:
             docker compose logs --tail=30 yral-ai-chat 2>/dev/null || echo 'Logs not yet available'
             exit 1
           "
-
   deployment-summary:
     name: Deployment Summary
     needs: [deploy]

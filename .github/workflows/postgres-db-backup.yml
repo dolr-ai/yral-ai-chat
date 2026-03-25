@@ -33,11 +33,11 @@ jobs:
             secret/data/yral-ai-chat/PG_AWS_ACCESS_KEY_ID value | PG_AWS_ACCESS_KEY_ID ;
             secret/data/yral-ai-chat/PG_AWS_SECRET_ACCESS_KEY value | PG_AWS_SECRET_ACCESS_KEY ;
             secret/data/yral-ai-chat/PG_AWS_REGION value | PG_AWS_REGION ;
-
+            secret/data/yral-ai-chat/PG_SSH_PRIVATE_KEY value | PG_SSH_PRIVATE_KEY ;
       - name: Setup SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.HETZNER_BARE_METAL_GITHUB_ACTIONS_SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ env.PG_SSH_PRIVATE_KEY }}
 
       - name: Add server to known hosts
         run: |
@@ -45,7 +45,7 @@ jobs:
 
       - name: Check server connectivity
         run: |
-          ssh -o ConnectTimeout=10 root@${{ vars.PG_SERVER_IP }} "echo 'Server connection successful'"
+          ssh -o ConnectTimeout=10 yral-ai-chat@${{ vars.PG_SERVER_IP }} "echo 'Server connection successful'"
 
       - name: Run backup via SSH
         run: |
@@ -55,7 +55,7 @@ jobs:
             PREFIX="${{ vars.WALG_S3_PREFIX }}"
           fi
 
-          ssh root@${{ vars.PG_SERVER_IP }} \
+          ssh yral-ai-chat@${{ vars.PG_SERVER_IP }} \
             "/usr/local/bin/run-postgres-backup.sh \
             '${{ env.PG_AWS_ACCESS_KEY_ID }}' \
             '${{ env.PG_AWS_SECRET_ACCESS_KEY }}' \
