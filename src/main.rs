@@ -262,22 +262,30 @@ async fn main() {
 }
 
 fn init_tracing(settings: &Settings) {
-    use tracing_subscriber::{EnvFilter, fmt};
+    use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&settings.log_level));
 
     if settings.log_format == "json" {
-        fmt()
-            .json()
-            .with_env_filter(filter)
-            .with_target(true)
-            .with_thread_ids(false)
-            .with_file(false)
-            .with_line_number(false)
+        tracing_subscriber::registry()
+            .with(
+                fmt::layer()
+                    .json()
+                    .with_target(true)
+                    .with_thread_ids(false)
+                    .with_file(false)
+                    .with_line_number(false),
+            )
+            .with(filter)
+            .with(sentry_tracing::layer())
             .init();
     } else {
-        fmt().with_env_filter(filter).with_target(true).init();
+        tracing_subscriber::registry()
+            .with(fmt::layer().with_target(true))
+            .with(filter)
+            .with(sentry_tracing::layer())
+            .init();
     }
 }
 
