@@ -15,8 +15,6 @@ pub struct StorageService {
     http_client: reqwest::Client,
     public_url_base: String,
     url_expires_seconds: u32,
-    max_image_size_bytes: u64,
-    max_audio_size_bytes: u64,
 }
 
 const IMAGE_EXTENSIONS: &[&str] = &[".jpg", ".jpeg", ".png", ".gif", ".webp"];
@@ -48,8 +46,6 @@ impl StorageService {
             http_client,
             public_url_base: settings.s3_public_url_base.clone(),
             url_expires_seconds: settings.s3_url_expires_seconds,
-            max_image_size_bytes: settings.max_image_size_bytes(),
-            max_audio_size_bytes: settings.max_audio_size_bytes(),
         })
     }
 
@@ -124,7 +120,7 @@ impl StorageService {
         url_or_key.to_string()
     }
 
-    pub fn validate_image(&self, filename: &str, size: u64) -> Result<(), AppError> {
+    pub fn validate_image(&self, filename: &str) -> Result<(), AppError> {
         let ext = file_extension(filename).to_lowercase();
         if !IMAGE_EXTENSIONS.contains(&ext.as_str()) {
             return Err(AppError::bad_request(format!(
@@ -132,27 +128,15 @@ impl StorageService {
                 IMAGE_EXTENSIONS.join(", ")
             )));
         }
-        if size > self.max_image_size_bytes {
-            return Err(AppError::bad_request(format!(
-                "Image too large. Max: {}MB",
-                self.max_image_size_bytes / (1024 * 1024)
-            )));
-        }
         Ok(())
     }
 
-    pub fn validate_audio(&self, filename: &str, size: u64) -> Result<(), AppError> {
+    pub fn validate_audio(&self, filename: &str) -> Result<(), AppError> {
         let ext = file_extension(filename).to_lowercase();
         if !AUDIO_EXTENSIONS.contains(&ext.as_str()) {
             return Err(AppError::bad_request(format!(
                 "Unsupported audio format. Allowed: {}",
                 AUDIO_EXTENSIONS.join(", ")
-            )));
-        }
-        if size > self.max_audio_size_bytes {
-            return Err(AppError::bad_request(format!(
-                "Audio too large. Max: {}MB",
-                self.max_audio_size_bytes / (1024 * 1024)
             )));
         }
         Ok(())

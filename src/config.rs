@@ -41,8 +41,6 @@ pub struct Settings {
     pub openrouter_timeout: u64,
 
     // Media limits
-    pub max_image_size_mb: u32,
-    pub max_audio_size_mb: u32,
     pub max_audio_duration_seconds: u32,
 
     // S3
@@ -159,14 +157,6 @@ impl Settings {
                 .parse()
                 .unwrap_or(30),
 
-            max_image_size_mb: env::var("MAX_IMAGE_SIZE_MB")
-                .unwrap_or("10".into())
-                .parse()
-                .unwrap_or(10),
-            max_audio_size_mb: env::var("MAX_AUDIO_SIZE_MB")
-                .unwrap_or("20".into())
-                .parse()
-                .unwrap_or(20),
             max_audio_duration_seconds: env::var("MAX_AUDIO_DURATION_SECONDS")
                 .unwrap_or("300".into())
                 .parse()
@@ -236,15 +226,5 @@ impl Settings {
             .split(',')
             .map(|s| s.trim().to_string())
             .collect()
-    }
-
-    #[inline]
-    pub fn max_image_size_bytes(&self) -> u64 {
-        self.max_image_size_mb as u64 * 1024 * 1024
-    }
-
-    #[inline]
-    pub fn max_audio_size_bytes(&self) -> u64 {
-        self.max_audio_size_mb as u64 * 1024 * 1024
     }
 }
