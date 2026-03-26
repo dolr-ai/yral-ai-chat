@@ -81,9 +81,9 @@ pub async fn upload_media(
 
     // Validate
     if media_type == "image" {
-        state.storage.validate_image(&file_name, size)?;
+        state.storage.validate_image(&file_name)?;
     } else {
-        state.storage.validate_audio(&file_name, size)?;
+        state.storage.validate_audio(&file_name)?;
     }
 
     // Determine content type

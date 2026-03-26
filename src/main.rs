@@ -233,7 +233,11 @@ async fn main() {
         .route("/api/v1/chat/ws/inbox/{user_id}", get(websocket::ws_inbox))
         .route("/api/v1/chat/ws/docs", get(websocket::ws_docs))
         // Media
-        .route("/api/v1/media/upload", post(media::upload_media))
+        .merge(
+            Router::new()
+                .route("/api/v1/media/upload", post(media::upload_media))
+                .layer(axum::extract::DefaultBodyLimit::max(100 * 1024 * 1024)),
+        )
         // OpenAPI / Swagger UI
         .merge(routes::openapi::swagger_ui())
         // Set Sentry transaction name to route pattern after routing
