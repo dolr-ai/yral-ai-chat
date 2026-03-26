@@ -78,6 +78,7 @@ impl AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code) = self.status_and_code();
+        tracing::error!(error = %self, code = code, "App error");
         sentry::capture_error(&self);
         let body = ErrorBody {
             error: code,
