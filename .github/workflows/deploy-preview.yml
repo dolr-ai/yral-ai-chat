@@ -110,6 +110,10 @@ jobs:
             secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL ;
             secret/data/yral-ai-chat/ADMIN_KEY_TO_DELETE_INFLUENCER value | ADMIN_KEY_TO_DELETE_INFLUENCER ;
             secret/data/yral-ai-chat/GOOGLE_CHAT_WEBHOOK_URL value | GOOGLE_CHAT_WEBHOOK_URL ;
+            secret/data/COOLIFY_TOKEN value | COOLIFY_TOKEN ;
+            secret/data/COOLIFY_PROJECT_UUID value | COOLIFY_PROJECT_UUID ;
+            secret/data/COOLIFY_SERVER_UUID value | COOLIFY_SERVER_UUID ;
+            secret/data/COOLIFY_ENV_UUID value | COOLIFY_ENV_UUID ;
 
       - name: Create or Get Coolify Application
         id: coolify_app
