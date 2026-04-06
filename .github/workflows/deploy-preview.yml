@@ -10,10 +10,7 @@ permissions:
   id-token: write
   contents: read
   deployments: write
-
-env:
-  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-  FLY_ORG: gobazzinga-inc-584
+  packages: write
 
 jobs:
   build_check:
@@ -23,21 +20,39 @@ jobs:
       cargo-features: staging
 
   preview:
+    if: ${{ github.event.pull_request.state == 'open' }}
     needs: build_check
     runs-on: ubuntu-latest
 
     concurrency:
-      group: pr-${{ github.event.number }}
-
-    outputs:
-      url: ${{ steps.deploy.outputs.url }}
+      group: pr-${{ github.event.number }}-${{ github.event.repository.name }}
+      cancel-in-progress: true
 
     environment:
       name: pr-${{ github.event.number }}
-      url: ${{ steps.deploy.outputs.url }}
+      url: ${{ steps.meta.outputs.preview_url }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Compute Preview Metadata
+        id: meta
+        run: |
+          PR_NUMBER=${{ github.event.number }}
+          REPO_NAME=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g')
+          IMAGE="ghcr.io/${{ github.repository_owner }}/${REPO_NAME}"
+          IMAGE_TAG="pr-${PR_NUMBER}"
+          PREVIEW_DOMAIN="pr-${PR_NUMBER}-${REPO_NAME}.preview.yral.com"
+          PREVIEW_URL="https://${PREVIEW_DOMAIN}"
+          APP_NAME="pr-${PR_NUMBER}-${REPO_NAME}"
+          
+          echo "pr_number=${PR_NUMBER}"             >> $GITHUB_OUTPUT
+          echo "repo_name=${REPO_NAME}"             >> $GITHUB_OUTPUT
+          echo "image=${IMAGE}"                     >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}"             >> $GITHUB_OUTPUT
+          echo "preview_domain=${PREVIEW_DOMAIN}"   >> $GITHUB_OUTPUT
+          echo "preview_url=${PREVIEW_URL}"         >> $GITHUB_OUTPUT
+          echo "app_name=${APP_NAME}"               >> $GITHUB_OUTPUT
 
       - name: Download build artifact
         uses: actions/download-artifact@v4
@@ -47,13 +62,25 @@ jobs:
       - name: Make binary executable
         run: chmod +x target/x86_64-unknown-linux-gnu/release/yral-ai-chat
 
-      - name: Deploy PR preview app
-        id: deploy
-        uses: superfly/fly-pr-review-apps@1.2.1
-        env:
-          FLYCTL_VERSION: v0.3.144
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy-baremetal/Dockerfile # Ensure you have a Dockerfile that copies the binary
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.image_tag }}
+          cache-from: type=registry,ref=${{ steps.meta.outputs.image }}:cache-${{ steps.meta.outputs.image_tag }}
+          cache-to: type=registry,ref=${{ steps.meta.outputs.image }}:cache-${{ steps.meta.outputs.image_tag }},mode=max
 
       - name: Import Secrets from Vault
         uses: hashicorp/vault-action@v3
@@ -83,42 +110,64 @@ jobs:
             secret/data/yral-ai-chat/PG_DATABASE_URL value | PG_DATABASE_URL ;
             secret/data/yral-ai-chat/ADMIN_KEY_TO_DELETE_INFLUENCER value | ADMIN_KEY_TO_DELETE_INFLUENCER ;
             secret/data/yral-ai-chat/GOOGLE_CHAT_WEBHOOK_URL value | GOOGLE_CHAT_WEBHOOK_URL ;
+            secret/data/COOLIFY_TOKEN value | COOLIFY_TOKEN ;
+            secret/data/COOLIFY_PROJECT_UUID value | COOLIFY_PROJECT_UUID ;
+            secret/data/COOLIFY_SERVER_UUID value | COOLIFY_SERVER_UUID ;
+            secret/data/COOLIFY_ENV_UUID value | COOLIFY_ENV_UUID ;
 
-      - name: Set secrets and deploy
-        if: ${{ github.event.pull_request.merged == false }}
+      - name: Create or Get Coolify Application
+        id: coolify_app
         run: |
-          APP_NAME="pr-${{ github.event.number }}-${{ github.repository_owner }}-yral-ai-chat"
-          flyctl secrets set "JWT_SECRET_KEY=$JWT_SECRET_KEY" --app "$APP_NAME" --stage
-          flyctl secrets set "GEMINI_API_KEY=$GEMINI_API_KEY" --app "$APP_NAME" --stage
-          flyctl secrets set "GEMINI_MODEL=gemini-2.5-flash" --app "$APP_NAME" --stage
-          flyctl secrets set "GEMINI_MAX_TOKENS=2048" --app "$APP_NAME" --stage
-          flyctl secrets set "GEMINI_TEMPERATURE=0.7" --app "$APP_NAME" --stage
-          flyctl secrets set "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" --app "$APP_NAME" --stage
-          flyctl secrets set "OPENROUTER_MODEL=google/gemini-2.5-flash" --app "$APP_NAME" --stage
-          flyctl secrets set "REPLICATE_API_TOKEN=$REPLICATE_API_TOKEN" --app "$APP_NAME" --stage
-          flyctl secrets set "REPLICATE_MODEL=black-forest-labs/flux-dev" --app "$APP_NAME" --stage
-          flyctl secrets set "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" --app "$APP_NAME" --stage
-          flyctl secrets set "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" --app "$APP_NAME" --stage
-          flyctl secrets set "AWS_S3_BUCKET=$AWS_S3_BUCKET" --app "$APP_NAME" --stage
-          flyctl secrets set "AWS_REGION=$AWS_REGION" --app "$APP_NAME" --stage
-          flyctl secrets set "S3_ENDPOINT_URL=$S3_ENDPOINT_URL" --app "$APP_NAME" --stage
-          flyctl secrets set "S3_PUBLIC_URL_BASE=$S3_PUBLIC_URL_BASE" --app "$APP_NAME" --stage
-          flyctl secrets set "METADATA_URL=https://metadata.yral.com" --app "$APP_NAME" --stage
-          flyctl secrets set "YRAL_METADATA_NOTIFICATION_API_KEY=$YRAL_METADATA_NOTIFICATION_API_KEY" --app "$APP_NAME" --stage
-          flyctl secrets set "CORS_ORIGINS=$CORS_ORIGINS" --app "$APP_NAME" --stage
-          flyctl secrets set "ENABLE_LITESTREAM=true" --app "$APP_NAME" --stage
-          flyctl secrets set "LITESTREAM_ACCESS_KEY_ID=$LITESTREAM_ACCESS_KEY_ID" --app "$APP_NAME" --stage
-          flyctl secrets set "LITESTREAM_SECRET_ACCESS_KEY=$LITESTREAM_SECRET_ACCESS_KEY" --app "$APP_NAME" --stage
-          flyctl secrets set "LITESTREAM_BUCKET=$LITESTREAM_BUCKET" --app "$APP_NAME" --stage
-          flyctl secrets set "LITESTREAM_ENDPOINT=$LITESTREAM_ENDPOINT" --app "$APP_NAME" --stage
-          flyctl secrets set "LITESTREAM_REGION=$LITESTREAM_REGION" --app "$APP_NAME" --stage
-          flyctl secrets set "LITESTREAM_PATH=yral-ai-chat/pr-${{ github.event.number }}" --app "$APP_NAME" --stage
-          flyctl secrets set "PG_DATABASE_URL=$PG_DATABASE_URL" --app "$APP_NAME" --stage
-          flyctl secrets set "ADMIN_KEY_TO_DELETE_INFLUENCER=$ADMIN_KEY_TO_DELETE_INFLUENCER" --app "$APP_NAME" --stage
-          flyctl secrets set "GOOGLE_CHAT_WEBHOOK_URL=$GOOGLE_CHAT_WEBHOOK_URL" --app "$APP_NAME" --stage
-          flyctl deploy --app "$APP_NAME"
+          APP_NAME="${{ steps.meta.outputs.app_name }}"
+          IMAGE="${{ steps.meta.outputs.image }}"
+          IMAGE_TAG="${{ steps.meta.outputs.image_tag }}"
+          PREVIEW_DOMAIN="${{ steps.meta.outputs.preview_domain }}"
+
+          # Check if app already exists for this PR (e.g. new commit pushed to same PR)
+          EXISTING=$(curl -s \
+            "https://coolify.yral.com/api/v1/applications" \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            | jq -r --arg name "$APP_NAME" '.[] | select(.name == $name) | .uuid // empty')
+
+          if [ -n "$EXISTING" ]; then
+            echo "Reusing existing Coolify app: $EXISTING"
+            echo "app_uuid=${EXISTING}" >> $GITHUB_OUTPUT
+          else
+            echo "Creating new Coolify app: $APP_NAME"
+
+            RESPONSE=$(curl -s -X POST \
+              "https://coolify.yral.com/api/v1/applications/dockerimage" \
+              -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"name\": \"${APP_NAME}\",
+                \"project_uuid\": \"${COOLIFY_PROJECT_UUID}\",
+                \"server_uuid\": \"${COOLIFY_SERVER_UUID}\",
+                \"environment_name\": \"preview\",
+                \"environment_uuid\": \"${COOLIFY_ENV_UUID}\",
+                \"docker_registry_image_name\": \"${IMAGE}\",
+                \"docker_registry_image_tag\": \"${IMAGE_TAG}\",
+                \"domains\": \"https://${PREVIEW_DOMAIN}\",
+                \"ports_exposes\": \"3000\",
+                \"is_static\": false
+              }")
+
+            echo "Create response: $RESPONSE"
+
+            APP_UUID=$(echo $RESPONSE | jq -r '.uuid // empty')
+
+            if [ -z "$APP_UUID" ]; then
+              echo "Failed to create Coolify application"
+              echo "$RESPONSE"
+              exit 1
+            fi
+
+            echo "app_uuid=${APP_UUID}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push Environment Variables
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          # Secrets from GitHub
           JWT_SECRET_KEY: ${{ env.JWT_SECRET_KEY }}
           GEMINI_API_KEY: ${{ env.GEMINI_API_KEY }}
           OPENROUTER_API_KEY: ${{ env.OPENROUTER_API_KEY }}
@@ -139,16 +188,136 @@ jobs:
           LITESTREAM_REGION: ${{ env.LITESTREAM_REGION }}
           PG_DATABASE_URL: ${{ env.PG_DATABASE_URL }}
           GOOGLE_CHAT_WEBHOOK_URL: ${{ env.GOOGLE_CHAT_WEBHOOK_URL }}
+        run: |
+          APP_UUID="${{ steps.coolify_app.outputs.app_uuid }}"
+          flatten() { echo "$1" | tr -d '\n\r'; }
+
+          ENV_JSON=$(jq -n \
+            --arg jwt_secret_key "$JWT_SECRET_KEY" \
+            --arg gemini_api_key "$GEMINI_API_KEY" \
+            --arg openrouter_api_key "$OPENROUTER_API_KEY" \
+            --arg openrouter_model "$OPENROUTER_MODEL" \
+            --arg replicate_api_token "$REPLICATE_API_TOKEN" \
+            --arg aws_access_key_id "$AWS_ACCESS_KEY_ID" \
+            --arg aws_secret_access_key "$AWS_SECRET_ACCESS_KEY" \
+            --arg aws_s3_bucket "$AWS_S3_BUCKET" \
+            --arg aws_region "$AWS_REGION" \
+            --arg s3_endpoint_url "$S3_ENDPOINT_URL" \
+            --arg s3_public_url_base "$S3_PUBLIC_URL_BASE" \
+            --arg yral_metadata_notification_api_key "$YRAL_METADATA_NOTIFICATION_API_KEY" \
+            --arg cors_origins "$CORS_ORIGINS" \
+            --arg litestream_access_key_id "$LITESTREAM_ACCESS_KEY_ID" \
+            --arg litestream_secret_access_key "$LITESTREAM_SECRET_ACCESS_KEY" \
+            --arg litestream_bucket "$LITESTREAM_BUCKET" \
+            --arg litestream_endpoint "$LITESTREAM_ENDPOINT" \
+            --arg litestream_region "$LITESTREAM_REGION" \
+            --arg pg_database_url "$PG_DATABASE_URL" \
+            --arg google_chat_webhook_url "$GOOGLE_CHAT_WEBHOOK_URL" \
+            '{
+              "data": [
+                {"key": "JWT_SECRET_KEY", "value": $jwt_secret_key, "is_literal": true},
+                {"key": "GEMINI_API_KEY", "value": $gemini_api_key, "is_literal": true},
+                {"key": "OPENROUTER_API_KEY", "value": $openrouter_api_key, "is_literal": true},
+                {"key": "OPENROUTER_MODEL", "value": $openrouter_model, "is_literal": true},
+                {"key": "REPLICATE_API_TOKEN", "value": $replicate_api_token, "is_literal": true},
+                {"key": "AWS_ACCESS_KEY_ID", "value": $aws_access_key_id, "is_literal": true},
+                {"key": "AWS_SECRET_ACCESS_KEY", "value": $aws_secret_access_key, "is_literal": true},
+                {"key": "AWS_S3_BUCKET", "value": $aws_s3_bucket, "is_literal": true},
+                {"key": "AWS_REGION", "value": $aws_region, "is_literal": true},
+                {"key": "S3_ENDPOINT_URL", "value": $s3_endpoint_url, "is_literal": true},
+                {"key": "S3_PUBLIC_URL_BASE", "value": $s3_public_url_base, "is_literal": true},
+                {"key": "YRAL_METADATA_NOTIFICATION_API_KEY", "value": $yral_metadata_notification_api_key, "is_literal": true},
+                {"key": "CORS_ORIGINS", "value": $cors_origins, "is_literal": true},
+                {"key": "LITESTREAM_ACCESS_KEY_ID", "value": $litestream_access_key_id, "is_literal": true},
+                {"key": "LITESTREAM_SECRET_ACCESS_KEY", "value": $litestream_secret_access_key, "is_literal": true},
+                {"key": "LITESTREAM_BUCKET", "value": $litestream_bucket, "is_literal": true},
+                {"key": "LITESTREAM_ENDPOINT", "value": $litestream_endpoint, "is_literal": true},
+                {"key": "LITESTREAM_REGION", "value": $litestream_region, "is_literal": true},
+                {"key": "PG_DATABASE_URL", "value": $pg_database_url, "is_literal": true},
+                {"key": "GOOGLE_CHAT_WEBHOOK_URL", "value": $google_chat_webhook_url, "is_literal": true}
+              ]
+            }')
+
+          RESPONSE=$(curl -s -o /tmp/curl_response.txt -w "%{http_code}" -X PATCH \
+            "https://coolify.yral.com/api/v1/applications/${APP_UUID}/envs/bulk" \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${ENV_JSON}")
+
+          if [ "$RESPONSE" -lt 200 ] || [ "$RESPONSE" -ge 300 ]; then
+            echo "Failed to push environment variables (HTTP $RESPONSE)"
+            exit 1
+          fi
+
+      - name: Update Image Tag and Deploy
+        id: deploy
+        run: |
+          APP_UUID="${{ steps.coolify_app.outputs.app_uuid }}"
+          IMAGE="${{ steps.meta.outputs.image }}"
+          IMAGE_TAG="${{ steps.meta.outputs.image_tag }}"
+
+          # Update image tag (important on subsequent pushes to same PR)
+          curl -s -X PATCH \
+            "https://coolify.yral.com/api/v1/applications/${APP_UUID}" \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"docker_registry_image_tag\": \"${IMAGE_TAG}\"}"
+
+          # Trigger deploy
+          RESPONSE=$(curl -s -X POST \
+            "https://coolify.yral.com/api/v1/applications/${APP_UUID}/start" \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"uuid\": \"${APP_UUID}\",
+              \"force\": true
+            }")
+
+          echo "Deploy response: $RESPONSE"
+
+          DEPLOY_UUID=$(echo $RESPONSE | jq -r '.deployment_uuid // empty')
+          if [ -z "$DEPLOY_UUID" ]; then
+            echo "Failed to trigger deployment"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+          echo "deploy_uuid=${DEPLOY_UUID}" >> $GITHUB_OUTPUT
+
+      - name: Wait for Deployment
+        run: |
+          DEPLOY_UUID="${{ steps.deploy.outputs.deploy_uuid }}"
+          MAX_WAIT=120
+          WAITED=0
+
+          while [ $WAITED -lt $MAX_WAIT ]; do
+            STATUS=$(curl -s \
+              "https://coolify.yral.com/api/v1/deployments/${DEPLOY_UUID}" \
+              -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+              | jq -r '.status // empty')
+
+            echo "Status: ${STATUS} (${WAITED}s elapsed)"
+
+            if [ "$STATUS" = "finished" ]; then exit 0
+            elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "error" ]; then exit 1
+            fi
+
+            sleep 10
+            WAITED=$((WAITED + 10))
+          done
+
+          echo "Timed out"
+          exit 1
 
   health_check:
     needs: preview
-    if: ${{ github.event.action != 'closed' && needs.preview.outputs.url != '' }}
+    if: ${{ github.event.action != 'closed' && needs.meta.outputs.preview_url != '' }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Check health endpoint
         run: |
-          URL="${{ needs.preview.outputs.url }}"
+          URL="${{ needs.meta.outputs.preview_url }}"
           echo "Checking $URL/health..."
           for i in $(seq 1 30); do
             if curl -sf "$URL/health" > /dev/null 2>&1; then
@@ -160,3 +329,48 @@ jobs:
           done
           echo "Health check failed after 5 minutes"
           exit 1
+
+  destroy-preview:
+    if: ${{ github.event.pull_request.state == 'closed' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: import secrets from vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: https://vault.yral.com
+          method: jwt
+          role: yral-ai-chat-role
+          jwtGithubAudience: "https://github.com/dolr-ai"
+          secrets: |
+            secret/data/COOLIFY_TOKEN value | COOLIFY_TOKEN ;
+            
+      - name: Compute Metadata
+        id: meta
+        run: |
+          PR_NUMBER=${{ github.event.number }}
+          REPO_NAME=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g')
+          APP_NAME="pr-${PR_NUMBER}-${REPO_NAME}"
+          echo "app_name=${APP_NAME}"   >> $GITHUB_OUTPUT
+          echo "repo_name=${REPO_NAME}" >> $GITHUB_OUTPUT
+          echo "pr_number=${PR_NUMBER}" >> $GITHUB_OUTPUT
+
+      - name: Find and Delete Coolify Application
+        run: |
+          APP_NAME="${{ steps.meta.outputs.app_name }}"
+
+          APP_UUID=$(curl -s \
+            "https://coolify.yral.com/api/v1/applications" \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}" \
+            | jq -r --arg name "$APP_NAME" '.[] | select(.name == $name) | .uuid // empty')
+
+          if [ -z "$APP_UUID" ]; then
+            echo "No app found for $APP_NAME — skipping"
+            exit 0
+          fi
+
+          echo "Deleting Coolify app $APP_NAME ($APP_UUID)"
+
+          curl -s -X DELETE \
+            "https://coolify.yral.com/api/v1/applications/${APP_UUID}" \
+            -H "Authorization: Bearer ${COOLIFY_TOKEN}"
