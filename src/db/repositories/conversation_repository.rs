@@ -398,6 +398,7 @@ impl ConversationRepository {
 #[cfg(not(feature = "staging"))]
 pub struct ConversationRepository {
     pg_pool: PgPool,
+    primary_pg_pool: Option<PgPool>,
 }
 
 #[cfg(not(feature = "staging"))]
@@ -526,8 +527,11 @@ impl From<PgLastMessageRow> for LastMessageInfo {
 
 #[cfg(not(feature = "staging"))]
 impl ConversationRepository {
-    pub fn new(pg_pool: PgPool) -> Self {
-        Self { pg_pool }
+    pub fn new(pg_pool: PgPool, primary_pg_pool: Option<PgPool>) -> Self {
+        Self {
+            pg_pool,
+            primary_pg_pool,
+        }
     }
 
     // ── Writes ────────────────────────────────────────────────────────────────
@@ -546,6 +550,19 @@ impl ConversationRepository {
             .execute(&self.pg_pool)
             .await?;
 
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let id = conversation_id.clone();
+            let uid = user_id.to_string();
+            let iid = influencer_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    crate::db::pg_write::pg_insert_conversation(&primary, &id, &uid, &iid).await
+                {
+                    tracing::warn!(error = %e, conversation_id = %id, "Primary PG dual-write failed: insert conversation");
+                }
+            });
+        }
+
         self.get_by_id(&conversation_id)
             .await?
             .ok_or(sqlx::Error::RowNotFound)
@@ -561,6 +578,21 @@ impl ConversationRepository {
             .bind(conversation_id)
             .execute(&self.pg_pool)
             .await?;
+
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let id = conversation_id.to_string();
+            let meta = metadata.clone();
+            let meta_json = serde_json::to_string(&meta).unwrap_or("{}".to_string());
+            tokio::spawn(async move {
+                if let Err(e) =
+                    crate::db::pg_write::pg_update_conversation_metadata(&primary, &id, &meta_json)
+                        .await
+                {
+                    tracing::warn!(error = %e, conversation_id = %id, "Primary PG dual-write failed: update conversation metadata");
+                }
+            });
+        }
+
         Ok(())
     }
 
@@ -569,6 +601,16 @@ impl ConversationRepository {
             .bind(conversation_id)
             .execute(&self.pg_pool)
             .await?;
+
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let id = conversation_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = crate::db::pg_write::pg_delete_conversation(&primary, &id).await {
+                    tracing::warn!(error = %e, conversation_id = %id, "Primary PG dual-write failed: delete conversation");
+                }
+            });
+        }
+
         Ok(())
     }
 

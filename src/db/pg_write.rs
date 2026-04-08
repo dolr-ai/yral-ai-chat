@@ -205,3 +205,21 @@ pub async fn pg_soft_delete_influencer(
     .await?;
     Ok(())
 }
+
+pub async fn pg_ban_influencer(pool: &PgPool, influencer_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE ai_influencers SET is_active = 'discontinued', updated_at = NOW() WHERE id = $1",
+    )
+    .bind(influencer_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn pg_unban_influencer(pool: &PgPool, influencer_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE ai_influencers SET is_active = 'active', updated_at = NOW() WHERE id = $1")
+        .bind(influencer_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}

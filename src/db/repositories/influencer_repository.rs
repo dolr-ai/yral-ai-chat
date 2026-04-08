@@ -309,6 +309,7 @@ impl InfluencerRepository {
 #[cfg(not(feature = "staging"))]
 pub struct InfluencerRepository {
     pg_pool: PgPool,
+    primary_pg_pool: Option<PgPool>,
 }
 
 #[cfg(not(feature = "staging"))]
@@ -372,8 +373,11 @@ const SELECT_COLS: &str =
 
 #[cfg(not(feature = "staging"))]
 impl InfluencerRepository {
-    pub fn new(pg_pool: PgPool) -> Self {
-        Self { pg_pool }
+    pub fn new(pg_pool: PgPool, primary_pg_pool: Option<PgPool>) -> Self {
+        Self {
+            pg_pool,
+            primary_pg_pool,
+        }
     }
 
     // ── Writes ────────────────────────────────────────────────────────────────
@@ -408,6 +412,60 @@ impl InfluencerRepository {
         .execute(&self.pg_pool)
         .await?;
 
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let id = influencer.id.clone();
+            let name = influencer.name.clone();
+            let display_name = influencer.display_name.clone();
+            let avatar_url = influencer.avatar_url.clone();
+            let description = influencer.description.clone();
+            let category = influencer.category.clone();
+            let system_instructions = influencer.system_instructions.clone();
+            let personality_traits =
+                serde_json::to_string(&influencer.personality_traits).unwrap_or("{}".to_string());
+            let initial_greeting = influencer.initial_greeting.clone();
+            let suggested_messages =
+                serde_json::to_string(&influencer.suggested_messages).unwrap_or("[]".to_string());
+            let is_active = influencer.is_active.as_ref().to_string();
+            let is_nsfw = influencer.is_nsfw;
+            let parent_principal_id = influencer.parent_principal_id.clone();
+            let source = influencer.source.clone();
+            let created_at = influencer
+                .created_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
+            let updated_at = influencer
+                .updated_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string();
+            let metadata = serde_json::to_string(&influencer.metadata).unwrap_or("{}".to_string());
+            tokio::spawn(async move {
+                if let Err(e) = crate::db::pg_write::pg_insert_influencer(
+                    &primary,
+                    &id,
+                    &name,
+                    &display_name,
+                    avatar_url.as_deref(),
+                    description.as_deref(),
+                    category.as_deref(),
+                    &system_instructions,
+                    &personality_traits,
+                    initial_greeting.as_deref(),
+                    &suggested_messages,
+                    &is_active,
+                    is_nsfw,
+                    parent_principal_id.as_deref(),
+                    source.as_deref(),
+                    &created_at,
+                    &updated_at,
+                    &metadata,
+                )
+                .await
+                {
+                    tracing::warn!(error = %e, influencer_id = %id, "Primary PG dual-write failed: insert influencer");
+                }
+            });
+        }
+
         Ok(())
     }
 
@@ -416,43 +474,67 @@ impl InfluencerRepository {
         influencer_id: &str,
         instructions: &str,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE ai_influencers SET system_instructions = $1, updated_at = NOW() WHERE id = $2",
-        )
-        .bind(instructions)
-        .bind(influencer_id)
-        .execute(&self.pg_pool)
-        .await?;
+        crate::db::pg_write::pg_update_system_prompt(&self.pg_pool, influencer_id, instructions)
+            .await?;
+
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let id = influencer_id.to_string();
+            let instr = instructions.to_string();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    crate::db::pg_write::pg_update_system_prompt(&primary, &id, &instr).await
+                {
+                    tracing::warn!(error = %e, influencer_id = %id, "Primary PG dual-write failed: update system prompt");
+                }
+            });
+        }
+
         Ok(())
     }
 
     pub async fn soft_delete(&self, influencer_id: &str) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE ai_influencers SET is_active = 'discontinued', display_name = 'Deleted Bot', updated_at = NOW() WHERE id = $1",
-        )
-        .bind(influencer_id)
-        .execute(&self.pg_pool)
-        .await?;
+        crate::db::pg_write::pg_soft_delete_influencer(&self.pg_pool, influencer_id).await?;
+
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let id = influencer_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = crate::db::pg_write::pg_soft_delete_influencer(&primary, &id).await
+                {
+                    tracing::warn!(error = %e, influencer_id = %id, "Primary PG dual-write failed: soft delete influencer");
+                }
+            });
+        }
+
         Ok(())
     }
 
     pub async fn ban(&self, influencer_id: &str) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE ai_influencers SET is_active = 'discontinued', updated_at = NOW() WHERE id = $1",
-        )
-        .bind(influencer_id)
-        .execute(&self.pg_pool)
-        .await?;
+        crate::db::pg_write::pg_ban_influencer(&self.pg_pool, influencer_id).await?;
+
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let id = influencer_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = crate::db::pg_write::pg_ban_influencer(&primary, &id).await {
+                    tracing::warn!(error = %e, influencer_id = %id, "Primary PG dual-write failed: ban influencer");
+                }
+            });
+        }
+
         Ok(())
     }
 
     pub async fn unban(&self, influencer_id: &str) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE ai_influencers SET is_active = 'active', updated_at = NOW() WHERE id = $1",
-        )
-        .bind(influencer_id)
-        .execute(&self.pg_pool)
-        .await?;
+        crate::db::pg_write::pg_unban_influencer(&self.pg_pool, influencer_id).await?;
+
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let id = influencer_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = crate::db::pg_write::pg_unban_influencer(&primary, &id).await {
+                    tracing::warn!(error = %e, influencer_id = %id, "Primary PG dual-write failed: unban influencer");
+                }
+            });
+        }
+
         Ok(())
     }
 
