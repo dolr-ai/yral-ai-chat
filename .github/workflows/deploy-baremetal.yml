@@ -134,6 +134,7 @@ jobs:
             secret/data/yral-ai-chat/ADMIN_KEY_TO_DELETE_INFLUENCER value | ADMIN_KEY_TO_DELETE_INFLUENCER ;
             secret/data/yral-ai-chat/GOOGLE_CHAT_WEBHOOK_URL value | GOOGLE_CHAT_WEBHOOK_URL ;
             secret/data/yral-ai-chat/SENTRY_DSN value | SENTRY_DSN ;
+            secret/data/yral-ai-chat/PRIMARY_POSTGRES_CHAT value | PRIMARY_PG_DATABASE_URL ;
 
       - name: Setup SSH key
         uses: webfactory/ssh-agent@v0.9.0
@@ -205,6 +206,7 @@ jobs:
             ADMIN_KEY_TO_DELETE_INFLUENCER='${{ env.ADMIN_KEY_TO_DELETE_INFLUENCER }}' \
             GOOGLE_CHAT_WEBHOOK_URL='${{ env.GOOGLE_CHAT_WEBHOOK_URL }}' \
             SENTRY_DSN='${{ env.SENTRY_DSN }}' \
+            PRIMARY_PG_DATABASE_URL='${{ env.PRIMARY_PG_DATABASE_URL }}' \
             docker compose up -d
 
             echo 'Waiting for services to start...'

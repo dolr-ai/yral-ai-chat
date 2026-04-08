@@ -309,6 +309,7 @@ impl MessageRepository {
 #[cfg(not(feature = "staging"))]
 pub struct MessageRepository {
     pg_pool: PgPool,
+    primary_pg_pool: Option<PgPool>,
 }
 
 #[cfg(not(feature = "staging"))]
@@ -359,8 +360,11 @@ const SELECT_COLS: &str = "id, conversation_id, role, content, message_type, med
 
 #[cfg(not(feature = "staging"))]
 impl MessageRepository {
-    pub fn new(pg_pool: PgPool) -> Self {
-        Self { pg_pool }
+    pub fn new(pg_pool: PgPool, primary_pg_pool: Option<PgPool>) -> Self {
+        Self {
+            pg_pool,
+            primary_pg_pool,
+        }
     }
 
     // ── Writes ────────────────────────────────────────────────────────────────
@@ -409,6 +413,43 @@ impl MessageRepository {
             .execute(&self.pg_pool)
             .await?;
 
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let msg_id = message_id.clone();
+            let conv_id = conversation_id.to_string();
+            let role_str = role.as_ref().to_string();
+            let content_owned = content.map(|s| s.to_string());
+            let mt_str = message_type.as_ref().to_string();
+            let media_json = serde_json::to_string(media_urls).unwrap_or("[]".to_string());
+            let audio_url_owned = audio_url.map(|s| s.to_string());
+            let client_msg_id_owned = client_message_id.map(|s| s.to_string());
+            tokio::spawn(async move {
+                if let Err(e) = crate::db::pg_write::pg_insert_message(
+                    &primary,
+                    &msg_id,
+                    &conv_id,
+                    &role_str,
+                    content_owned.as_deref(),
+                    &mt_str,
+                    &media_json,
+                    audio_url_owned.as_deref(),
+                    audio_duration_seconds,
+                    token_count,
+                    client_msg_id_owned.as_deref(),
+                    "delivered",
+                    false,
+                )
+                .await
+                {
+                    tracing::warn!(error = %e, message_id = %msg_id, "Primary PG dual-write failed: insert message");
+                }
+                if let Err(e) =
+                    crate::db::pg_write::pg_bump_conversation_updated_at(&primary, &conv_id).await
+                {
+                    tracing::warn!(error = %e, conversation_id = %conv_id, "Primary PG dual-write failed: bump conversation");
+                }
+            });
+        }
+
         self.get_by_id(&message_id)
             .await?
             .ok_or(sqlx::Error::RowNotFound)
@@ -428,6 +469,17 @@ impl MessageRepository {
                 .await?;
         }
 
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let id = conversation_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    crate::db::pg_write::pg_delete_messages_by_conversation(&primary, &id).await
+                {
+                    tracing::warn!(error = %e, conversation_id = %id, "Primary PG dual-write failed: delete messages by conversation");
+                }
+            });
+        }
+
         Ok(count.0)
     }
 
@@ -439,6 +491,16 @@ impl MessageRepository {
         .bind(conversation_id)
         .execute(&self.pg_pool)
         .await?;
+
+        if let Some(primary) = self.primary_pg_pool.clone() {
+            let id = conversation_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = crate::db::pg_write::pg_mark_as_read(&primary, &id).await {
+                    tracing::warn!(error = %e, conversation_id = %id, "Primary PG dual-write failed: mark as read");
+                }
+            });
+        }
+
         Ok(())
     }
 

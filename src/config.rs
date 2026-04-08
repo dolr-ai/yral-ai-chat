@@ -21,6 +21,9 @@ pub struct Settings {
     pub pg_pool_timeout: u64,
     pub pg_read_enabled: bool,
 
+    // Primary PostgreSQL for dual-write migration (staging → primary PG)
+    pub primary_pg_database_url: Option<String>,
+
     // JWT
     pub jwt_secret_key: String,
     pub jwt_algorithm: String,
@@ -123,6 +126,10 @@ impl Settings {
                 .unwrap_or("false".into())
                 .parse()
                 .unwrap_or(false),
+
+            primary_pg_database_url: env::var("PRIMARY_PG_DATABASE_URL")
+                .ok()
+                .filter(|s| !s.is_empty()),
 
             jwt_secret_key: env::var("JWT_SECRET_KEY").expect("JWT_SECRET_KEY is required"),
             jwt_algorithm: env::var("JWT_ALGORITHM").unwrap_or("HS256".into()),

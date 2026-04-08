@@ -1,3 +1,4 @@
+pub mod pg_write;
 pub mod repositories;
 
 use std::path::Path;
@@ -174,6 +175,7 @@ impl Database {
 #[derive(Clone)]
 pub struct Database {
     pub pg_pool: PgPool,
+    pub primary_pg_pool: Option<PgPool>,
 }
 
 #[cfg(not(feature = "staging"))]
@@ -200,19 +202,68 @@ impl Database {
 
         tracing::info!(pool_size = settings.pg_pool_size, "Connected to PostgreSQL");
 
-        Ok(Self { pg_pool })
+        let primary_pg_pool = match &settings.primary_pg_database_url {
+            Some(url) => {
+                let opts = url
+                    .parse::<PgConnectOptions>()
+                    .map(|o| o.disable_statement_logging());
+                match opts {
+                    Ok(opts) => {
+                        match PgPoolOptions::new()
+                            .max_connections(settings.pg_pool_size)
+                            .acquire_timeout(std::time::Duration::from_secs(
+                                settings.pg_pool_timeout,
+                            ))
+                            .connect_with(opts)
+                            .await
+                        {
+                            Ok(pool) => {
+                                tracing::info!("Connected to primary PostgreSQL for dual-write");
+                                Some(pool)
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    error = %e,
+                                    "Failed to connect to primary PostgreSQL, dual-write disabled"
+                                );
+                                None
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            "Invalid PRIMARY_PG_DATABASE_URL, dual-write disabled"
+                        );
+                        None
+                    }
+                }
+            }
+            None => {
+                tracing::info!("PRIMARY_PG_DATABASE_URL not set, dual-write disabled");
+                None
+            }
+        };
+
+        Ok(Self {
+            pg_pool,
+            primary_pg_pool,
+        })
     }
 
     pub fn conv_repo(&self) -> repositories::ConversationRepository {
-        repositories::ConversationRepository::new(self.pg_pool.clone())
+        repositories::ConversationRepository::new(
+            self.pg_pool.clone(),
+            self.primary_pg_pool.clone(),
+        )
     }
 
     pub fn msg_repo(&self) -> repositories::MessageRepository {
-        repositories::MessageRepository::new(self.pg_pool.clone())
+        repositories::MessageRepository::new(self.pg_pool.clone(), self.primary_pg_pool.clone())
     }
 
     pub fn inf_repo(&self) -> repositories::InfluencerRepository {
-        repositories::InfluencerRepository::new(self.pg_pool.clone())
+        repositories::InfluencerRepository::new(self.pg_pool.clone(), self.primary_pg_pool.clone())
     }
 
     pub async fn health_check(&self) -> HealthCheckResult {
@@ -238,6 +289,28 @@ impl Database {
 
     pub async fn pg_health_check(&self) -> Option<HealthCheckResult> {
         Some(self.health_check().await)
+    }
+
+    pub async fn primary_pg_health_check(&self) -> Option<HealthCheckResult> {
+        let pool = self.primary_pg_pool.as_ref()?;
+        let start = Instant::now();
+        match sqlx::query_scalar::<_, i32>("SELECT 1")
+            .fetch_one(pool)
+            .await
+        {
+            Ok(_) => Some(HealthCheckResult {
+                status: "up".to_string(),
+                latency_ms: Some(start.elapsed().as_millis() as i64),
+                error: None,
+                size_mb: 0.0,
+            }),
+            Err(e) => Some(HealthCheckResult {
+                status: "down".to_string(),
+                latency_ms: None,
+                error: Some(e.to_string()),
+                size_mb: 0.0,
+            }),
+        }
     }
 }
 
