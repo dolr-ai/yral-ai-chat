@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: yral-ai-chat
+  namespace: yral-ai-chat
+  annotations:
+    # Cert resolver name must match what's configured in traefik/values.yml
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+    # WebSocket + streaming support
+    traefik.ingress.kubernetes.io/router.middlewares: ""
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: chat.ravi.yral.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: yral-ai-chat
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - chat.ravi.yral.com
+      secretName: yral-ai-chat-tls

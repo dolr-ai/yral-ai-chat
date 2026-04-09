@@ -1,0 +1,147 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yral-ai-chat
+  namespace: yral-ai-chat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: yral-ai-chat
+  template:
+    metadata:
+      labels:
+        app: yral-ai-chat
+    spec:
+      containers:
+        - name: yral-ai-chat
+          image: ghcr.io/dolr-ai/yral-ai-chat:latest
+          ports:
+            - containerPort: 8000
+          env:
+            # === Static config ===
+            - name: APP_NAME
+              value: "Yral AI Chat API"
+            - name: APP_VERSION
+              value: "1.0.0"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8000"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: LOG_FORMAT
+              value: "json"
+            - name: JWT_ALGORITHM
+              value: "HS256"
+            - name: JWT_ISSUER
+              value: "yral_auth"
+            - name: GEMINI_MODEL
+              value: "gemini-2.5-flash"
+            - name: GEMINI_MAX_TOKENS
+              value: "2048"
+            - name: GEMINI_TEMPERATURE
+              value: "0.7"
+            - name: OPENROUTER_MODEL
+              value: "google/gemini-2.5-flash"
+            - name: REPLICATE_MODEL
+              value: "black-forest-labs/flux-dev"
+            - name: METADATA_URL
+              value: "https://metadata.yral.com"
+            - name: SENTRY_TRACES_SAMPLE_RATE
+              value: "1.0"
+            # === Secrets ===
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: JWT_SECRET_KEY
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: GEMINI_API_KEY
+            - name: OPENROUTER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: OPENROUTER_API_KEY
+            - name: REPLICATE_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: REPLICATE_API_TOKEN
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: AWS_S3_BUCKET
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: AWS_REGION
+            - name: S3_ENDPOINT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: S3_ENDPOINT_URL
+            - name: S3_PUBLIC_URL_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: S3_PUBLIC_URL_BASE
+            - name: YRAL_METADATA_NOTIFICATION_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: YRAL_METADATA_NOTIFICATION_API_KEY
+            - name: CORS_ORIGINS
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: CORS_ORIGINS
+            - name: PG_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: PG_DATABASE_URL
+            - name: ADMIN_KEY_TO_DELETE_INFLUENCER
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: ADMIN_KEY_TO_DELETE_INFLUENCER
+            - name: GOOGLE_CHAT_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: GOOGLE_CHAT_WEBHOOK_URL
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: yral-ai-chat-secrets
+                  key: SENTRY_DSN
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
