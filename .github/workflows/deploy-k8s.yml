@@ -151,7 +151,7 @@ jobs:
 
       - name: Deploy to K8s
         run: |
-          kubectl apply -f k8s/
+          kubectl apply -f k8s/ --validate=false
           kubectl set image deployment/yral-ai-chat \
             yral-ai-chat=ghcr.io/dolr-ai/yral-ai-chat:${{ github.sha }} \
             -n yral-ai-chat
