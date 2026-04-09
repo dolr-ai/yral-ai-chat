@@ -1,0 +1,184 @@
+name: Deploy to K8s
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-k8s-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOCKER_REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build_check:
+    uses: ./.github/workflows/build-check.yml
+    with:
+      publish-artifact: true
+    secrets: inherit
+
+  build-and-push:
+    name: Build and Push Docker Image
+    needs: [build_check]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-glibc
+
+      - name: Make binary executable
+        run: chmod +x target/x86_64-unknown-linux-gnu/release/yral-ai-chat
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=latest
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./deploy-baremetal/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to K8s
+    needs: [build-and-push]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Import Secrets from Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: https://vault.yral.com
+          method: jwt
+          role: yral-ai-chat-role
+          jwtGithubAudience: "https://github.com/dolr-ai"
+          secrets: |
+            secret/data/yral-ai-chat/KUBECONFIG value | KUBECONFIG_DATA ;
+            secret/data/yral-ai-chat/JWT_SECRET_KEY value | JWT_SECRET_KEY ;
+            secret/data/yral-ai-chat/GEMINI_API_KEY value | GEMINI_API_KEY ;
+            secret/data/yral-ai-chat/OPENROUTER_API_KEY value | OPENROUTER_API_KEY ;
+            secret/data/yral-ai-chat/REPLICATE_API_TOKEN value | REPLICATE_API_TOKEN ;
+            secret/data/yral-ai-chat/AWS_ACCESS_KEY_ID value | AWS_ACCESS_KEY_ID ;
+            secret/data/yral-ai-chat/AWS_SECRET_ACCESS_KEY value | AWS_SECRET_ACCESS_KEY ;
+            secret/data/yral-ai-chat/AWS_S3_BUCKET value | AWS_S3_BUCKET ;
+            secret/data/yral-ai-chat/AWS_REGION value | AWS_REGION ;
+            secret/data/yral-ai-chat/S3_ENDPOINT_URL value | S3_ENDPOINT_URL ;
+            secret/data/yral-ai-chat/S3_PUBLIC_URL_BASE value | S3_PUBLIC_URL_BASE ;
+            secret/data/yral-ai-chat/YRAL_METADATA_NOTIFICATION_API_KEY value | YRAL_METADATA_NOTIFICATION_API_KEY ;
+            secret/data/yral-ai-chat/CORS_ORIGINS value | CORS_ORIGINS ;
+            secret/data/yral-ai-chat/KUBER_POSTGRES_URL value | PG_DATABASE_URL ;
+            secret/data/yral-ai-chat/ADMIN_KEY_TO_DELETE_INFLUENCER value | ADMIN_KEY_TO_DELETE_INFLUENCER ;
+            secret/data/yral-ai-chat/GOOGLE_CHAT_WEBHOOK_URL value | GOOGLE_CHAT_WEBHOOK_URL ;
+            secret/data/yral-ai-chat/SENTRY_DSN value | SENTRY_DSN ;
+
+      - name: Set up kubeconfig
+        run: |
+          echo "$KUBECONFIG_DATA" > /tmp/kubeconfig
+          chmod 600 /tmp/kubeconfig
+
+      - name: Create app secrets
+        run: |
+          # vault-action exports secrets as shell env vars — reference them directly
+          cat > /tmp/app-secrets.env << SECRETS_EOF
+          JWT_SECRET_KEY=${JWT_SECRET_KEY}
+          GEMINI_API_KEY=${GEMINI_API_KEY}
+          OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+          REPLICATE_API_TOKEN=${REPLICATE_API_TOKEN}
+          AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+          AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+          AWS_S3_BUCKET=${AWS_S3_BUCKET}
+          AWS_REGION=${AWS_REGION}
+          S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+          S3_PUBLIC_URL_BASE=${S3_PUBLIC_URL_BASE}
+          YRAL_METADATA_NOTIFICATION_API_KEY=${YRAL_METADATA_NOTIFICATION_API_KEY}
+          CORS_ORIGINS=${CORS_ORIGINS}
+          PG_DATABASE_URL=${PG_DATABASE_URL}
+          ADMIN_KEY_TO_DELETE_INFLUENCER=${ADMIN_KEY_TO_DELETE_INFLUENCER}
+          GOOGLE_CHAT_WEBHOOK_URL=${GOOGLE_CHAT_WEBHOOK_URL}
+          SENTRY_DSN=${SENTRY_DSN}
+          SECRETS_EOF
+
+          sed -i 's/^[[:space:]]*//' /tmp/app-secrets.env
+
+          kubectl create secret generic yral-ai-chat-secrets \
+            --from-env-file=/tmp/app-secrets.env \
+            -n yral-ai-chat \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          rm /tmp/app-secrets.env
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+
+      - name: Deploy to K8s
+        run: |
+          kubectl apply -f k8s/
+          kubectl set image deployment/yral-ai-chat \
+            yral-ai-chat=ghcr.io/dolr-ai/yral-ai-chat:${{ github.sha }} \
+            -n yral-ai-chat
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/yral-ai-chat -n yral-ai-chat --timeout=300s
+        env:
+          KUBECONFIG: /tmp/kubeconfig
+
+  deployment-summary:
+    name: Deployment Summary
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - name: Deployment summary
+        run: |
+          echo "## K8s Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Status: ${{ needs.deploy.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Image" >> $GITHUB_STEP_SUMMARY
+          echo "- ghcr.io/${{ github.repository }}:${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Endpoint" >> $GITHUB_STEP_SUMMARY
+          echo "- https://chat.ravi.yral.com" >> $GITHUB_STEP_SUMMARY
