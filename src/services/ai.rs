@@ -117,8 +117,12 @@ impl AiClient {
         for msg in conversation_history {
             match msg.role {
                 MessageRole::User => {
-                    let content =
-                        build_user_content(msg.content.as_deref().unwrap_or(""), &msg.media_urls);
+                    let content = build_user_content(
+                        msg.content.as_deref().unwrap_or(""),
+                        &msg.media_urls,
+                        &self.raw_http,
+                    )
+                    .await;
                     messages.push(ChatCompletionRequestMessage::User(
                         ChatCompletionRequestUserMessage {
                             content,
@@ -139,7 +143,8 @@ impl AiClient {
         }
 
         // Current user message
-        let current_content = build_user_content(user_message, media_urls.unwrap_or(&[]));
+        let current_content =
+            build_user_content(user_message, media_urls.unwrap_or(&[]), &self.raw_http).await;
         messages.push(ChatCompletionRequestMessage::User(
             ChatCompletionRequestUserMessage {
                 content: current_content,
@@ -336,9 +341,14 @@ Format: {{"key1": "value1", "key2": "value2"}}"#
     }
 }
 
-fn build_user_content(
+// Gemini's OpenAI-compat endpoint (`/v1beta/openai`) no longer reliably fetches
+// remote `image_url` URLs — it falls back to `application/octet-stream` and
+// rejects the request. Work around by inlining images as `data:<mime>;base64,…`
+// URLs, which Gemini accepts directly. See issue #235.
+async fn build_user_content(
     text: &str,
     media_urls: &[String],
+    http: &reqwest::Client,
 ) -> ChatCompletionRequestUserMessageContent {
     if media_urls.is_empty() {
         return ChatCompletionRequestUserMessageContent::Text(text.to_string());
@@ -355,10 +365,21 @@ fn build_user_content(
     }
 
     for url in media_urls.iter().take(5) {
+        let image_url_value = match fetch_as_data_url(http, url).await {
+            Ok(data_url) => data_url,
+            Err(e) => {
+                tracing::warn!(
+                    url = %url,
+                    error = %e,
+                    "Failed to inline image as data URL; falling back to raw URL"
+                );
+                url.clone()
+            }
+        };
         parts.push(ChatCompletionRequestUserMessageContentPart::ImageUrl(
             ChatCompletionRequestMessageContentPartImage {
                 image_url: ImageUrl {
-                    url: url.clone(),
+                    url: image_url_value,
                     detail: None,
                 },
             },
@@ -366,6 +387,71 @@ fn build_user_content(
     }
 
     ChatCompletionRequestUserMessageContent::Array(parts)
+}
+
+async fn fetch_as_data_url(http: &reqwest::Client, url: &str) -> Result<String, String> {
+    let resp = http
+        .get(url)
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| format!("download failed: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("HTTP error: {e}"))?;
+
+    let header_ct = resp
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("read bytes failed: {e}"))?;
+
+    let mime = sniff_image_mime(&header_ct, url, &bytes);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:{mime};base64,{b64}"))
+}
+
+fn sniff_image_mime(header_ct: &str, url: &str, bytes: &[u8]) -> String {
+    if header_ct.starts_with("image/") && !header_ct.contains("octet-stream") {
+        return header_ct.to_string();
+    }
+
+    if bytes.len() >= 4 {
+        if bytes.starts_with(b"\xFF\xD8\xFF") {
+            return "image/jpeg".to_string();
+        }
+        if bytes.starts_with(b"\x89PNG") {
+            return "image/png".to_string();
+        }
+        if bytes.starts_with(b"GIF8") {
+            return "image/gif".to_string();
+        }
+        if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+            return "image/webp".to_string();
+        }
+    }
+
+    let path = url.split(|c| c == '?' || c == '#').next().unwrap_or(url);
+    let lower = path.to_lowercase();
+    if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        return "image/jpeg".to_string();
+    }
+    if lower.ends_with(".png") {
+        return "image/png".to_string();
+    }
+    if lower.ends_with(".gif") {
+        return "image/gif".to_string();
+    }
+    if lower.ends_with(".webp") {
+        return "image/webp".to_string();
+    }
+
+    "image/jpeg".to_string()
 }
 
 fn parse_memory_json(
